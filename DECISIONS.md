@@ -14,4 +14,5 @@ Every choice that changes the plan, with the reason. Newest first.
 | TestFlight workflow trigger: pushed tags matching `testflight/*` | Proves the upload loop without implying Mission 0 is approved (`m00-approved` waits for APPROVED). Agents do not push tags. |
 | Signing: App Store Connect API key + Xcode cloud-managed / automatic signing first | Plan Mission 0 item 6; same proven approach as phoenix-fox. Fastlane match only if that fails. |
 | `ITSAppUsesNonExemptEncryption` **not** written into Info.plist yet | Proposed `false` for Nicholas’s confirmation (export-compliance question). Not treated as approved. |
+| Linux GameCore job on **ubuntu-24.04** (not `ubuntu-latest`) | Swift 6.2 RELEASE tarball is built for Ubuntu 24.04; `ubuntu-latest` is 26.04 and failed with missing `libxml2.so.2`. |
 | Private content repo / deploy key deferred | Not needed until paid assets or Harbor maps land; documented in OWNER_SETUP.md. |
