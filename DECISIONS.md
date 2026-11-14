@@ -2,6 +2,12 @@
 
 Every choice that changes the plan, with the reason. Newest first.
 
+## 2026-11-14 — ASC app record created
+
+| Decision | Reason |
+| --- | --- |
+| Store name **Magpie Toy City** (Apple ID `6834947645`, SKU `magpie-001`) | “MAGPIE” was taken in App Store Connect; bundle id stays `com.cinderandcrown.magpie`. Codename MAGPIE unchanged in product/docs. |
+
 ## 2026-11-14 — AGENTS.md adapted to real setup
 
 `docs/PLAN.md` remains the untouched original. `AGENTS.md` keeps the Master Brief’s design, originality rules, pillars, tuning, budgets, and feel/juice bar; only process/hosting roles change.
