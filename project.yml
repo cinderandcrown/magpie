@@ -1,0 +1,96 @@
+# Copyright © 2026 Cinder and Crown LLC. All rights reserved.
+# Generated Xcode project source of truth. CI runs: xcodegen generate
+# Never commit a hand-made .xcodeproj.
+
+name: Magpie
+options:
+  bundleIdPrefix: com.cinderandcrown
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: GDNRT9DJ58
+    CODE_SIGN_STYLE: Automatic
+    APP_CODE_SIGN_IDENTITY: Apple Development
+    APP_AD_HOC_SIGNING: "NO"
+    PRODUCT_BUNDLE_IDENTIFIER: com.cinderandcrown.magpie
+
+configs:
+  Debug:
+    settings:
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+  Release:
+    settings:
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+
+targets:
+  Magpie:
+    type: application
+    platform: iOS
+    sources:
+      - path: Magpie
+        excludes:
+          - "**/*.plist"
+          - "**/*.xcprivacy"
+    resources:
+      - path: Magpie/Assets.xcassets
+      - path: Magpie/PrivacyInfo.xcprivacy
+    settings:
+      base:
+        INFOPLIST_FILE: Magpie/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.cinderandcrown.magpie
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: false
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: false
+        CODE_SIGN_IDENTITY: $(APP_CODE_SIGN_IDENTITY)
+        "AD_HOC_CODE_SIGNING_ALLOWED[sdk=iphoneos*]": $(APP_AD_HOC_SIGNING)
+    dependencies:
+      - package: GameCore
+      - package: GameRender
+      - package: Services
+
+  MagpieTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: MagpieTests
+    dependencies:
+      - target: Magpie
+      - package: GameCore
+      - package: Services
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+packages:
+  GameCore:
+    path: Packages/GameCore
+  GameRender:
+    path: Packages/GameRender
+  Services:
+    path: Packages/Services
+
+schemes:
+  Magpie:
+    build:
+      targets:
+        Magpie: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - MagpieTests
+    archive:
+      config: Release
