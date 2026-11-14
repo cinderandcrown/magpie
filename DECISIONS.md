@@ -1,5 +1,11 @@
 # Decisions
 
+## 2026-11-14 — Theme pivot noted (no renames)
+
+| Decision | Reason |
+| --- | --- |
+| Theme → raccoon (“trash panda”), night neon city heist; final name TBD — **BACKLOG only** | Nicholas’s direction. Mission 0 unchanged (follow-square). No repo/bundle/module renames until after M0. |
+
 Every choice that changes the plan, with the reason. Newest first.
 
 ## 2026-11-14 — ASC app record created
