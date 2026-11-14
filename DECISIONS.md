@@ -13,6 +13,7 @@ Every choice that changes the plan, with the reason. Newest first.
 | GameCore `swift test` on the **agent Linux VM** + CI Linux job (not “this PC”) | Agents have Swift on the VM; they cannot compile the iPhone app there. |
 | Signing: **ASC API key** path proven on `phoenix-fox`; **no fastlane match** unless cloud signing fails | Secrets already work; avoid a second cert pipeline until needed. |
 | Checkpoint tagging is **Fire Fox’s** job; agents report build numbers after upload | Matches ownership split; Mission 0 still uploads only on `testflight/*`. |
+| TestFlight PR check: **skip altool validate** when ASC app record is missing | Archive + cloud sign already proved; validate/upload need the app record Nicholas creates. PR must not stay red for that owner step. |
 | Explicit **do not sandbag feel/juice** | Nicholas wants a badass game; process adaptations must not lower the quality bar. |
 | Simulator ≠ on-phone for feel sign-off | Plan already implied this; AGENTS.md states it as a hard rule. |
 

@@ -95,6 +95,7 @@ jobs:
             --bundle-id "$BUNDLE_ID" --name "MAGPIE"
 
       - name: Check App Store Connect app record
+        id: ascapp
         if: steps.gate.outputs.ready == 'true'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -106,9 +107,14 @@ jobs:
           set -e
           echo "$out"
           if [ "$code" = 2 ]; then
-            echo "::error::Create the ASC app record (see OWNER_SETUP.md)."
-            if [ "${{ steps.version.outputs.upload }}" = true ]; then exit 1; fi
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::ASC app record missing (OWNER_SETUP.md). Sign/check still run; altool validate/upload wait for Nicholas."
+            if [ "${{ steps.version.outputs.upload }}" = true ]; then
+              echo "::error::Cannot upload without the ASC app record."
+              exit 1
+            fi
           else
+            echo "missing=false" >> "$GITHUB_OUTPUT"
             exit "$code"
           fi
 
@@ -198,7 +204,8 @@ jobs:
             --build "$BUILD"
 
       - name: Validate with Apple
-        if: steps.gate.outputs.ready == 'true'
+        # altool needs the ASC app record; skip on PR sign-checks until Nicholas creates it.
+        if: steps.gate.outputs.ready == 'true' && steps.ascapp.outputs.missing != 'true'
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -239,13 +246,16 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD: ${{ steps.version.outputs.build }}
           UPLOAD: ${{ steps.version.outputs.upload }}
+          ASC_MISSING: ${{ steps.ascapp.outputs.missing }}
         run: |
           {
             echo "### MAGPIE $VERSION ($BUILD)"
             if [ "$UPLOAD" = true ]; then
               echo "Uploaded to TestFlight group “$BETA_GROUP”."
+            elif [ "$ASC_MISSING" = true ]; then
+              echo "Signed and locally checked. ASC app record still missing — create it (OWNER_SETUP.md), then Fire Fox can tag testflight/*."
             else
-              echo "Signed and validated only (not a testflight/* tag)."
+              echo "Signed, checked, and validated with Apple (not a testflight/* tag — nothing uploaded)."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
