@@ -1,0 +1,153 @@
+name: CI
+
+# Simulator build, package tests, and a screenshot artifact.
+# No Apple account required for the macOS job: simulator builds sign with no identity.
+# Device / TestFlight signing lives in testflight.yml only.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+jobs:
+  scripts:
+    name: Scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Tests for signing scripts
+        run: python3 -m unittest discover -s scripts -v
+
+  game-rules:
+    name: GameRules (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Swift
+        run: |
+          set -euo pipefail
+          # Official Ubuntu 24.04 toolchain — GameRules must stay Linux-testable.
+          curl -fsSL "https://download.swift.org/swift-6.2-release/ubuntu2404/swift-6.2-RELEASE/swift-6.2-RELEASE-ubuntu24.04.tar.gz" -o /tmp/swift.tgz
+          sudo mkdir -p /opt/swift
+          sudo tar -xzf /tmp/swift.tgz -C /opt/swift --strip-components=1
+          echo /opt/swift/usr/bin >> "$GITHUB_PATH"
+          arch="$(uname -m)"
+          if [ ! -e "/usr/lib/${arch}-linux-gnu/libncurses.so.6" ] && [ -e "/usr/lib/${arch}-linux-gnu/libncursesw.so.6" ]; then
+            sudo ln -sf libncursesw.so.6 "/usr/lib/${arch}-linux-gnu/libncurses.so.6"
+          fi
+      - name: Show Swift
+        run: swift --version
+      - name: swift test
+        working-directory: Packages/GameRules
+        run: swift test
+
+  build:
+    name: Build and test (simulator)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          # Confirm we are on the free standard image, not an xlarge label.
+          echo "Runner: $RUNNER_NAME / $RUNNER_OS / $ImageOS"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: GameRules on Mac
+        working-directory: Packages/GameRules
+        run: swift test
+
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Magpie.xcodeproj \
+            -scheme Magpie \
+            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator \
+            -derivedDataPath DerivedData \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM= \
+          | tee xcodebuild.log \
+          | xcbeautify --renderer github-actions
+
+      - name: Unit tests
+        id: tests
+        run: |
+          set -o pipefail
+          device="$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for k in sorted(d, reverse=True) if "iOS" in k for x in d[k] if x["name"].startswith("iPhone")))')"
+          echo "Simulator: $device"
+          echo "device=$device" >> "$GITHUB_OUTPUT"
+          xcodebuild test-without-building \
+            -project Magpie.xcodeproj \
+            -scheme Magpie \
+            -destination "platform=iOS Simulator,id=$device" \
+            -derivedDataPath DerivedData \
+            -resultBundlePath TestResults.xcresult \
+            -parallel-testing-enabled NO \
+          | tee xcodebuild-test.log \
+          | xcbeautify --renderer github-actions
+
+      - name: Simulator screenshot
+        if: success()
+        env:
+          DEVICE: ${{ steps.tests.outputs.device }}
+        run: |
+          set -euo pipefail
+          app="$(find DerivedData/Build/Products -name 'Magpie.app' -type d | head -1)"
+          test -n "$app"
+          xcrun simctl bootstatus "$DEVICE" -b || xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" "$app"
+          xcrun simctl launch "$DEVICE" com.cinderandcrown.magpie
+          sleep 3
+          xcrun simctl io "$DEVICE" screenshot simulator-screenshot.png
+          file simulator-screenshot.png
+
+      - name: Upload simulator screenshot
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: simulator-screenshot
+          path: simulator-screenshot.png
+          if-no-files-found: ignore
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcodebuild-logs
+          path: |
+            xcodebuild.log
+            xcodebuild-test.log
+            TestResults.xcresult
+          if-no-files-found: ignore

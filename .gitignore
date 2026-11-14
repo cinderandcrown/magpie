@@ -1,0 +1,62 @@
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcarchive
+
+# Generated project may be regenerated locally; CI always runs xcodegen.
+# Commit Magpie.xcodeproj/project.pbxproj only if intentionally vendored.
+
+# Secrets / local config
+Config.xcconfig
+*.p8
+AuthKey_*.p8
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/GameRules/.build/
+Package.resolved
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Build outputs
+build/
+*.app
+
+# Testing
+*.coverage
+*.profraw
+*.profdata
+TestResults.xcresult
+xcodebuild*.log
+simulator-screenshot.png
+
+# Python
+__pycache__/
+*.pyc
+
+# Claude / agent noise
+.claude/

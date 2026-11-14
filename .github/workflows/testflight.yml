@@ -1,0 +1,289 @@
+name: TestFlight
+
+# Signs MAGPIE with the App Store Connect API key and uploads a build.
+# Upload runs ONLY on a pushed tag matching testflight/* .
+# Fork-safe: pull_request / fork contexts never receive secrets and are skipped.
+# Never uploads a .ipa artifact — the signed app stays on the runner and is deleted.
+#
+# Proven approach copied from cinderandcrown/phoenix-fox (macos-26, Xcode 26.6,
+# App Store Connect API key automatic signing via -allowProvisioningUpdates).
+
+on:
+  push:
+    tags: ["testflight/*"]
+  pull_request:
+    paths:
+      - .github/workflows/testflight.yml
+      - scripts/appstore_connect.py
+      - scripts/check_signed_app.py
+      - Magpie/Resources/Info.plist
+      - project.yml
+
+concurrency:
+  group: testflight-${{ github.event_name == 'pull_request' && format('check-{0}', github.event.pull_request.number) || 'upload' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+  BUNDLE_ID: com.cinderandcrown.magpie
+  BETA_GROUP: MAGPIE team
+
+jobs:
+  testflight:
+    name: Sign, check, and upload
+    # Fork PRs never reach signing steps (and would not get secrets anyway).
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Stop if Apple secrets are missing
+        id: gate
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=0
+          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            if [ -z "${!name}" ]; then
+              echo "Missing secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" = 1 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "TestFlight skipped. Add APPLE_TEAM_ID, ASC_ISSUER_ID, ASC_KEY_ID, ASC_KEY_P8."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Version and build number
+        id: version
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          BUILD: ${{ github.run_number }}.${{ github.run_attempt }}
+        run: |
+          version="$(sed -n 's/^ *MARKETING_VERSION: "\([0-9][0-9.]*\)"$/\1/p' project.yml | head -1)"
+          if [ -z "$version" ]; then
+            echo "::error::No MARKETING_VERSION in project.yml."
+            exit 1
+          fi
+          upload=false
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = tag ] && [[ "$GITHUB_REF_NAME" == testflight/* ]]; then
+            upload=true
+          fi
+          {
+            echo "version=$version"
+            echo "build=$BUILD"
+            echo "upload=$upload"
+          } >> "$GITHUB_OUTPUT"
+          echo "MAGPIE $version ($BUILD). Upload: $upload"
+
+      - name: Write signing key
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          umask 077
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          key="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      - name: Register bundle ID if missing
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          python3 scripts/appstore_connect.py ensure-bundle-id \
+            --bundle-id "$BUNDLE_ID" --name "MAGPIE"
+
+      - name: Check App Store Connect app record
+        if: steps.gate.outputs.ready == 'true'
+        id: ascapp
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set +e
+          out="$(python3 scripts/appstore_connect.py check-app --bundle-id "$BUNDLE_ID" 2>&1)"
+          code=$?
+          set -e
+          echo "$out"
+          if [ "$code" = 2 ]; then
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+            echo "::error::Create the App Store Connect app record first (see job log for fields)."
+            if [ "${{ steps.version.outputs.upload }}" = true ]; then
+              exit 1
+            fi
+          else
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+            exit "$code"
+          fi
+
+      - name: Install XcodeGen
+        if: steps.gate.outputs.ready == 'true'
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        if: steps.gate.outputs.ready == 'true'
+        run: xcodegen generate
+
+      - name: Archive
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project Magpie.xcodeproj \
+            -scheme Magpie \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Magpie.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -hideShellScriptEnvironment \
+            APP_CODE_SIGN_IDENTITY=- \
+            APP_AD_HOC_SIGNING=YES \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD" \
+          | tee "$RUNNER_TEMP/xcodebuild-archive.log" \
+          | xcbeautify --renderer github-actions
+
+      - name: Sign for the App Store
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Magpie.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+          | tee "$RUNNER_TEMP/xcodebuild-export.log" || status=$?
+          if grep -q "Cloud signing permission error" "$RUNNER_TEMP/xcodebuild-export.log"; then
+            echo "::error title=The App Store Connect key cannot sign::Use an Admin App Store Connect API key. Replace ASC_KEY_ID and ASC_KEY_P8."
+          fi
+          exit "${status:-0}"
+
+      - name: Check the signed app
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          ipa="$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)"
+          echo "IPA_PATH=$ipa" >> "$GITHUB_ENV"
+          unzip -q "$ipa" -d "$RUNNER_TEMP/ipa"
+          app="$(ls -d "$RUNNER_TEMP"/ipa/Payload/*.app | head -1)"
+          codesign --verify --strict "$app"
+          codesign -d --entitlements "$RUNNER_TEMP/entitlements.plist" --xml "$app" 2>/dev/null
+          python3 scripts/check_signed_app.py \
+            --info "$app/Info.plist" \
+            --entitlements "$RUNNER_TEMP/entitlements.plist" \
+            --team "$APPLE_TEAM_ID" \
+            --bundle-id "$BUNDLE_ID" \
+            --version "$VERSION" \
+            --build "$BUILD"
+          echo "Size: $(du -h "$ipa" | cut -f1)"
+
+      - name: Validate with Apple
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcrun altool --validate-app --type ios --file "$IPA_PATH" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Internal testing group
+        if: steps.gate.outputs.ready == 'true' && steps.version.outputs.upload == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/appstore_connect.py beta-group --bundle-id "$BUNDLE_ID" --name "$BETA_GROUP"
+
+      - name: Upload to TestFlight
+        if: steps.gate.outputs.ready == 'true' && steps.version.outputs.upload == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcrun altool --upload-app --type ios --file "$IPA_PATH" \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Wait for Apple to process the build
+        if: steps.gate.outputs.ready == 'true' && steps.version.outputs.upload == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          python3 scripts/appstore_connect.py wait-build --bundle-id "$BUNDLE_ID" \
+            --version "$VERSION" --build "$BUILD"
+
+      - name: Summary
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          UPLOAD: ${{ steps.version.outputs.upload }}
+        run: |
+          {
+            echo "### MAGPIE $VERSION ($BUILD)"
+            if [ "$UPLOAD" = true ]; then
+              echo "Uploaded. Open TestFlight on the iPhone; the build is in the “$BETA_GROUP” group."
+            else
+              echo "Signed, checked, and validated with Apple. Nothing was uploaded (not a testflight/* tag)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show what failed
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP/xcodebuild-archive.log" "$RUNNER_TEMP/xcodebuild-export.log"; do
+            [ -f "$log" ] || continue
+            echo "::group::$(basename "$log")"
+            grep -E "error:|Error Domain|\*\* .* FAILED \*\*" "$log" | awk '!seen[$0]++' | head -80 || true
+            tail -40 "$log"
+            echo "::endgroup::"
+          done
+
+      - name: Remove the key and the signed app
+        if: always()
+        run: |
+          rm -rf "$HOME/.appstoreconnect" "$RUNNER_TEMP/export" "$RUNNER_TEMP/ipa" \
+            "$RUNNER_TEMP/Magpie.xcarchive" "$RUNNER_TEMP/DerivedData"

@@ -1,0 +1,66 @@
+name: Register Bundle ID
+
+# One-shot / rare: register com.cinderandcrown.magpie on the Apple Developer account
+# and report whether the App Store Connect app record exists.
+# Fork-safe: secrets are never available to fork PRs; this workflow is workflow_dispatch only.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    name: Ensure App ID
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Write API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in ASC_KEY_ID ASC_KEY_P8 ASC_ISSUER_ID APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then echo "Missing secret: $name"; missing=1; fi
+          done
+          test "$missing" = 0
+          umask 077
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          key="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      - name: Register bundle ID
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          python3 scripts/appstore_connect.py ensure-bundle-id \
+            --bundle-id com.cinderandcrown.magpie --name "MAGPIE"
+
+      - name: Check app record
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set +e
+          python3 scripts/appstore_connect.py check-app --bundle-id com.cinderandcrown.magpie
+          code=$?
+          set -e
+          if [ "$code" = 2 ]; then
+            echo "::warning::App Store Connect app record is missing — create it with the fields printed above."
+            exit 0
+          fi
+          exit "$code"
+
+      - name: Remove key
+        if: always()
+        run: rm -rf "$HOME/.appstoreconnect"
