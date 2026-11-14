@@ -3,6 +3,7 @@ name: TestFlight
 # Upload ONLY on pushed tags matching testflight/*.
 # Fork-safe: never uses pull_request_target; PR jobs from forks are skipped.
 # Never publishes a .ipa artifact.
+# ASC app: Magpie Toy City, Apple ID 6834947645, SKU magpie-001.
 
 on:
   push:
