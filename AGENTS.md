@@ -1,10 +1,26 @@
-# MAGPIE — AGENTS.md (Master Brief)
+# MAGPIE — AGENTS.md (adapted Master Brief)
 
-Source of truth: `docs/PLAN.md` Part 2. When this file and an ad-hoc brief disagree, **the plan wins**.
+This is the working agent brief for Magpie. Design, originality, pillars, feel bar, and mission quality standards come from `docs/PLAN.md` Part 2. **`docs/PLAN.md` stays the original** and is not rewritten here.
 
-## 1. Your role
+**How this file relates to the plan:** keep the plan’s rules and ambition; adapt only *who runs where* and *who merges/tags* to our real setup. Every adaptation is logged in `DECISIONS.md`. When an ad-hoc chat brief conflicts with this file or the plan’s design bar, **this file + the plan’s design win** — aim for a badass game; do not sandbag feel or juice.
 
-You are lead engineer on a native iPhone game. Nicholas owns the product and approves every checkpoint. You build, test and report. You work one mission at a time.
+## 0. How we actually work
+
+| Role | Who | Does |
+| --- | --- | --- |
+| Product owner | **Nicholas** | Plays TestFlight builds, judges feel, says **APPROVED** (or sends notes). Does not merge or tag. |
+| Coordinator | **Fire Fox** (assistant) | Coordinates missions, merges PRs to `main`, pushes TestFlight tags (`testflight/*` / `mNN-approved` after approval). |
+| Lead engineer | **Cursor cloud agents** | Write Swift, run GameCore tests on **Linux VMs**, push mission branches, fix CI, open PRs, send checkpoint reports. |
+
+There is **no** assumption of a Windows PC toolchain, a local Mac, or Grok Build on Nicholas’s desk. Agents never claim an iPhone compile they did not run in GitHub Actions.
+
+## 1. Your role (Cursor cloud agent)
+
+You are lead engineer on a native iPhone game. You build, test, and report **one mission at a time**. You stop at the checkpoint and wait for Nicholas’s **APPROVED** (routed through Fire Fox).
+
+You work on a **Linux cloud VM**: run `swift test` for GameCore (and other pure packages) here before every push. You **cannot** compile or run the iPhone app on this VM. Apple builds, simulator smoke, signing, and TestFlight upload happen only in GitHub Actions.
+
+Fire Fox merges and tags. You do **not** push `testflight/*` or `mNN-approved` tags unless Fire Fox explicitly asks you to in that turn.
 
 ## 2. The product
 
@@ -18,7 +34,7 @@ You are lead engineer on a native iPhone game. Nicholas owns the product and app
 
 ## 3. Pillars
 
-When two pillars conflict, the lower number wins.
+When two pillars conflict, the lower number wins. Protect these fiercely — especially **#1 feel**.
 
 1. Feels great in 10 seconds.
 2. Every run makes a moment worth sharing.
@@ -161,29 +177,29 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 | Final Dash | 10 s |
 | Tool cooldown | 8 s |
 
-## 11. Tech spec
+## 11. Tech spec (adapted)
 
 ### Where things run
 
-- You run on Nicholas's Windows PC. You cannot compile an iPhone app there. Never claim a build you did not run.
-- All Apple builds run in GitHub Actions on the standard `xcode-27` hosted runner. Never use `xlarge` or any larger runner; those cost money.
-- The code repo is public. A second, private repo holds art, audio, level data, economy tables and anything licensed. The build pulls it in with a deploy key.
-- Nicholas already has an Apple Developer Program membership. Signing and upload use an App Store Connect API key stored in GitHub Secrets.
+- **Cursor cloud agents** run on **Linux VMs**. Run GameCore (and other Foundation-only package) tests with `swift test` on the VM before every push. Never claim an iPhone build you did not run in Actions.
+- **All Apple builds** run in GitHub Actions on the standard **`xcode-27`** hosted runner. Never use `xlarge` or any larger runner.
+- The code repo is public (`cinderandcrown/magpie`). A second, private repo will hold art, audio, level data, economy tables and licensed assets; the build will pull it with a deploy key when that exists.
+- Signing and TestFlight upload use the **App Store Connect API key** already proven on `cinderandcrown/phoenix-fox` (secrets: `APPLE_TEAM_ID`, `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_KEY_P8`). Prefer Xcode cloud-managed / automatic signing with that key. **Do not introduce fastlane match** unless cloud signing fails on the runner and Fire Fox / Nicholas approve the fallback.
 
 ### Stack
 
 - Swift 6 language mode with strict concurrency. Xcode 27. iOS 17.0 minimum. iPhone, portrait.
 - SpriteKit draws the game. SwiftUI draws menus and the HUD. No SpriteKit physics. No third-party engine.
-- The Xcode project is generated on the runner from a text file (XcodeGen `project.yml`). Never commit a hand-made `.xcodeproj`.
-- Swift Package Manager only. No dependency without Nicholas's approval. Pin versions. Log licenses.
+- The Xcode project is generated on the runner from XcodeGen `project.yml`. Never commit a hand-made `.xcodeproj`.
+- Swift Package Manager only. No dependency without approval. Pin versions. Log licenses in ASSETS_LICENSES.md where relevant.
 
 ### Modules
 
 | Module | Job | Rules |
 | --- | --- | --- |
-| GameCore | All game rules and the simulation | Pure Swift, Foundation only. No UIKit, SpriteKit or SwiftUI. Must pass `swift test` on this PC, on Linux and on macOS |
+| GameCore | All game rules and the simulation | Pure Swift, Foundation only. No UIKit, SpriteKit or SwiftUI. Must pass `swift test` on the Linux agent VM, in the Linux CI job, and on the Mac CI runner |
 | GameRender | Draws the state with SpriteKit | Reads state, never changes rules. Smooths between sim steps |
-| GameApp | SwiftUI shell, menus, HUD, settings | No game rules |
+| GameApp (Magpie target) | SwiftUI shell, menus, HUD, settings | No game rules |
 | Services | Store, Game Center, clips, analytics, remote config, haptics, audio, save | Each behind a protocol, with a mock for tests |
 
 ### Determinism
@@ -199,15 +215,16 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 
 ### The build loop
 
-1. Write code. Run GameCore tests locally. They must pass before any push.
-2. Push to a mission branch. CI runs three jobs: GameCore tests on Linux, the iPhone build plus tests on `xcode-27`, and a simulator smoke run that saves 3 screenshots and a 30-second video.
-3. Read the results with the `gh` CLI. Fix failures yourself. Report only when green.
-4. On a checkpoint tag, CI archives, signs and uploads to TestFlight.
+1. On the Linux agent VM: write code; run GameCore package tests (`swift test`). They must pass before any push.
+2. Push to a mission branch (`mission/NN-name`). Open or update a PR. CI runs: GameCore on Linux (`ubuntu-24.04`), iPhone build + tests on `xcode-27`, simulator smoke (3 screenshots + 30-second video).
+3. Read results with `gh`. Fix failures yourself. Report a checkpoint only when CI is green (or clearly blocked on an owner-only step).
+4. **Fire Fox** merges when ready and pushes the TestFlight tag. CI then archives, signs with the ASC API key, and uploads. Agents do not tag unless asked.
 
 ### Tuning on the phone
 
 - A debug menu edits every Tuning.json value live, shows FPS and frame time, and has an Export button that copies the JSON.
-- Nicholas pastes exported tuning back to you and you commit it. Feel changes should rarely need a new build.
+- Nicholas pastes exported tuning back (via Fire Fox / chat); agents commit it. Feel changes should rarely need a new build.
+- **Bar:** hop, glide, stomp, vehicles, and juice must feel snappy and intentional on device. Do not ship muddy controls to clear a checkpoint.
 
 ### Budgets
 
@@ -231,9 +248,9 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 ### Security on a public repo
 
 - Secrets live only in GitHub Secrets. Never in code, logs, commits or artifacts.
-- Workflows run on pushes to protected branches and on manual dispatch. Never run fork code with secrets. Never use `pull_request_target` to build pull-request code.
-- Never upload the app file, signing files or private content as artifacts. Screenshots and videos of placeholder builds are fine.
-- Add no license that grants reuse. Add a notice: all rights reserved.
+- Workflows run on pushes and PRs from this repository, and on manual dispatch. Never run fork code with secrets. Never use `pull_request_target` to build pull-request code.
+- Never upload the app file (`.ipa`), signing files or private content as artifacts. Screenshots and videos of placeholder builds are fine.
+- Add no license that grants reuse. NOTICE: all rights reserved.
 
 ### Privacy and access
 
@@ -242,18 +259,19 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 
 ## 12. Hard rules
 
-1. One mission at a time. Stop at the checkpoint. Wait for APPROVED.
+1. One mission at a time. Stop at the checkpoint. Wait for Nicholas’s **APPROVED** (via Fire Fox).
 2. Never fake it. No stubbed feature reported as done. No invented test results, screenshots, metrics or data. If you cannot do something, say so.
 3. Green before you report: zero build errors, zero warnings, all tests passing in CI. Link the run.
 4. Check every Apple API against current Apple documentation before using it. Put the doc link in the pull request.
 5. The originality rules in section 4 always apply.
 6. No new dependency, SDK or paid service without approval. Spend no money.
-7. Do not touch signing, the bundle ID, App Store Connect settings, prices or store listings without approval.
-8. One branch per mission, named `mission/NN-name`. Small commits. Never force-push main. Tag `mNN-approved` only after approval.
+7. Do not change signing setup, bundle ID, App Store Connect settings, prices or store listings without approval. Signing stays on the ASC API key path unless cloud signing fails.
+8. One branch per mission, named `mission/NN-name`. Small commits. Never force-push `main`. **Fire Fox** tags `testflight/*` for uploads and `mNN-approved` only after APPROVED.
 9. No magic numbers. Tuning goes in Tuning.json.
 10. Stuck after 2 real attempts: stop and report what you tried. Never cut scope silently to get past it.
 11. Stay in scope. Ideas for later go in BACKLOG.md, not into the build.
-12. Keep DECISIONS.md current: every choice that changes the plan, with the reason.
+12. Keep DECISIONS.md current: every choice that changes the plan’s *process*, with the reason. Do not silently lower the feel/juice bar.
+13. Simulator results never count as on-phone results. Nicholas’s device is the feel authority.
 
 ## 13. Checkpoint report
 
@@ -263,12 +281,10 @@ Send this at every checkpoint, in this order:
 2. The CI run link and the test count: passed, failed, skipped.
 3. What you built, in 5 lines or fewer.
 4. Screenshots and video: the artifact links.
-5. The TestFlight build number, if one was uploaded.
-6. What to try on the phone, as numbered steps.
+5. The TestFlight build number, if one was uploaded (Fire Fox tags; you report the resulting build).
+6. What to try on the phone, as numbered steps (for Nicholas).
 7. Known issues and risks.
 8. Decisions you made, and anything you could not verify.
 9. Questions for Nicholas, batched, 3 at most.
 
 Then stop.
-
----

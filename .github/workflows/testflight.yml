@@ -172,7 +172,7 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
           | tee "$RUNNER_TEMP/xcodebuild-export.log" || status=$?
           if grep -q "Cloud signing permission error" "$RUNNER_TEMP/xcodebuild-export.log" 2>/dev/null; then
-            echo "::error::Cloud signing failed. Admin ASC API key required. Fastlane match is the fallback (not configured yet)."
+            echo "::error::Cloud signing failed. Admin ASC API key required. Do not add fastlane match unless Fire Fox/Nicholas approve after cloud signing fails."
           fi
           exit "${status:-0}"
 

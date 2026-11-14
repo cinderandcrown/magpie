@@ -1,5 +1,6 @@
 # OWNER_SETUP — what Nicholas still must do
 
+
 The public code repo (`cinderandcrown/magpie`) and GitHub Secrets (`APPLE_TEAM_ID`, `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_KEY_P8`) already exist. Most of the plan’s OWNER_SETUP checklist is done. **Only the items below remain.**
 
 Docs checked: [App Store Connect — Create an app](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app), [TestFlight](https://developer.apple.com/testflight/), [GitHub deploy keys](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/managing-deploy-keys).
@@ -26,7 +27,7 @@ You said you will handle the ASC steps.
 3. Join the internal group (CI tries to create **MAGPIE team** and add the account holder).
 4. Install MAGPIE from TestFlight and confirm the square follows your finger.
 
-Agents do **not** push TestFlight tags. When you are ready:
+**Fire Fox** pushes TestFlight tags (agents do not, unless asked). When ready:
 
 ```bash
 git tag testflight/YYYY-MM-DD
