@@ -1,6 +1,6 @@
 # MAGPIE — AGENTS.md (adapted Master Brief)
 
-This is the working agent brief for Magpie. Design, originality, pillars, feel bar, and mission quality standards come from `docs/PLAN.md` Part 2. **`docs/PLAN.md` stays the original** and is not rewritten here.
+This is the working agent brief for Magpie. Design, originality, pillars, feel bar, and mission quality standards come from `docs/PLAN.md` Part 2 (theme-amended) and `docs/DESIGN.md`. **`docs/PLAN.md` keeps process/gates;** product theme is the raccoon neon heist.
 
 **How this file relates to the plan:** keep the plan’s rules and ambition; adapt only *who runs where* and *who merges/tags* to our real setup. Every adaptation is logged in `DECISIONS.md`. When an ad-hoc chat brief conflicts with this file or the plan’s design bar, **this file + the plan’s design win** — aim for a badass game; do not sandbag feel or juice.
 
@@ -25,7 +25,7 @@ Fire Fox merges and tags. You do **not** push `testflight/*` or `mNN-approved` t
 ## 2. The product
 
 - Codename: MAGPIE. The final name comes later, from Nicholas.
-- One line: a small bird in a big toy city. Hop, stomp, borrow any car, bank the loot before time runs out.
+- One line: a cocky masked raccoon in a neon night city. Pounce, belly-flop, hijack rides, bank Shinies before time runs out. Free the crew from MOP. Final name TBD; title via `ProductIdentity.displayTitle` only.
 - Genre: 2D top-down action sandbox, played in 180-second runs.
 - Device: iPhone only. Portrait only. One thumb. iOS 17.0 minimum.
 - Audience: ages 13 to 35, casual to mid-core. Not a kids app.
@@ -56,25 +56,26 @@ These are legal rules. No exceptions.
 
 ### Controls
 
-- Drag anywhere to move. The hero coasts for 0.25 seconds after the finger lifts.
-- Quick tap to hop. A tap is a touch shorter than 180 ms that moves less than 10 points. A second finger counts.
-- Touch and hold in the air to glide. Drag while holding to steer.
-- Quick tap in the air to dive-stomp the nearest target within 1.5 tiles. With no target, stomp straight down.
-- One Tool button on the thumb side. It shows only when a tool can be used.
-- Variant B, behind a debug toggle: a fixed Hop button. Gate 1 picks the winner.
+- Drag anywhere to move. The Bandit coasts for 0.25 seconds after the finger lifts.
+- Quick tap to **Pounce**. A tap is a touch shorter than 180 ms that moves less than 10 points. A second finger counts.
+- Touch and hold in the air for **Tail Swing** (latch and fling; A/B vs glide in Mission 1). Drag while holding to steer.
+- Quick tap in the air to **Belly Flop** the nearest target within 1.5 tiles. With no target, flop straight down.
+- One Junk Gadget button on the thumb side. It shows only when a gadget can be used.
+- Variant B, behind a debug toggle: a fixed Pounce button. Gate 1 picks the winner.
 
 ### The hero
 
+- Cocky masked raccoon; distinct from Sony’s Sly Cooper (no cane, no top-hat, no blue/gold). Mascot needs attorney review.
 - The world is 2.5D: x and y on the ground, plus height. Anything in the air casts a shadow.
-- A hop clears a 1-tile gap and lands on anything up to 1 tile tall.
-- A glide lasts up to 1.2 seconds and crosses up to 4 tiles.
-- A stomp that hits bounces the hero up, adds 1 to the combo and refreshes the glide.
-- The combo breaks after 0.4 seconds on the ground. It caps at x10.
-- 3 hearts. A hit costs 1 heart and 10% of carried Shine, then gives 1 second of safety.
+- A Pounce clears a 1-tile gap and lands on anything up to 1 tile tall.
+- A Tail Swing lasts up to 1.2 seconds and crosses up to 4 tiles.
+- A Belly Flop that hits bounces the Bandit up, adds 1 to the combo and refreshes Tail Swing.
+- The combo breaks after 0.4 seconds on the ground. It caps at x10. **Mask Mode** at combo **x5** (double loot, neon mask, bots stagger).
+- 3 hearts. A hit costs 1 heart and 10% of carried Shinies, then gives 1 second of safety.
 
 ### Vehicles
 
-- Stomp a roof to borrow the vehicle. It drives itself forward. Drag steers. Tap ejects with a high hop.
+- Belly Flop a roof to Hijack Hop. It drives itself forward. Drag steers. Tap ejects with a high Pounce.
 - Three at first: Scooter (fast, fragile), Taxi (balanced), Box Truck (slow, rams bots).
 - Vehicles take damage, smoke, then break down. Borrowed vehicles respawn off-screen.
 - Townies walk the sidewalks. They dodge, cheer or gasp. Nothing can hurt them.
@@ -83,41 +84,41 @@ These are legal rules. No exceptions.
 
 - Heat runs 0 to 5. Chaos raises it: stomping bots, smashing props, borrowing vehicles, speeding.
 - Heat drops one level after 6 seconds out of every bot's sight. Alleys and bushes are cool-off spots.
-- Higher Heat sends more toll-bots and pays more Shine.
-- Bots: Walker from Heat 1 (one stomp). Roller from Heat 2 (two stomps or a ram). Drone from Heat 3 (it flies; its shadow warns you). Roadblock from Heat 4.
-- Zero hearts means Busted. The run ends. Carried Shine is lost. Banked Shine is safe.
+- Higher Heat sends more Sweepbots and pays more Shinies.
+- Bots: Sweepbot from Heat 1 (one flop). Scrubber from Heat 2 (two flops or a ram). Spotlight Drone from Heat 3 (it flies; its shadow warns you). Barrier Bot from Heat 4.
+- Zero hearts means Bagged. The run ends. Carried Shinies are lost. Banked Shinies are safe.
 
-### Shine and banking
+### Shinies and banking
 
-- Shine is the loot and the only currency. Sources: street pickups 1, props 1 to 3, bots 5, strongboxes 25.
-- Shine from a stomp is multiplied by the combo.
-- Carried Shine is at risk. Fly through a Nest Ring to bank it. Each district has 4 rings. A used ring rests for 20 seconds.
+- Shinies are the loot and the only currency. Sources: street pickups 1, props 1 to 3, bots 5, strongboxes 25.
+- Shinies from a Belly Flop are multiplied by the combo (and Mask Mode when active).
+- Carried Shinies are at risk. Dive through a Stash Chute to bank them. Each district has 4 chutes. A used chute rests for 20 seconds.
 - Banking multiplies by Heat: x1.0, x1.2, x1.5, x2.0, x2.5, x3.0 for Heat 0 to 5.
 
 ### The run
 
 - Ready, then 180 seconds of play, then a 10-second Final Dash, then Results.
 - In the Final Dash every ring is open. Reach one or lose what you carry.
-- Results show banked Shine, best combo, top Heat, new records, the saved clip and Play Again.
+- Results show banked Shinies, best combo, top Heat, new records, the saved clip and Play Again.
 - Play Again puts the player back in control within 1.5 seconds.
 
 ## 6. Meta game
 
-- The Nest is the home screen. Nest levels 1 to 10 cost Shine. Each level unlocks one thing: a skin, a vehicle type, a perk or a tool.
-- Tools: 4 at v1.0. Each has three uses, one for travel, one for bots, one for puzzles. Tools run on an 8-second cooldown, never ammo.
+- The Den is the home screen. Den levels 1 to 10 cost Shinies. Each level unlocks one thing: a mask/skin, a vehicle type, a perk or a Junk Gadget.
+- Junk Gadgets: 4 at v1.0. Each has three uses, one for travel, one for bots, one for puzzles. Gadgets run on an 8-second cooldown, never ammo.
 
-| Tool | Travel | Bots | Puzzles | Arrives |
+| Junk Gadget | Travel | Bots | Puzzles | Arrives |
 | --- | --- | --- | --- | --- |
-| Zip Line | Zip to hook points, cross canals | Yank a Roller's shield | Pull levers from range | Nest level 2 |
-| Boom Berry | Launch yourself or a vehicle | Clear a cluster | Break cracked walls | Boss 1 |
-| Magnet Charm | Ride metal rails | Pull a Drone down | Drag metal crates | Boss 2 |
-| Gust Feather | Dash across wide gaps | Blow bots off ledges | Spin fans and switches | Boss 3 |
+| Bungee Cord | Zip to hook points, cross canals | Yank a Scrubber's shield | Pull levers from range | Den level 2 |
+| Fizz Can | Launch yourself or a vehicle | Clear a cluster | Break cracked walls | Boss 1 |
+| Magnet Glove | Ride metal rails | Pull a Spotlight Drone down | Drag metal crates | Boss 2 |
+| Leaf Blower | Dash across wide gaps | Blow bots off ledges | Spin fans and switches | Boss 3 |
 
-- Vaults are single-screen puzzle rooms. Untimed. 60 to 120 seconds each. Spotting a Vault Door during a run unlocks that vault on the map. Each vault pays 1 Relic.
-- Every vault ships with a recorded solution replay. A test plays it back to prove the vault can be solved.
-- Bosses: one per district. 3 Relics open the gate. The fight uses that district's tool and lasts 90 to 150 seconds. Winning opens the next district and grants the next tool.
-- Districts at v1.0: Harbor, Midtown, Old Quarter, The Heights. Each is 96 by 160 tiles with 4 rings, 3 vaults and 1 boss.
-- Soft launch ships Harbor and Midtown, Zip Line and Boom Berry, 6 vaults and the Harbor boss.
+- MOP Safe Rooms are single-screen puzzle rooms. Untimed. 60 to 120 seconds each. Spotting a Safe Room Door during a run unlocks that room on the map. Each pays 1 Relic.
+- Every safe room ships with a recorded solution replay. A test plays it back to prove it can be solved.
+- Bosses: one per district. 3 Relics open the gate. The fight uses that district's gadget and lasts 90 to 150 seconds. Winning opens the next district, grants the next gadget, and advances crew rescue.
+- Districts at v1.0: Neon Docks, Glow Market, Arcade Row, Spotless Tower. Each is 96 by 160 tiles with 4 stash chutes, 3 safe rooms and 1 boss.
+- Soft launch ships Neon Docks and Glow Market, Bungee Cord and Fizz Can, 6 safe rooms and the Neon Docks boss.
 
 ## 7. Daily Run
 
@@ -130,9 +131,9 @@ These are legal rules. No exceptions.
 
 Built in Mission 8. Design for it from day one.
 
-- Rewarded ads only, always opt-in, never during a run. Three placements: double the banked Shine at Results, one revive when Busted, one free daily crate.
+- Rewarded ads only, always opt-in, never during a run. Three placements: double the banked Shinies at Results, one revive when Bagged, one free daily crate.
 - No full-screen ads in a player's first 5 sessions. The policy after that waits for Gate 3 data.
-- Starting catalog: Golden Ticket $4.99 (no forced ads, rewarded bonuses without watching). Starter Pack $2.99, offered once after run 5. Shine packs $1.99, $4.99, $9.99 and $19.99. Skins $0.99 to $3.99.
+- Starting catalog (open questions): Crew Pass $4.99 (proposed rename of Golden Ticket). Starter Pack $2.99 after run 5. Shinies packs proposed **off** at soft launch. Masks $0.99 to $3.99 proposed for direct sale.
 - Nothing for sale raises the Daily Run score ceiling.
 - Prices are starting points. Nicholas approves every price and offer.
 
@@ -158,8 +159,8 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 | Camera width | 12 tiles |
 | Hero run speed | 5.5 tiles a second |
 | Coast after release | 0.25 s |
-| Hop airtime | 0.45 s |
-| Glide max time | 1.2 s |
+| Pounce airtime | 0.45 s |
+| Tail Swing max time | 1.2 s |
 | Stomp bounce airtime | 0.6 s |
 | Eject hop airtime | 0.7 s |
 | Coyote time | 0.10 s |
@@ -224,7 +225,7 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 
 - A debug menu edits every Tuning.json value live, shows FPS and frame time, and has an Export button that copies the JSON.
 - Nicholas pastes exported tuning back (via Fire Fox / chat); agents commit it. Feel changes should rarely need a new build.
-- **Bar:** hop, glide, stomp, vehicles, and juice must feel snappy and intentional on device. Do not ship muddy controls to clear a checkpoint.
+- **Bar:** Pounce, Tail Swing, Belly Flop, Mask Mode, vehicles, and juice must feel snappy and intentional on device. Do not ship muddy controls to clear a checkpoint.
 
 ### Budgets
 

@@ -1,25 +1,36 @@
 # Decisions
 
-## 2026-11-14 — Theme pivot noted (no renames)
+Every choice that changes the plan, with the reason. Newest first.
+
+## 2026-11-14 — Trash Panda Heist design approved (missions 1–10)
 
 | Decision | Reason |
 | --- | --- |
-| Theme → raccoon (“trash panda”), night neon city heist; final name TBD — **BACKLOG only** | Nicholas’s direction. Mission 0 unchanged (follow-square). No repo/bundle/module renames until after M0. |
+| Product theme is raccoon neon-city heist per approved *Trash Panda Heist: Game Plan v1* | Nicholas approved the canvas design. Captured in `docs/DESIGN.md`; Part 3 missions 1–10 in `docs/PLAN.md` retargeted. |
+| Hero moves: Pounce, Belly Flop, Tail Swing (replaces glide; A/B in M1), Mask Mode at combo x5 | Design v1. Mask Mode is the shareable in-run moment. |
+| Villain **MOP**; free the captured raccoon crew; rob robots/corp only | Design v1 story spine. |
+| Glossary: Shinies, Stash Chute, The Den, Bagged, Sweepbots…, Junk Gadgets, Neon Docks / Glow Market / Arcade Row / Spotless Tower, MOP Safe Rooms | Replaces bird/toy-city placeholder terms without renaming code modules. |
+| Keep hero visually distinct from Sony’s Sly Cooper; mascot needs attorney review | Legal / originality. No cane, no top-hat thief look, no blue/gold palette. |
+| Codename **MAGPIE** stays in code identifiers; user-facing title only in `ProductIdentity.displayTitle` | Final name TBD (shortlist: Ringtail Rush, Bandit Mask, Ringtail Riot, Neon Bandit). Avoid scattered title strings. |
+| Open questions for Nicholas (not decided): final name; sell masks directly; no Shinies packs at soft launch; rename Golden Ticket → Crew Pass | Tracked in DESIGN.md / BACKLOG; Mission 8+ must not ship contested SKUs until answered. |
+| Mission 0 unchanged (follow-square); do not start Mission 1 until Fire Fox posts **APPROVED M0** | Plan rule 12 / mission discipline. |
 
-Every choice that changes the plan, with the reason. Newest first.
+## 2026-11-14 — Theme pivot noted (pre-approval)
+
+| Decision | Reason |
+| --- | --- |
+| Theme → raccoon (“trash panda”), night neon city heist; final name TBD — backlog until design approved | Early Nicholas direction. Superseded by design-approval decision above once canvas landed. |
 
 ## 2026-11-14 — ASC app record created
 
-| Smoke sims: prefer single-screen iPhone; pass `--display` to simctl io | `iPhone Duo` on xcode-27 exposed two LCDs; screenshot failed with “Cannot choose between 2 displays”. |
-
-
 | Decision | Reason |
 | --- | --- |
-| Store name **Magpie Toy City** (Apple ID `6834947645`, SKU `magpie-001`) | “MAGPIE” was taken in App Store Connect; bundle id stays `com.cinderandcrown.magpie`. Codename MAGPIE unchanged in product/docs. |
+| Smoke sims: prefer single-screen iPhone; pass `--display` to simctl | `iPhone Duo` on xcode-27 exposed two LCDs; screenshot failed with “Cannot choose between 2 displays”. |
+| Store name **Magpie Toy City** (Apple ID `6834947645`, SKU `magpie-001`) | “MAGPIE” was taken in App Store Connect; bundle id stays `com.cinderandcrown.magpie`. Codename MAGPIE unchanged. Display title constant may diverge until rename mission. |
 
 ## 2026-11-14 — AGENTS.md adapted to real setup
 
-`docs/PLAN.md` remains the untouched original. `AGENTS.md` keeps the Master Brief’s design, originality rules, pillars, tuning, budgets, and feel/juice bar; only process/hosting roles change.
+`docs/PLAN.md` remains the process source of truth (now theme-amended). `AGENTS.md` keeps the Master Brief’s pillars, originality rules, budgets, and feel/juice bar; process/hosting roles match Cursor + Fire Fox.
 
 | Adaptation | Reason |
 | --- | --- |
@@ -28,7 +39,7 @@ Every choice that changes the plan, with the reason. Newest first.
 | GameCore `swift test` on the **agent Linux VM** + CI Linux job (not “this PC”) | Agents have Swift on the VM; they cannot compile the iPhone app there. |
 | Signing: **ASC API key** path proven on `phoenix-fox`; **no fastlane match** unless cloud signing fails | Secrets already work; avoid a second cert pipeline until needed. |
 | Checkpoint tagging is **Fire Fox’s** job; agents report build numbers after upload | Matches ownership split; Mission 0 still uploads only on `testflight/*`. |
-| TestFlight PR check: **skip altool validate** when ASC app record is missing | Archive + cloud sign already proved; validate/upload need the app record Nicholas creates. PR must not stay red for that owner step. |
+| TestFlight PR check: **skip altool validate** when ASC app record is missing | Archive + cloud sign already proved; validate/upload need the app record. (App record now exists; validate is green.) |
 | Explicit **do not sandbag feel/juice** | Nicholas wants a badass game; process adaptations must not lower the quality bar. |
 | Simulator ≠ on-phone for feel sign-off | Plan already implied this; AGENTS.md states it as a hard rule. |
 
@@ -37,12 +48,12 @@ Every choice that changes the plan, with the reason. Newest first.
 | Decision | Reason |
 | --- | --- |
 | Use **XcodeGen** `project.yml` (not Tuist, not a hand-made `.xcodeproj`) | Plan §11: generate on the runner from text; never commit a hand-made project. |
-| CI Mac runner label: **`xcode-27`** (standard, not `xcode-27-xlarge`) | Plan requires `xcode-27`. Verified GA on 2026-10-15 ([GitHub changelog](https://github.blog/changelog/2026-10-15-xcode-27-runner-image-generally-available/)). Sibling phoenix-fox uses `macos-26` / Xcode 26.6; Magpie follows the plan’s newer label. |
+| CI Mac runner label: **`xcode-27`** (standard, not `xcode-27-xlarge`) | Plan requires `xcode-27`. Verified GA on 2026-10-15 ([GitHub changelog](https://github.blog/changelog/2026-10-15-xcode-27-runner-image-generally-available/)). |
 | Modules: **GameCore**, **GameRender**, **Services**, plus app target **Magpie** (GameApp) | Plan §11 module table. |
-| Mission 0 UI: SwiftUI `SpriteView` hosting a SpriteKit scene; one finger-following square; FPS label in `DEBUG` only | Plan Mission 0 build item 4. No bird, no game rules. |
-| No Apache-2.0 / no reuse license; **NOTICE** is all rights reserved only | Plan §11 Security / Part 1 legal: “Add no license that grants reuse.” Plan wins over the earlier brief. |
-| TestFlight workflow trigger: pushed tags matching `testflight/*` | Proves the upload loop without implying Mission 0 is approved (`m00-approved` waits for APPROVED). Agents do not push tags. |
-| Signing: App Store Connect API key + Xcode cloud-managed / automatic signing first | Plan Mission 0 item 6; same proven approach as phoenix-fox. Fastlane match only if that fails. |
+| Mission 0 UI: SwiftUI `SpriteView` hosting a SpriteKit scene; one finger-following square; FPS label in `DEBUG` only | Plan Mission 0 build item 4. No hero art, no game rules. |
+| No Apache-2.0 / no reuse license; **NOTICE** is all rights reserved only | Plan §11 Security / Part 1 legal: “Add no license that grants reuse.” |
+| TestFlight workflow trigger: pushed tags matching `testflight/*` | Proves the upload loop without implying Mission 0 is approved. Agents do not push tags. |
+| Signing: App Store Connect API key + Xcode cloud-managed / automatic signing first | Plan Mission 0 item 6; same proven approach as phoenix-fox. |
 | `ITSAppUsesNonExemptEncryption` **not** written into Info.plist yet | Proposed `false` for Nicholas’s confirmation (export-compliance question). Not treated as approved. |
 | Linux GameCore job on **ubuntu-24.04** (not `ubuntu-latest`) | Swift 6.2 RELEASE tarball is built for Ubuntu 24.04; `ubuntu-latest` is 26.04 and failed with missing `libxml2.so.2`. |
-| Private content repo / deploy key deferred | Not needed until paid assets or Harbor maps land; documented in OWNER_SETUP.md. |
+| Private content repo / deploy key deferred | Not needed until paid assets or district maps land; documented in OWNER_SETUP.md. |
