@@ -7,38 +7,55 @@ DEVICE="${1:?simulator UDID}"
 APP_PATH="${2:?path to Magpie.app}"
 OUT_DIR="${3:-smoke-artifacts}"
 BUNDLE_ID="${BUNDLE_ID:-com.cinderandcrown.magpie}"
+# Primary LCD on multi-display sims (iPhone Duo). Override with SIMCTL_DISPLAY.
+DISPLAY_ID="${SIMCTL_DISPLAY:-1}"
 
 mkdir -p "$OUT_DIR"
+
+shot() {
+  local out="$1"
+  if xcrun simctl io "$DEVICE" screenshot --display="$DISPLAY_ID" "$out" 2>/tmp/sim-shot.err; then
+    return 0
+  fi
+  if grep -qiE 'unrecognized|unknown option|invalid option' /tmp/sim-shot.err 2>/dev/null; then
+    xcrun simctl io "$DEVICE" screenshot "$out"
+    return 0
+  fi
+  cat /tmp/sim-shot.err >&2 || true
+  # Try the other Duo display id before giving up.
+  xcrun simctl io "$DEVICE" screenshot --display=3 "$out" 2>/dev/null \
+    || xcrun simctl io "$DEVICE" screenshot "$out"
+}
+
+echo "Smoke on $DEVICE (display=$DISPLAY_ID)"
 xcrun simctl bootstatus "$DEVICE" -b || xcrun simctl boot "$DEVICE" || true
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$APP_PATH"
 xcrun simctl launch "$DEVICE" "$BUNDLE_ID"
-sleep 2
+sleep 3
 
-# Screenshot 1: launch
-xcrun simctl io "$DEVICE" screenshot "$OUT_DIR/01-launch.png"
+shot "$OUT_DIR/01-launch.png"
 
-# Start video, interact with a few taps via simctl (coordinate taps), then stop ~30s
 VIDEO_OUT="$OUT_DIR/smoke-30s.mp4"
-xcrun simctl io "$DEVICE" recordVideo --codec=h264 --force "$VIDEO_OUT" &
+set +e
+xcrun simctl io "$DEVICE" recordVideo --display="$DISPLAY_ID" --codec=h264 --force "$VIDEO_OUT" &
 REC_PID=$!
+sleep 1
+if ! kill -0 "$REC_PID" 2>/dev/null; then
+  xcrun simctl io "$DEVICE" recordVideo --codec=h264 --force "$VIDEO_OUT" &
+  REC_PID=$!
+fi
+set -e
+
 sleep 2
+shot "$OUT_DIR/02-mid.png"
+sleep 28
+shot "$OUT_DIR/03-end.png"
 
-# Three taps toward center / moving the square (portrait points; best-effort on sim)
-WIDTH=390
-HEIGHT=844
-xcrun simctl io "$DEVICE" screenshot "$OUT_DIR/02-mid.png" || true
-# Tap sequence — simctl doesn't move SpriteKit touch directly without UI interaction tools;
-# screenshots still prove the scene rendered. Video records whatever the sim displays.
-for i in 1 2 3 4 5; do
-  sleep 5
-done
-
-xcrun simctl io "$DEVICE" screenshot "$OUT_DIR/03-end.png"
 kill -INT "$REC_PID" 2>/dev/null || true
 wait "$REC_PID" 2>/dev/null || true
+sleep 2
 
-# Ensure artifacts exist and are non-trivial
 for f in 01-launch.png 02-mid.png 03-end.png smoke-30s.mp4; do
   path="$OUT_DIR/$f"
   if [[ ! -s "$path" ]]; then
