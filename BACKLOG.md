@@ -6,7 +6,7 @@ Ideas and out-of-scope notes. Do **not** pull these into the current mission wit
 
 Track in `docs/DESIGN.md` until answered; then log the answer in `DECISIONS.md`.
 
-1. **Final commercial name** — shortlist: Ringtail Rush, Bandit Mask, Ringtail Riot, Neon Bandit (working title Trash Panda Heist is weak as final). USPTO + attorney after pick. Then set `ProductIdentity.displayTitle` only.
+1. **Confirm “Trash Panda” availability** (App Store + USPTO) — then set `ProductIdentity.displayTitle` to **Trash Panda** (today it holds working title **Trash Panda Heist**).
 2. **Sell masks directly** (cosmetic, what-you-see) — proposed yes.
 3. **No Shinies packs at soft launch** — proposed; test packs only after Gate 3.
 4. **Rename Golden Ticket → Crew Pass** — proposed; prices unchanged until approved.
@@ -17,6 +17,7 @@ Design approved: raccoon neon-city heist (`docs/DESIGN.md`). Mission 0 stays the
 
 | Area | Direction |
 | --- | --- |
+| Name | **Trash Panda** (working title Trash Panda Heist until availability confirmed) |
 | Hero | Cocky masked raccoon (“the Bandit”); attorney review before locking mascot |
 | Villain | MOP (Municipal Order Protocol) / Spotless Inc. |
 | Moves | Pounce, Belly Flop, Tail Swing (vs glide A/B), Mask Mode @ x5, Hijack Hop |
@@ -30,4 +31,4 @@ Design approved: raccoon neon-city heist (`docs/DESIGN.md`). Mission 0 stays the
 - Private content repo wiring and deploy key (when assets/levels arrive)
 - Fastlane match certificates repo (only if cloud signing fails)
 - Export-compliance Info.plist flag (waiting on Nicholas)
-- ASC / CFBundleDisplayName rename to final commercial title (after name pick)
+- ASC / CFBundleDisplayName rename to Trash Panda (after availability confirmed)

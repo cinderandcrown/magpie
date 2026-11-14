@@ -2,6 +2,14 @@
 
 Every choice that changes the plan, with the reason. Newest first.
 
+## 2026-11-14 — Name: Trash Panda
+
+| Decision | Reason |
+| --- | --- |
+| The game is **Trash Panda**; working title **Trash Panda Heist** until App Store / USPTO availability is confirmed | Nicholas named it. Replaces the prior shortlist. |
+| `ProductIdentity.displayTitle` holds the working title until availability flips it to Trash Panda | Single user-facing title constant; MAGPIE stays in code identifiers. |
+| Open questions remaining: Trash Panda availability; sell masks directly; no Shinies packs at soft launch; Crew Pass rename | Same as design open questions minus “pick from shortlist.” |
+
 ## 2026-11-14 — Trash Panda Heist design approved (missions 1–10)
 
 | Decision | Reason |
@@ -11,8 +19,8 @@ Every choice that changes the plan, with the reason. Newest first.
 | Villain **MOP**; free the captured raccoon crew; rob robots/corp only | Design v1 story spine. |
 | Glossary: Shinies, Stash Chute, The Den, Bagged, Sweepbots…, Junk Gadgets, Neon Docks / Glow Market / Arcade Row / Spotless Tower, MOP Safe Rooms | Replaces bird/toy-city placeholder terms without renaming code modules. |
 | Keep hero visually distinct from Sony’s Sly Cooper; mascot needs attorney review | Legal / originality. No cane, no top-hat thief look, no blue/gold palette. |
-| Codename **MAGPIE** stays in code identifiers; user-facing title only in `ProductIdentity.displayTitle` | Final name TBD (shortlist: Ringtail Rush, Bandit Mask, Ringtail Riot, Neon Bandit). Avoid scattered title strings. |
-| Open questions for Nicholas (not decided): final name; sell masks directly; no Shinies packs at soft launch; rename Golden Ticket → Crew Pass | Tracked in DESIGN.md / BACKLOG; Mission 8+ must not ship contested SKUs until answered. |
+| Codename **MAGPIE** stays in code identifiers; user-facing title only in `ProductIdentity.displayTitle` | Avoid scattered title strings. Superseded on the name itself by “Name: Trash Panda” above. |
+| Open questions for Nicholas (not decided): Trash Panda availability; sell masks directly; no Shinies packs at soft launch; rename Golden Ticket → Crew Pass | Tracked in DESIGN.md / BACKLOG; Mission 8+ must not ship contested SKUs until answered. |
 | Mission 0 unchanged (follow-square); do not start Mission 1 until Fire Fox posts **APPROVED M0** | Plan rule 12 / mission discipline. |
 
 ## 2026-11-14 — Theme pivot noted (pre-approval)

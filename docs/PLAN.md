@@ -19,8 +19,8 @@ Nicholas approved **Trash Panda Heist: Game Plan v1** ([canvas](https://cursor.c
 - Moves: **Pounce**, **Belly Flop**, **Tail Swing** (replaces glide; A/B in Mission 1), **Mask Mode** at combo **x5** (shareable moment). Hijack Hop for vehicles.
 - Glossary: Shinies · Stash Chute · The Den · Bagged · Sweepbot/Scrubber/Spotlight Drone/Barrier Bot · Junk Gadgets · Neon Docks / Glow Market / Arcade Row / Spotless Tower · MOP Safe Rooms.
 - Visual: distinct from Sony’s Sly Cooper (no cane, no top-hat thief look, no blue/gold). Mascot needs attorney review.
-- Codename **MAGPIE** stays in code identifiers. Final commercial name TBD (shortlist: Ringtail Rush, Bandit Mask, Ringtail Riot, Neon Bandit). One user-facing title constant: `ProductIdentity.displayTitle`.
-- Open questions for Nicholas: final name; sell masks directly; no Shinies packs at soft launch; rename Golden Ticket → **Crew Pass**.
+- Codename **MAGPIE** stays in code identifiers. The game is **Trash Panda**; working title **Trash Panda Heist** until availability is confirmed. One user-facing title constant: `ProductIdentity.displayTitle`.
+- Open questions for Nicholas: confirm “Trash Panda” availability; sell masks directly; no Shinies packs at soft launch; rename Golden Ticket → **Crew Pass**.
 
 **Missions 1–10 target this raccoon heist theme.** Mission 0 stays the follow-square loop. Gates, budgets, and process numbers are unchanged. Where older Part 1–2 sentences still say “bird / toy city / hop / glide / Shine / Nest,” treat them as superseded by this amendment and `docs/DESIGN.md`.
 
@@ -59,7 +59,7 @@ What you give up without a Mac: each code change takes roughly 10 to 25 minutes 
 
 ## The game
 
-Codename MAGPIE (engineering only). Working product: **Trash Panda Heist** — a cocky masked raccoon loose in a neon night city: pounce, belly-flop bots, hijack rides, bank Shinies before a 3-minute timer runs out. Villain: **MOP**. Free the captured raccoon crew. Final name TBD.
+Codename MAGPIE (engineering only). The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed) — a cocky masked raccoon loose in a neon night city: pounce, belly-flop bots, hijack rides, bank Shinies before a 3-minute timer runs out. Villain: **MOP**. Free the captured raccoon crew.
 
 | Parent | The idea we take (never the IP) | In MAGPIE |
 | --- | --- | --- |
@@ -181,7 +181,7 @@ You are lead engineer on a native iPhone game. Nicholas owns the product and app
 
 ## 2. The product
 
-- Codename: MAGPIE. The final name comes later, from Nicholas.
+- Codename: MAGPIE. The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed).
 - One line: a cocky masked raccoon in a neon night city. Pounce, belly-flop, hijack rides, bank Shinies before time runs out. Free the crew from MOP.
 - Genre: 2D top-down action sandbox, played in 180-second runs.
 - Device: iPhone only. Portrait only. One thumb. iOS 17.0 minimum.
@@ -598,7 +598,7 @@ Send the checkpoint report. Then stop and wait for APPROVED M4.
 
 ## Mission 5: Juice and identity
 
-Goal: the game looks and sounds like Trash Panda Heist (working title) — neon night, masked raccoon, MOP menace — and still runs at 60 fps.
+Goal: the game looks and sounds like Trash Panda (working title Trash Panda Heist until availability is confirmed) — neon night, masked raccoon, MOP menace — and still runs at 60 fps.
 
 Build:
 
@@ -708,7 +708,7 @@ Goal: the raccoon heist is live in four small markets, and the numbers say go, f
 
 Build:
 
-1. Name decision: start from the shortlist (Ringtail Rush, Bandit Mask, Ringtail Riot, Neon Bandit) plus fresh candidates. Each needs App Store search + USPTO evidence. Drop anything close to an existing game or to Sony’s Sly Cooper. Nicholas picks; then update `ProductIdentity.displayTitle` only.
+1. Confirm **Trash Panda** availability (App Store search + USPTO). If blocked, keep working title **Trash Panda Heist** or Nicholas picks an alternate. Drop anything close to Sony’s Sly Cooper. Then set `ProductIdentity.displayTitle` only.
 2. The store listing draft: name, subtitle, keywords, description, promotional text (neon heist / Mask Mode / free the crew). Confirm Apple's current length limits and screenshot sizes before writing.
 3. Six screenshots and 2 preview videos, cut from real gameplay only — include at least one Mask Mode moment.
 4. Review prep: App Review notes, the content rights statement, the age rating, the privacy labels, export compliance, attorney note on mascot. All drafted for Nicholas to submit.
@@ -739,7 +739,7 @@ Goal: act on the Gate 3 result with no drift.
 
 If Go:
 
-1. Worldwide release under the chosen commercial name (`ProductIdentity.displayTitle` + ASC rename as needed; MAGPIE stays in code).
+1. Worldwide release as **Trash Panda** once availability is confirmed (`ProductIdentity.displayTitle` + ASC rename as needed; MAGPIE stays in code).
 2. Arcade Row and Spotless Tower, Magnet Glove and Leaf Blower, 6 more MOP Safe Rooms, 3 more bosses; finish freeing the raccoon crew.
 3. A season pass and a 28-day season calendar (masks / neon seasons).
 4. Localization, starting with Spanish.

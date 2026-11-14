@@ -24,8 +24,8 @@ Fire Fox merges and tags. You do **not** push `testflight/*` or `mNN-approved` t
 
 ## 2. The product
 
-- Codename: MAGPIE. The final name comes later, from Nicholas.
-- One line: a cocky masked raccoon in a neon night city. Pounce, belly-flop, hijack rides, bank Shinies before time runs out. Free the crew from MOP. Final name TBD; title via `ProductIdentity.displayTitle` only.
+- Codename: MAGPIE. The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed). Title via `ProductIdentity.displayTitle` only.
+- One line: a cocky masked raccoon in a neon night city. Pounce, belly-flop, hijack rides, bank Shinies before time runs out. Free the crew from MOP.
 - Genre: 2D top-down action sandbox, played in 180-second runs.
 - Device: iPhone only. Portrait only. One thumb. iOS 17.0 minimum.
 - Audience: ages 13 to 35, casual to mid-core. Not a kids app.

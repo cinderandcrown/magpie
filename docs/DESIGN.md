@@ -1,10 +1,10 @@
-# Trash Panda Heist — Design (approved)
+# Trash Panda — Design (approved)
 
 **Status:** Nicholas approved *Trash Panda Heist: Game Plan v1*  
 **Source:** [Cursor canvas](https://cursor.com/canvas/store-f0dfaef1-646f-4cb3-b3a2-4edd43f95165/7412b08b-bc3e-4248-b762-a4a8b08a389d)  
-**Codename in code:** `MAGPIE` (repo, bundle id, modules). **Final commercial name TBD.**
+**Codename in code:** `MAGPIE` (repo, bundle id, modules).
 
-User-facing title lives in **one** constant: `ProductIdentity.displayTitle` (working title until the shortlist lands). Do not scatter title strings.
+**Name:** the game is **Trash Panda**. Working title **Trash Panda Heist** until App Store / USPTO availability of “Trash Panda” is confirmed. User-facing title lives in **one** constant: `ProductIdentity.displayTitle` (currently the working title). Do not scatter title strings.
 
 ## Pitch
 
@@ -37,14 +37,9 @@ A cocky masked raccoon (“the Bandit” until named) runs 180-second heists in 
 
 Crew (placeholders): Tinker (possum), Lookout (pigeon), Fence (alley cat), Wheelman (rat).
 
-## Name shortlist (not chosen)
-
-Ringtail Rush · Bandit Mask · Ringtail Riot · Neon Bandit  
-Working title only: Trash Panda Heist (weak as final; crowded + trademark risk).
-
 ## Open questions for Nicholas
 
-1. **Final name** — pick from shortlist or replace (then USPTO + attorney).
+1. **Confirm “Trash Panda” availability** (App Store + USPTO) — then flip `ProductIdentity.displayTitle` from the working title to **Trash Panda**.
 2. **Sell masks directly** (cosmetic, what-you-see) — proposed yes.
 3. **No Shinies packs at soft launch** — proposed; test packs only after Gate 3.
 4. **Rename Golden Ticket → Crew Pass** — proposed; prices unchanged until approved.
