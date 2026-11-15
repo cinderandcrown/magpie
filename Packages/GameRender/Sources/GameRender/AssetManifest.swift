@@ -34,7 +34,7 @@ public enum AssetKey: String, CaseIterable, Sendable {
     case midBuildings = "mid_buildings"
     case nearRooftops = "near_rooftops"
     case rainOverlay = "rain_overlay"
-    case logo = "logo_trash_panda"
+    case logo = "logo_neon_city_bandit"
 
     case sfxJump = "jump"
     case sfxLand = "land"

@@ -574,7 +574,7 @@ public final class HeistScene: SKScene {
         layoutTitleChrome()
     }
 
-    /// Fit full TRASH PANDA wordmark to ~85% width in the top third; pulse from fitted baseScale.
+    /// Fit full Neon City Bandit wordmark to ~85% width in the top third; pulse from fitted baseScale.
     private func layoutTitleChrome() {
         guard size.width > 1, size.height > 1 else { return }
         let topSafe = max(view?.safeAreaInsets.top ?? 54, 54)

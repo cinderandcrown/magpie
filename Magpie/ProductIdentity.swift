@@ -6,6 +6,9 @@ enum ProductIdentity {
     /// Engineering / repo codename. Never change without an explicit rename mission.
     static let codename = "MAGPIE"
 
-    /// User-facing display title. Home screen uses CFBundleDisplayName = Trash Panda.
-    static let displayTitle = "Trash Panda"
+    /// Full user-facing title.
+    static let displayTitle = "The Neon City Bandit"
+
+    /// Home-screen label (`CFBundleDisplayName`) — shorter so iOS does not truncate.
+    static let homeScreenTitle = "Neon City Bandit"
 }

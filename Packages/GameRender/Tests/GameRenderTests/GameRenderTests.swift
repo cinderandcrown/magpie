@@ -21,12 +21,13 @@ final class GameRenderTests: XCTestCase {
         XCTAssertGreaterThan(ArtCatalog.paletteTeal.b, 0.8)
     }
 
-    func testTitleArtIsSwappableWithoutRename() {
+    func testTitleArtIsNeonCityBandit() {
         XCTAssertFalse(TitleArt.logoCandidates.isEmpty)
-        XCTAssertTrue(TitleArt.logoCandidates.contains("ui/logo_trash_panda@1024"))
-        XCTAssertTrue(TitleArt.logoCandidates.contains("ui/logo_title@1024"))
-        XCTAssertTrue(TitleArt.provisionalDisplayName.contains("Masked Bandit"))
-        XCTAssertTrue(TitleArt.workingSubtitle.contains("Neon City"))
+        XCTAssertEqual(TitleArt.logoCandidates.first, "ui/logo_neon_city_bandit@1024")
+        XCTAssertEqual(TitleArt.displayTitle, "The Neon City Bandit")
+        XCTAssertTrue(TitleArt.fallbackWordmark.contains("BANDIT"))
+        XCTAssertFalse(TitleArt.displayTitle.localizedCaseInsensitiveContains("Trash Panda"))
+        XCTAssertFalse(TitleArt.displayTitle.localizedCaseInsensitiveContains("Magpie"))
     }
     #endif
 }

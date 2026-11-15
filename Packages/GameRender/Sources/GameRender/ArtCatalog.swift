@@ -435,21 +435,18 @@ public enum ArtCatalog {
     }
 }
 
-/// Working title art hooks — swap PNGs / strings without touching ASC or bundle IDs.
+/// Title art hooks — logo PNGs + strings. Bundle ID / Magpie target names stay unchanged.
 public enum TitleArt {
-    /// Prefer the first existing file. Drop `ui/logo_title(@1024).png` when legal clears the new name.
+    /// Prefer the first existing file. Ship `logo_neon_city_bandit` as the canonical wordmark.
     public static let logoCandidates: [String] = [
+        "ui/logo_neon_city_bandit@1024",
+        "ui/logo_neon_city_bandit",
         "ui/logo_title@1024",
         "ui/logo_title",
-        "ui/logo_masked_bandit@1024",
-        "ui/logo_masked_bandit",
-        "ui/logo_trash_panda@1024",
-        "ui/logo_trash_panda",
     ]
-    /// Likely new title (not final) — used only for label fallback until art ships.
-    public static let provisionalDisplayName = "The Masked Bandit: Neon City"
-    public static let fallbackWordmark = "THE MASKED\nBANDIT"
-    public static let workingSubtitle = "Neon City · Free the crew"
+    public static let displayTitle = "The Neon City Bandit"
+    public static let fallbackWordmark = "THE NEON CITY\nBANDIT"
+    public static let workingSubtitle = "Free the crew · Stomp MOPs"
 }
 
 /// Animated raccoon using Fire Fox frames + procedural bob for a readable run.

@@ -58,7 +58,8 @@ targets:
           DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Generated"
           mkdir -p "$DEST"
           rsync -a --delete "${SRC}/" "${DEST}/"
-          test -f "${DEST}/ui/logo_trash_panda.png"
+          test -f "${DEST}/ui/logo_neon_city_bandit.png"
+          test -f "${DEST}/ui/logo_neon_city_bandit@1024.png"
           test -f "${DEST}/audio/level_loop.m4a"
           echo "Copied Generated -> $DEST"
     settings:
