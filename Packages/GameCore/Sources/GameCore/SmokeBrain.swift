@@ -73,11 +73,25 @@ public struct SmokeBrain: Equatable, Sendable {
             return (input, start, retry)
 
         case .failed:
-            if !diedOnce { diedOnce = true }
             failWait += 1
-            // Hold death overlay until harness snaps 05. Fallback ~60s for manual runs
-            // (CI screenshots can take >12s — a short hold races past phase=failed into won).
+            let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
             let deathOk = Self.smokeFlagExists("smoke_death_ok.txt")
+            // Premature splash before the Mask screenshot: bounce back fast and forget.
+            // A long hold here blocks wait_status("mask") (needs phase=playing), and setting
+            // diedOnce would force finishPush→won so the death beat never reappears.
+            if !maskOk {
+                if failWait >= 45 {
+                    retry = true
+                    failWait = 0
+                    diedOnce = false
+                    sawMask = false
+                    maskShowcaseFrames = 0
+                    act = .play
+                }
+                return (input, start, retry)
+            }
+            // Canonical death beat after Mask: hold until harness snaps 05 (~60s manual fallback).
+            if !diedOnce { diedOnce = true }
             if deathOk || failWait >= 3600 {
                 retry = true
                 failWait = 0
