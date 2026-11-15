@@ -114,30 +114,19 @@ public enum AssetManifest {
 
     #if canImport(UIKit)
     /// Loads @2x/@3x preferred for a 64pt sprite (masters are 256; @2x=128, @3x=192).
+    /// Prefer @2x then @3x without touching UIScreen (keeps this nonisolated / Sendable-safe).
     public static func image(for key: AssetKey, bundle: Bundle = .main) -> UIImage? {
         let rel = relativePath(for: key)
         let base = (rel as NSString).lastPathComponent
         let dir = (rel as NSString).deletingLastPathComponent
-        #if os(iOS)
-        let scale = UIScreen.main.scale
-        #else
-        let scale: CGFloat = 2
-        #endif
-        let suffixes: [String]
-        if scale >= 2.9 {
-            suffixes = ["@3x", "@2x", ""]
-        } else if scale >= 1.9 {
-            suffixes = ["@2x", "@3x", ""]
-        } else {
-            suffixes = ["", "@2x", "@3x"]
-        }
+        let candidates: [(suffix: String, scale: CGFloat)] = [("@2x", 2), ("@3x", 3), ("", 1)]
         for root in ["Generated", "Assets/Generated"] {
             let sub = dir.isEmpty ? root : "\(root)/\(dir)"
-            for suffix in suffixes {
-                let name = base + suffix
+            for c in candidates {
+                let name = base + c.suffix
                 if let u = bundle.url(forResource: name, withExtension: "png", subdirectory: sub),
                    let data = try? Data(contentsOf: u),
-                   let img = UIImage(data: data, scale: suffix == "@3x" ? 3 : (suffix == "@2x" ? 2 : 1)) {
+                   let img = UIImage(data: data, scale: c.scale) {
                     return img
                 }
             }

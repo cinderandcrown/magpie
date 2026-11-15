@@ -5,6 +5,7 @@ import GameCore
 import SpriteKit
 import UIKit
 
+@MainActor
 public enum ArtCatalog {
     public static let nightSky = SKColor(red: 0.04, green: 0.03, blue: 0.12, alpha: 1)
     public static let neonPink = SKColor(red: 1.0, green: 0.28, blue: 0.62, alpha: 1)
@@ -47,7 +48,6 @@ public enum ArtCatalog {
         node.shader = makeDespillShader()
     }
 
-    /// 64pt raccoon sprite; animates via `BanditVisual`.
     public static func makeBanditVisual() -> BanditVisual {
         BanditVisual()
     }
@@ -64,7 +64,7 @@ public enum ArtCatalog {
         let frames = textures(AssetManifest.shinyFrames)
         let n = SKSpriteNode(texture: frames.first, size: CGSize(width: 28, height: 28))
         n.name = "shiny"
-        if let f = frames.first { _ = f; applyDespill(n) }
+        if frames.first != nil { applyDespill(n) }
         if frames.count > 1 {
             n.run(SKAction.repeatForever(SKAction.animate(with: frames, timePerFrame: 0.12)))
         } else {
@@ -102,7 +102,6 @@ public enum ArtCatalog {
 
     public static func tileTexture(index: Int) -> SKTexture? {
         let name = String(format: "tile_%02d", index)
-        // Load via relative path
         for root in ["Generated/sprites/tiles", "Assets/Generated/sprites/tiles"] {
             if let u = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: root),
                let data = try? Data(contentsOf: u),
@@ -115,6 +114,7 @@ public enum ArtCatalog {
 }
 
 /// Animated raccoon using Fire Fox frames + procedural bob for a readable run.
+@MainActor
 public final class BanditVisual: SKNode {
     public let sprite: SKSpriteNode
     private let shadow: SKShapeNode
@@ -163,7 +163,6 @@ public final class BanditVisual: SKNode {
         switch anim {
         case .run:
             if runTextures.count >= 2 {
-                // Slightly slower cycle so similar frames still read as motion
                 let animate = SKAction.animate(with: runTextures, timePerFrame: 0.09)
                 sprite.run(SKAction.repeatForever(animate), withKey: "run")
             } else if let idleTex {
@@ -171,7 +170,6 @@ public final class BanditVisual: SKNode {
             }
             bobPhase += dt * 14
             sprite.position.y = sin(bobPhase) * 3
-            // Procedural squash as weight shifts
             let squash = 1.0 + sin(bobPhase * 2) * 0.04
             sprite.yScale = squash
             sprite.xScale = (sprite.xScale >= 0 ? 1 : -1) * (2 - squash)
@@ -198,10 +196,6 @@ public final class BanditVisual: SKNode {
             let face = sprite.xScale >= 0 ? 1.0 : -1.0
             sprite.xScale = face
         }
-        if maskMode, anim != .idle, let maskTex, anim == .idle {
-            sprite.texture = maskTex
-        }
-        // Mask Mode: cyan glow via blend
         sprite.color = maskMode ? ArtCatalog.neonCyan : .white
         sprite.colorBlendFactor = maskMode ? 0.25 : 0
     }
