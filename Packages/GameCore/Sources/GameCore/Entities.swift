@@ -3,7 +3,7 @@
 import Foundation
 
 public enum BanditAnim: Equatable, Sendable {
-    case idle, run, jump, fall, pounce, wallSlide
+    case idle, run, jump, apex, fall, pounce, wallSlide
 }
 
 public struct BanditState: Equatable, Sendable {

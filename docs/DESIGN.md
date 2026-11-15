@@ -1,53 +1,80 @@
-# Trash Panda — Design (approved)
+# The Neon City Bandit — Design
 
-**Status:** Nicholas approved *Trash Panda Heist: Game Plan v1*  
-**Source:** [Cursor canvas](https://cursor.com/canvas/store-f0dfaef1-646f-4cb3-b3a2-4edd43f95165/7412b08b-bc3e-4248-b762-a4a8b08a389d)  
-**Codename in code:** `MAGPIE` (repo, bundle id, modules).
-
-**Name:** the game is **Trash Panda**. Working title **Trash Panda Heist** until App Store / USPTO availability of “Trash Panda” is confirmed. User-facing title lives in **one** constant: `ProductIdentity.displayTitle` (currently the working title). Do not scatter title strings.
+**Status:** Live product direction (Mission 1+)  
+**Codename in code:** `MAGPIE` (repo, bundle id `com.cinderandcrown/magpie`, modules).  
+**User-facing title:** **The Neon City Bandit** via `ProductIdentity.displayTitle`. Home screen: `CFBundleDisplayName` = **Neon City Bandit**. Do not scatter title strings. Bundle ID does not change.
 
 ## Pitch
 
-A cocky masked raccoon (“the Bandit” until named) runs 180-second heists in a neon night city: pounce, belly-flop bots, hijack rides, swing off signs, stash Shinies before Sweepbots bag you. The villain is **MOP** (Municipal Order Protocol), Spotless Inc.’s cleanup/security megabot that locked the trash and caged the Bandit’s crew. Free the crew; rob robots and corp vaults only — never people. Rating target 9+.
+A cocky masked raccoon runs short neon-city heists: pounce, belly-flop MOPs, bank Shinies, free the crew. Villain: **MOP** (Municipal Order Protocol). Rating target 9+.
 
-## Hero moves (vs plan placeholders)
+**North-star (Nicholas):** the game must be **fun enough that people come back daily**. Retention is designed around a great 30-second loop first, then light optional hooks — never nagging.
 
-| Plan | Raccoon | Notes |
-| --- | --- | --- |
-| Hop | **Pounce** | Same tap rules |
-| Glide | **Tail Swing** (proposed) | Latch lamp/sign/wire and fling; short coat-flap if nothing to grab. A/B vs glide in Mission 1 |
-| Dive-stomp | **Belly Flop** | Bounce, combo +1, refreshes swing |
-| Borrow vehicle | **Hijack Hop** | Scooter / Taxi / Box Truck |
-| *(new)* | **Mask Mode** | At combo **x5**, mask lights neon: double loot, flourishes, bots stagger — the shareable moment |
+## Retention plan (binding)
 
-**Visual distinctness (legal):** keep the hero clearly apart from Sony’s Sly Cooper — no cane, no top-hat gentleman-thief look, no blue/gold palette. Scruffy junk-gadget chaos, not suave stealth. **Mascot still needs attorney review.**
+### Core fun first (30-second loop)
+
+- **Tight controls:** coyote time, jump buffer, variable jump height, pounce dash with a satisfying arc.
+- **Chain-stomps:** stomping MOPs without touching the ground builds combos with escalating pitch SFX and multipliers; Mask Mode at combo threshold.
+- **Medals (3 per level, shown up front):** (1) finish, (2) collect all Shinies, (3) beat par time. Stars/medals appear on **level clear only** — never on the death card.
+- **Crew:** 1 hidden crew member per level (“Free the crew”) in a secret spot.
+
+### Progression
+
+- **District map — Neon City:** districts Docks, Arcade Row, Rooftops, Sewer Grid. Each ~8 short levels (60–120 s) + a boss MOP (MOP-ZILLA style, original). Stars unlock districts.
+- **Freed crew** become playable raccoon variants with small perks (double jump, magnet, etc.).
+- **Cosmetics:** vests, mask LED colors, trail colors.
+
+### Come-back hooks (optional, no nagging)
+
+- **Daily Heist:** one handcrafted/remixed level per day (same for everyone) + Game Center time leaderboard.
+- **Ghost racing:** replay any level against your own best-run ghost.
+- **Daily login streak** with escalating cosmetics; one free “streak saver” per week if a day is missed.
+- **Weekly Bounties:** 3 challenges (e.g. stomp 50 MOPs in Mask Mode).
+- **Local push** only if opted in, ≤1/day (daily heist ready / streak at risk).
+- **Season pass** free + premium cosmetic tracks; gems earnable in play. No purchase popups at launch, mid-run, or after a loss.
+
+### Game Center
+
+- Leaderboards per level + Daily Heist.
+- Achievements for loop milestones (first Mask Mode, first full-medal clear, streak, etc.).
+
+### Ship order
+
+1. Core loop polish + medals on results  
+2. District map with **first district (Neon Docks) fully playable**  
+3. Daily Heist screen + run  
+4. Ghosts + streaks  
+5. Season pass  
+
+Smoke evidence for this increment: combos, medals on the results card, district map, Daily Heist screen.
+
+## Hero moves
+
+| Move | Notes |
+| --- | --- |
+| **Pounce** | Air dash with arc |
+| **Belly Flop** | Dive-stomp; combo +1 |
+| **Mask Mode** | At combo threshold — double loot, trails, shareable moment |
+
+**Visual / legal:** keep the hero clearly apart from Sony’s Sly Cooper — no cane, no top-hat gentleman-thief look. Scruffy junk-gadget chaos. Mascot still needs attorney review. Neon look may evoke a Grid-like city (thin glowing grids, edge light, trails) but must stay **original** — no Tron logos, light cycles, identity discs, or its exact blue/orange palette. Magenta + teal stay canonical.
 
 ## World glossary
 
-| Plan term | Raccoon term |
+| Term | Meaning |
 | --- | --- |
-| Shine | Shinies |
-| Nest Ring | Stash Chute |
-| Nest | The Den |
-| Toll-bots | Sweepbot / Scrubber / Spotlight Drone / Barrier Bot |
-| Tools | Junk Gadgets (Bungee Cord, Fizz Can, Magnet Glove, Leaf Blower) |
-| Busted | Bagged |
-| Harbor / Midtown / Old Quarter / Heights | Neon Docks / Glow Market / Arcade Row / Spotless Tower |
-| Vaults | MOP Safe Rooms |
+| Shinies | Collectibles / loot |
+| Stash | Bank chute |
+| MOP | Enemy bots |
+| Neon Docks / Arcade Row / Rooftops / Sewer Grid | Districts |
+| Bagged / Splashed / Spiked | Fail states |
 
-Crew (placeholders): Tinker (possum), Lookout (pigeon), Fence (alley cat), Wheelman (rat).
+## Open questions
 
-## Open questions for Nicholas
+1. Season pass pricing / gem economy numbers.  
+2. Which crew variants ship in district 1.  
+3. ASC listing name sync with **The Neon City Bandit** (bundle ID stays).
 
-1. **Confirm “Trash Panda” availability** (App Store + USPTO) — then flip `ProductIdentity.displayTitle` from the working title to **Trash Panda**.
-2. **Sell masks directly** (cosmetic, what-you-see) — proposed yes.
-3. **No Shinies packs at soft launch** — proposed; test packs only after Gate 3.
-4. **Rename Golden Ticket → Crew Pass** — proposed; prices unchanged until approved.
+## Unchanged engineering pillars
 
-## Unchanged from the master plan
-
-Gates 1–3 and their numbers · Swift/SpriteKit · GameCore determinism · portrait one-thumb · 180s runs · Heat 0–5 · Final Dash · Daily Run · originality/legal hard rules · one mission at a time · checkpoint format.
-
-## Mission overlay
-
-Mission **0** unchanged (follow-square). Missions **1–10** use this design; see `docs/PLAN.md` Part 3 (amended) and `DECISIONS.md` / `BACKLOG.md`.
+Gates · Swift/SpriteKit · GameCore determinism · portrait one-thumb · baked glow (no SKEffectNode/shaders) · one mission quality bar at a time.

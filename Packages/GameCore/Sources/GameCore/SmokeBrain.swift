@@ -49,7 +49,10 @@ public struct SmokeBrain: Equatable, Sendable {
     }
 
     public static func clearSmokeFlags() {
-        for name in ["smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_death_ok.txt"] {
+        for name in [
+            "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_death_ok.txt",
+            "smoke_show_map.txt", "smoke_map_ok.txt", "smoke_show_daily.txt", "smoke_daily_ok.txt",
+        ] {
             setSmokeFlag(name, present: false)
         }
     }

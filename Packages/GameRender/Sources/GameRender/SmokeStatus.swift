@@ -18,6 +18,13 @@ public struct SmokeStatus: Equatable, Sendable {
     public var died: Bool
     public var won: Bool
     public var elapsed: Double
+    /// Count of banned debug/placeholder SKLabel texts currently in the scene tree.
+    /// CI fails if this is ever > 0 during smoke.
+    public var debugLabels: Int
+    public var combo: Int
+    public var medals: Int
+    public var map: Bool
+    public var daily: Bool
 
     public init(
         phase: String = "title",
@@ -30,7 +37,12 @@ public struct SmokeStatus: Equatable, Sendable {
         maskOn: Bool = false,
         died: Bool = false,
         won: Bool = false,
-        elapsed: Double = 0
+        elapsed: Double = 0,
+        debugLabels: Int = 0,
+        combo: Int = 0,
+        medals: Int = 0,
+        map: Bool = false,
+        daily: Bool = false
     ) {
         self.phase = phase
         self.boot = boot
@@ -43,13 +55,19 @@ public struct SmokeStatus: Equatable, Sendable {
         self.died = died
         self.won = won
         self.elapsed = elapsed
+        self.debugLabels = debugLabels
+        self.combo = combo
+        self.medals = medals
+        self.map = map
+        self.daily = daily
     }
 
     public var line: String {
         String(
-            format: "phase=%@ boot=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f",
+            format: "phase=%@ boot=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d",
             phase, boot, fpsAvg, fpsSamples, stomps, shinies,
-            mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed
+            mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed, debugLabels,
+            combo, medals, map ? 1 : 0, daily ? 1 : 0
         )
     }
 
@@ -62,4 +80,20 @@ public struct SmokeStatus: Equatable, Sendable {
     public func write() {
         try? line.write(to: Self.fileURL, atomically: true, encoding: .utf8)
     }
+
+    /// Exact-match ban list for on-screen SKLabel text (case-insensitive).
+    public static let bannedDebugTexts: Set<String> = [
+        "STOMP",
+        "MASK MODE",
+        "MASK MODE STOMP",
+        "CHECK",
+        "NECK",
+        "TUNING",
+        "DEBUG",
+        "BANK",
+        "HIT",
+        "TODO",
+        "PLACEHOLDER",
+        "TUNING MENU",
+    ]
 }

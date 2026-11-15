@@ -453,6 +453,8 @@ public enum TitleArt {
 @MainActor
 public final class BanditVisual: SKNode {
     public let sprite: SKSpriteNode
+    /// Squash/stretch lives on this wrapper so pose updates never clobber takeoff/land juice.
+    private let body: SKNode
     private let shadow: SKShapeNode
     private let maskGlow: SKSpriteNode
     private var runTextures: [SKTexture] = []
@@ -465,6 +467,7 @@ public final class BanditVisual: SKNode {
     private var bobPhase: CGFloat = 0
     private var runIndex: Int = 0
     private var runAcc: CGFloat = 0
+    private var facingSign: CGFloat = 1
     /// Fixed pool — recycle trail sprites (jetsam lesson: no per-frame alloc storms).
     private var trailPool: [SKSpriteNode] = []
     private var trailCursor: Int = 0
@@ -480,6 +483,9 @@ public final class BanditVisual: SKNode {
         pounceTex = ArtCatalog.texture(.raccoonPounce)
         flopTex = ArtCatalog.texture(.raccoonBellyFlop)
         maskTex = ArtCatalog.texture(.raccoonMaskMode)
+
+        body = SKNode()
+        body.name = "body"
 
         sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 72, height: 72))
         sprite.name = "sprite"
@@ -503,7 +509,8 @@ public final class BanditVisual: SKNode {
         super.init()
         addChild(shadow)
         addChild(maskGlow)
-        addChild(sprite)
+        addChild(body)
+        body.addChild(sprite)
         name = "bandit"
 
         let trailTex = ArtCatalog.motionTrailTexture()
@@ -523,17 +530,30 @@ public final class BanditVisual: SKNode {
     required init?(coder aDecoder: NSCoder) { fatalError() }
 
     public func setFacing(_ facing: Double) {
-        sprite.xScale = facing >= 0 ? 1 : -1
+        facingSign = facing >= 0 ? 1 : -1
+        sprite.xScale = abs(sprite.xScale) * facingSign
+    }
+
+    /// Takeoff / land / stomp squash on the body wrapper (survives per-frame pose updates).
+    public func squash(x: CGFloat, y: CGFloat) {
+        body.removeAction(forKey: "sq")
+        body.setScale(1)
+        body.run(SKAction.sequence([
+            SKAction.scaleX(to: x, y: y, duration: 0.055),
+            SKAction.scaleX(to: 1, y: 1, duration: 0.12),
+        ]), withKey: "sq")
     }
 
     public func show(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool = false) {
         sprite.removeAction(forKey: "run")
+        let face = facingSign
         switch anim {
         case .run:
             sprite.zRotation = 0
             if runTextures.count >= 2 {
                 runAcc += dt
-                if runAcc >= 0.09 {
+                // Faster cycle so the run reads in short smoke clips.
+                if runAcc >= 0.07 {
                     runAcc = 0
                     runIndex = (runIndex + 1) % runTextures.count
                     sprite.texture = runTextures[runIndex]
@@ -541,52 +561,61 @@ public final class BanditVisual: SKNode {
             } else if let idleTex {
                 sprite.texture = idleTex
             }
-            bobPhase += dt * 14
-            sprite.position.y = sin(bobPhase) * 2.5
-            let squash = 1.0 + sin(bobPhase * 2) * 0.035
+            bobPhase += dt * 16
+            sprite.position.y = sin(bobPhase) * 3.2
+            let squash = 1.0 + sin(bobPhase * 2) * 0.06
             sprite.yScale = squash
-            sprite.xScale = (sprite.xScale >= 0 ? 1 : -1) * (2 - squash)
+            sprite.xScale = face * (2 - squash)
         case .jump:
             sprite.zRotation = 0
             sprite.texture = jumpTex ?? idleTex
-            sprite.position.y = 2
-            sprite.yScale = 1.08
-            sprite.xScale = (sprite.xScale >= 0 ? 1 : -1) * 0.92
+            sprite.position.y = 3
+            sprite.yScale = 1.14
+            sprite.xScale = face * 0.86
+        case .apex:
+            sprite.zRotation = 0
+            sprite.texture = jumpTex ?? idleTex
+            sprite.position.y = 1
+            bobPhase += dt * 8
+            sprite.yScale = 0.92 + sin(bobPhase) * 0.02
+            sprite.xScale = face * 1.08
         case .fall:
             sprite.texture = fallTex ?? idleTex
             sprite.position.y = 0
-            // Readable fall pose: slight stretch + lean (not a rigid drop).
             bobPhase += dt * 10
-            let face: CGFloat = sprite.xScale >= 0 ? 1 : -1
-            sprite.yScale = 1.12 + sin(bobPhase) * 0.03
-            sprite.xScale = face * 0.88
-            sprite.zRotation = face * -0.12
+            sprite.yScale = 1.18 + sin(bobPhase) * 0.04
+            sprite.xScale = face * 0.82
+            sprite.zRotation = face * -0.16
         case .pounce:
             sprite.zRotation = 0
             sprite.texture = (flopTex ?? pounceTex) ?? idleTex
             sprite.position.y = 0
-            sprite.yScale = 0.9
-            sprite.xScale = (sprite.xScale >= 0 ? 1 : -1) * 1.1
+            sprite.yScale = 0.86
+            sprite.xScale = face * 1.16
         case .wallSlide:
             sprite.texture = fallTex ?? idleTex
             sprite.position.y = 0
-            let face: CGFloat = sprite.xScale >= 0 ? 1 : -1
-            sprite.zRotation = face * 0.08
+            sprite.yScale = 1.05
+            sprite.xScale = face * 0.9
+            sprite.zRotation = face * 0.1
         case .idle:
             sprite.zRotation = 0
             sprite.texture = (maskMode ? maskTex : nil) ?? idleTex
-            sprite.position.y = 0
+            bobPhase += dt * 3
+            sprite.position.y = sin(bobPhase) * 1.2
             sprite.yScale = 1
-            let face = sprite.xScale >= 0 ? 1.0 : -1.0
             sprite.xScale = face
         }
         if maskMode {
             if let maskTex { sprite.texture = maskTex }
             sprite.color = ArtCatalog.neonCyan
-            sprite.colorBlendFactor = 0.22
+            sprite.colorBlendFactor = 0.28
             maskGlow.isHidden = false
-            maskGlow.alpha = 0.4 + 0.2 * sin(bobPhase * 4)
-            maskGlow.setScale(1.05 + 0.08 * sin(bobPhase * 5))
+            bobPhase += dt * 2
+            // Stronger pulsing glow — readable next to the cyan trail.
+            maskGlow.alpha = 0.55 + 0.35 * sin(bobPhase * 5)
+            maskGlow.setScale(1.15 + 0.18 * sin(bobPhase * 6))
+            maskGlow.color = ArtCatalog.neonCyan
         } else {
             sprite.color = ArtCatalog.neonPink
             sprite.colorBlendFactor = 0.14
@@ -599,12 +628,12 @@ public final class BanditVisual: SKNode {
 
     /// Short light trail on run/dash; denser + brighter in Mask Mode. Pooled sprites only.
     private func tickMotionTrail(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool) {
-        let moving = maskMode || anim == .run || anim == .pounce
+        let moving = maskMode || anim == .run || anim == .pounce || anim == .jump || anim == .apex
         guard moving else { return }
         trailAcc += dt
         let interval: CGFloat = {
-            if maskMode { return smokeLite ? 0.07 : 0.045 }
-            return smokeLite ? 0.11 : 0.075
+            if maskMode { return smokeLite ? 0.055 : 0.04 }
+            return smokeLite ? 0.1 : 0.07
         }()
         guard trailAcc >= interval else { return }
         trailAcc = 0
@@ -621,20 +650,20 @@ public final class BanditVisual: SKNode {
         let speck = trailPool[trailCursor % trailPool.count]
         trailCursor += 1
         speck.removeAllActions()
-        let face: CGFloat = sprite.xScale >= 0 ? 1 : -1
+        let face: CGFloat = facingSign
         speck.position = CGPoint(x: -face * (maskMode ? 22 : 16), y: dash ? 2 : 4)
         speck.zRotation = 0
-        speck.setScale(maskMode ? 1.35 : (dash ? 1.15 : 0.85))
+        speck.setScale(maskMode ? 1.45 : (dash ? 1.2 : 0.9))
         speck.color = maskMode ? ArtCatalog.neonCyan : ArtCatalog.neonPink
-        speck.colorBlendFactor = 0.65
-        speck.alpha = maskMode ? 0.75 : 0.42
+        speck.colorBlendFactor = 0.7
+        speck.alpha = maskMode ? 0.85 : 0.48
         speck.isHidden = false
-        let drift = -face * (maskMode ? 36 : 22)
-        let life: TimeInterval = maskMode ? 0.28 : 0.18
+        let drift = -face * (maskMode ? 40 : 24)
+        let life: TimeInterval = maskMode ? 0.32 : 0.2
         speck.run(SKAction.sequence([
             SKAction.group([
                 SKAction.fadeOut(withDuration: life),
-                SKAction.scaleX(to: 0.25, y: maskMode ? 1.6 : 1.2, duration: life),
+                SKAction.scaleX(to: 0.25, y: maskMode ? 1.7 : 1.25, duration: life),
                 SKAction.moveBy(x: drift, y: 0, duration: life),
             ]),
             SKAction.run { speck.isHidden = true; speck.alpha = 0 },

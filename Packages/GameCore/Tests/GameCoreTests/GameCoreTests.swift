@@ -529,6 +529,57 @@ final class GameCoreTests: XCTestCase {
         for _ in 0..<40 { sim.step(InputFrame(moveX: 1)) }
         XCTAssertLessThan(sim.state.bandit.position.x, start + sim.tuning.tileSize * 2)
     }
+
+    func testProgressMedalsMergeAndDailySeed() {
+        let store = ProgressStore()
+        // Isolate from other tests / device state.
+        var blank = PlayerProgress()
+        store.save(blank)
+        let earned = store.recordClear(
+            levelID: ProgressStore.neonDocksLevelID,
+            shiniesCollected: 4,
+            shiniesTotal: 4,
+            seconds: 30,
+            combo: 3
+        )
+        XCTAssertEqual(earned.count, 3)
+        let progress = store.load()
+        XCTAssertEqual(progress.medalsByLevel[ProgressStore.neonDocksLevelID]?.count, 3)
+        XCTAssertTrue(progress.isUnlocked(.arcadeRow))
+        XCTAssertEqual(progress.bestCombo, 3)
+
+        let day = ProgressStore.dayKey(date: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertFalse(day.isEmpty)
+        let seedA = ProgressStore.dailySeed(dayKey: day)
+        let seedB = ProgressStore.dailySeed(dayKey: day)
+        XCTAssertEqual(seedA, seedB)
+        XCTAssertNotEqual(seedA, ProgressStore.dailySeed(dayKey: "1999-01-01"))
+    }
+
+    func testApexAnimBetweenJumpAndFall() throws {
+        let map = try TileMap.parse("""
+        #####
+        #...#
+        #.@.#
+        #===#
+        #####
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+        var sawJump = false
+        var sawApex = false
+        for _ in 0..<90 {
+            sim.step(InputFrame(jumpHeld: false))
+            switch sim.state.bandit.anim {
+            case .jump: sawJump = true
+            case .apex: sawApex = true
+            default: break
+            }
+        }
+        XCTAssertTrue(sawJump)
+        XCTAssertTrue(sawApex)
+    }
 }
 
 struct SeededGenerator: RandomNumberGenerator {

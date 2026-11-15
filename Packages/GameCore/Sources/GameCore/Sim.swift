@@ -319,8 +319,10 @@ public struct Sim: Equatable, Sendable {
             bandit.anim = .wallSlide
         } else if bandit.pouncing || bandit.flopping {
             bandit.anim = .pounce
-        } else if bandit.velocity.y > 40 {
+        } else if bandit.velocity.y > 60 {
             bandit.anim = .jump
+        } else if bandit.velocity.y > -50 {
+            bandit.anim = .apex
         } else {
             bandit.anim = .fall
         }

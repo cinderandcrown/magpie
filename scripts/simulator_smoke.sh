@@ -10,6 +10,7 @@ OUT_DIR="${3:-smoke-artifacts}"
 BUNDLE_ID="${BUNDLE_ID:-com.cinderandcrown.magpie}"
 DISPLAY_ID="${SIMCTL_DISPLAY:-1}"
 MIN_FPS="${SMOKE_MIN_FPS:-55}"
+MIN_VIDEO_SECS="${SMOKE_MIN_VIDEO_SECS:-60}"
 
 mkdir -p "$OUT_DIR"
 
@@ -163,10 +164,12 @@ for attempt in 1 2; do
       set +e
       xcrun simctl io "$DEVICE" recordVideo --display="$DISPLAY_ID" --codec=h264 --force "$VIDEO_OUT" &
       REC_PID=$!
+      REC_STARTED_AT="$(date +%s)"
       sleep 1
       if ! kill -0 "$REC_PID" 2>/dev/null; then
         xcrun simctl io "$DEVICE" recordVideo --codec=h264 --force "$VIDEO_OUT" &
         REC_PID=$!
+        REC_STARTED_AT="$(date +%s)"
         sleep 1
       fi
       set -e
@@ -195,13 +198,16 @@ if [[ -z "${REC_PID:-}" ]] || ! kill -0 "$REC_PID" 2>/dev/null; then
   set +e
   xcrun simctl io "$DEVICE" recordVideo --display="$DISPLAY_ID" --codec=h264 --force "$VIDEO_OUT" &
   REC_PID=$!
+  REC_STARTED_AT="$(date +%s)"
   sleep 1
   if ! kill -0 "$REC_PID" 2>/dev/null; then
     xcrun simctl io "$DEVICE" recordVideo --codec=h264 --force "$VIDEO_OUT" &
     REC_PID=$!
+    REC_STARTED_AT="$(date +%s)"
   fi
   set -e
 fi
+REC_STARTED_AT="${REC_STARTED_AT:-$(date +%s)}"
 
 # Harness handshakes: app holds each beat until the matching flag is written after the shot.
 # 02 — midrun: running/jumping before MOP hunt (holds until smoke_midrun_ok.txt).
@@ -254,6 +260,31 @@ write_flag "smoke_death_ok.txt"
 wait_status "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("won=1" in s or "phase=won" in s) else 1)' 120
 shot "$OUT_DIR/06-results.png"
 
+# 07 — District map (retention)
+write_flag "smoke_show_map.txt"
+wait_status "district-map" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "map=1" in s else 1)' 60
+sleep 0.35
+shot "$OUT_DIR/07-district-map.png"
+write_flag "smoke_map_ok.txt"
+
+# 08 — Daily Heist screen
+write_flag "smoke_show_daily.txt"
+wait_status "daily-heist" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "daily=1" in s else 1)' 60
+sleep 0.35
+shot "$OUT_DIR/08-daily-heist.png"
+write_flag "smoke_daily_ok.txt"
+
+# One continuous take must be ≥60s wall-clock (review gate). Hold on RESULTS if needed.
+while true; do
+  now="$(date +%s)"
+  elapsed=$((now - REC_STARTED_AT))
+  if (( elapsed >= MIN_VIDEO_SECS )); then
+    break
+  fi
+  echo "recording pad: ${elapsed}s / ${MIN_VIDEO_SECS}s — holding continuous take"
+  sleep 2
+done
+
 kill -INT "$REC_PID" 2>/dev/null || true
 wait "$REC_PID" 2>/dev/null || true
 sleep 2
@@ -273,6 +304,19 @@ if fps < need:
     raise SystemExit(f"FAIL: average FPS {fps:.1f} < {need:.0f}")
 print(f"OK FPS {fps:.1f} >= {need:.0f}")
 PY
+
+# Fail if any banned debug/placeholder SKLabel was visible during smoke.
+DEBUG_LABELS="$(echo "$STATUS" | sed -n 's/.*debugLabels=\([0-9][0-9]*\).*/\1/p' | head -1)"
+DEBUG_LABELS="${DEBUG_LABELS:-}"
+if [[ -z "$DEBUG_LABELS" ]]; then
+  echo "FAIL: missing debugLabels in smoke_status.txt" >&2
+  exit 1
+fi
+if (( DEBUG_LABELS > 0 )); then
+  echo "FAIL: debugLabels=$DEBUG_LABELS (banned SKLabel text visible on screen)" >&2
+  exit 1
+fi
+echo "OK debugLabels=0"
 
 # simctl recordVideo is video-only — mux level music + hero SFX from the smoke audio timeline.
 ensure_ffmpeg() {
@@ -305,10 +349,11 @@ else
   echo "WARN: missing smoke_audio_events.txt — muxing music bed only" >&2
   : > "$EVENTS_COPY"
 fi
-python3 - "$VIDEO_OUT" "$AUDIO_DIR" "$EVENTS_COPY" <<'PY'
+python3 - "$VIDEO_OUT" "$AUDIO_DIR" "$EVENTS_COPY" "$MIN_VIDEO_SECS" <<'PY'
 import os, shutil, subprocess, sys, tempfile
 
-video, audio_dir, events_path = sys.argv[1:4]
+video, audio_dir, events_path, min_secs_s = sys.argv[1:5]
+min_secs = float(min_secs_s)
 ffmpeg = shutil.which("ffmpeg")
 ffprobe = shutil.which("ffprobe")
 if not ffmpeg or not ffprobe:
@@ -321,6 +366,9 @@ probe = subprocess.check_output(
 dur = float(probe)
 if dur < 1:
     raise SystemExit(f"FAIL: video duration {dur} too short for audio mux")
+if dur + 0.05 < min_secs:
+    raise SystemExit(f"FAIL: continuous smoke video {dur:.1f}s < {min_secs:.0f}s (hard-cut montages rejected)")
+print(f"OK continuous video duration {dur:.1f}s >= {min_secs:.0f}s")
 
 def find_clip(stem: str):
     for ext in (".wav", ".caf", ".m4a", ".mp3"):
@@ -518,6 +566,8 @@ REQUIRED=(
   04-mask-mode.png
   05-death-retry.png
   06-results.png
+  07-district-map.png
+  08-daily-heist.png
   smoke-gameplay.mp4
   palette-side-by-side.png
   01-launch.png
@@ -539,12 +589,20 @@ STOMPS="$(status_field stomps)"; STOMPS="${STOMPS:-0}"
 MASK="$(status_field mask)"; MASK="${MASK:-0}"
 DIED="$(status_field died)"; DIED="${DIED:-0}"
 WON="$(status_field won)"; WON="${WON:-0}"
+MEDALS="$(status_field medals)"; MEDALS="${MEDALS:-0}"
+MAP="$(status_field map)"; MAP="${MAP:-0}"
+DAILY="$(status_field daily)"; DAILY="${DAILY:-0}"
+COMBO="$(status_field combo)"; COMBO="${COMBO:-0}"
 if [[ "$PHASE" == "title" ]]; then
   echo "FAIL: still on title" >&2
   exit 1
 fi
 if (( STOMPS < 1 || MASK < 1 || DIED < 1 || WON < 1 )); then
   echo "FAIL: milestones stomps=$STOMPS mask=$MASK died=$DIED won=$WON" >&2
+  exit 1
+fi
+if (( MEDALS < 1 || MAP < 1 || DAILY < 1 || COMBO < 1 )); then
+  echo "FAIL: retention milestones medals=$MEDALS map=$MAP daily=$DAILY combo=$COMBO" >&2
   exit 1
 fi
 
@@ -576,4 +634,4 @@ if bright < 0.05:
 print("OK 04 differs from 05")
 PY
 
-echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED won=$WON)"
+echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED won=$WON medals=$MEDALS map=$MAP daily=$DAILY combo=$COMBO)"
