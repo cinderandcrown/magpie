@@ -275,11 +275,15 @@ public final class BanditVisual: SKNode {
         shadow.strokeColor = .clear
         shadow.zPosition = -1
 
-        // Soft cyan plate behind the sprite during Mask Mode (baked look, no SKEffectNode).
-        maskGlow = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.35), size: CGSize(width: 90, height: 90))
+        // Soft radial bloom behind the raccoon during Mask Mode (no SKEffectNode / no hard rect).
+        let glowTex = maskTex ?? idleTex
+        maskGlow = SKSpriteNode(texture: glowTex, size: CGSize(width: 110, height: 110))
+        maskGlow.color = ArtCatalog.neonCyan
+        maskGlow.colorBlendFactor = 0.85
+        maskGlow.alpha = 0
         maskGlow.zPosition = -0.5
         maskGlow.isHidden = true
-        maskGlow.alpha = 0
+        maskGlow.blendMode = .add
 
         super.init()
         addChild(shadow)
@@ -338,16 +342,37 @@ public final class BanditVisual: SKNode {
             sprite.xScale = face
         }
         if maskMode {
+            // Prefer the baked mask-mode sprite; keep a soft additive bloom behind it.
+            if let maskTex { sprite.texture = maskTex }
             sprite.color = ArtCatalog.neonCyan
-            sprite.colorBlendFactor = 0.35
+            sprite.colorBlendFactor = 0.22
             maskGlow.isHidden = false
-            maskGlow.alpha = 0.55 + 0.25 * sin(bobPhase * 3)
+            maskGlow.alpha = 0.4 + 0.2 * sin(bobPhase * 4)
+            maskGlow.setScale(1.05 + 0.08 * sin(bobPhase * 5))
         } else {
             sprite.color = ArtCatalog.neonPink
             sprite.colorBlendFactor = 0.14
             maskGlow.isHidden = true
             maskGlow.alpha = 0
+            maskGlow.setScale(1)
         }
+    }
+
+    /// Spawn a short additive speed trail while Mask Mode is active.
+    public func emitMaskTrail() {
+        let speck = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.55), size: CGSize(width: 10, height: 18))
+        speck.position = CGPoint(x: sprite.xScale >= 0 ? -18 : 18, y: 4)
+        speck.zPosition = -0.2
+        speck.blendMode = .add
+        addChild(speck)
+        speck.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.fadeOut(withDuration: 0.22),
+                SKAction.scaleX(to: 0.2, y: 1.4, duration: 0.22),
+                SKAction.moveBy(x: sprite.xScale >= 0 ? -24 : 24, y: 0, duration: 0.22),
+            ]),
+            SKAction.removeFromParent(),
+        ]))
     }
 }
 #endif

@@ -138,7 +138,9 @@ public enum NeonDocksLevel {
 /// Same-level MOPs (jump-stomp), wall pillar, shinies, water pit, exit — fits the jump budget
 /// and the CI smoke window. Full Neon Docks stays the ship level.
 public enum SmokeDemoLevel {
-    /// Compact rooftop: run/wall-slide pillar (above deck) → MOPs → canal pit → EXIT.
+    /// Compact rooftop route: continuous deck, canal pit, EXIT.
+    /// Floating `====` ledges are collision platforms only — HeistScene draws pipes/scaffolds under them.
+    /// A short `||` pillar gives the midrun wall-slide beat without climbable stilts trapping finishPush.
     public static let ascii = """
     ##################################################
     #................................................#
