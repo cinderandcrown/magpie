@@ -95,42 +95,54 @@ wait_status() {
 }
 
 echo "Smoke (autoplay) on $DEVICE (display=$DISPLAY_ID)"
+# Never keep stale screenshots from a prior CI step/run in this folder.
+rm -rf "$OUT_DIR"
+mkdir -p "$OUT_DIR"
+
 xcrun simctl bootstatus "$DEVICE" -b || xcrun simctl boot "$DEVICE" || true
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$APP_PATH"
-xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
-# Drop any stale status from a prior install so we never race a leftover RESULTS line.
-OLD_DATA="$(data_container)"
-if [[ -n "$OLD_DATA" && -f "$OLD_DATA/Documents/smoke_status.txt" ]]; then
-  rm -f "$OLD_DATA/Documents/smoke_status.txt"
-fi
-xcrun simctl launch "$DEVICE" "$BUNDLE_ID" -SmokeAutoplay
 
+launch_smoke() {
+  xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+  local data
+  data="$(data_container)"
+  if [[ -n "$data" && -f "$data/Documents/smoke_status.txt" ]]; then
+    rm -f "$data/Documents/smoke_status.txt"
+  fi
+  xcrun simctl launch "$DEVICE" "$BUNDLE_ID" -SmokeAutoplay
+}
+
+# Capture 01-title while phase=title. App writes title BEFORE atlas warm so this
+# window stays open during art load. Relaunch once if we somehow attach late.
 TITLE_SHOT=0
-for _ in $(seq 1 80); do
-  status="$(read_status)"
-  if [[ -n "$status" ]]; then
-    require_app "launch"
-    # Snap title the instant it appears — do not wait for a later poll after autoplay advances.
-    if [[ "$TITLE_SHOT" -eq 0 && "$status" == *"phase=title"* ]]; then
+for attempt in 1 2; do
+  launch_smoke
+  for _ in $(seq 1 150); do
+    status="$(read_status)"
+    if [[ -z "$status" ]]; then
+      sleep 0.2
+      continue
+    fi
+    if [[ "$status" == *"phase=title"* ]]; then
+      require_app "launch"
       shot "$OUT_DIR/01-title.png"
       TITLE_SHOT=1
       echo "ready@title: $status"
-      break
+      break 2
     fi
-    if [[ "$status" == *"phase=title"* ]]; then
-      break
-    fi
-  fi
-  sleep 0.2
+    # Attached after autoplay already advanced — relaunch for a clean title beat.
+    echo "missed title (status=$status) — relaunch attempt=$attempt" >&2
+    break
+  done
 done
-require_app "launch"
-
-# 01 — title while still on title (already snapped above when possible)
 if [[ "$TITLE_SHOT" -eq 0 ]]; then
-  wait_status "title" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "phase=title" in s else 1)' 25
-  shot "$OUT_DIR/01-title.png"
+  echo "FAIL: could not capture phase=title after relaunch" >&2
+  shot "$OUT_DIR/fail-title-timeout.png" || true
+  read_status >&2 || true
+  exit 1
 fi
+require_app "launch"
 
 VIDEO_OUT="$OUT_DIR/smoke-gameplay.mp4"
 set +e
@@ -143,26 +155,27 @@ if ! kill -0 "$REC_PID" 2>/dev/null; then
 fi
 set -e
 
+# Long timeouts: atlas/parallax warm can take minutes before titleFrames even start.
 # 02 — midrun: running/jumping before the first stomp (SmokeBrain delays MOP hunt ~6s)
-wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); d=re.search(r"died=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=3.0 and (not st or int(st.group(1))==0) and (not d or int(d.group(1))==0)) else 1)' 50
+wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); d=re.search(r"died=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=3.0 and (not st or int(st.group(1))==0) and (not d or int(d.group(1))==0)) else 1)' 180
 shot "$OUT_DIR/02-midrun.png"
 
 # 03 — real MOP stomp (after the run showcase)
-wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 50
+wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 120
 shot "$OUT_DIR/03-mop-stomp.png"
 
 # 04 — Mask Mode (status latches; capture while still playing shortly after stomp)
-wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("mask=1" in s and "phase=playing" in s) else 1)' 45
+wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("mask=1" in s and "phase=playing" in s) else 1)' 90
 sleep 0.45
 shot "$OUT_DIR/04-mask-mode.png"
 
 # 05 — death / retry overlay
-wait_status "death" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("died=1" in s and "phase=failed" in s) else 1)' 50
+wait_status "death" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("died=1" in s and "phase=failed" in s) else 1)' 90
 sleep 0.35
 shot "$OUT_DIR/05-death-retry.png"
 
 # 06 — RESULTS (win after retry)
-wait_status "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("won=1" in s or "phase=won" in s) else 1)' 70
+wait_status "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("won=1" in s or "phase=won" in s) else 1)' 120
 shot "$OUT_DIR/06-results.png"
 
 kill -INT "$REC_PID" 2>/dev/null || true

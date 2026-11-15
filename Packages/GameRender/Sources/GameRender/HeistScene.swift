@@ -103,6 +103,12 @@ public final class HeistScene: SKScene {
             sim = Sim(map: try! TileMap.parse("###\n#@#\n###"), tuning: tuning)
         }
 
+        // Publish phase=title BEFORE atlas/parallax warm so CI can snap 01-title while art loads.
+        if smokeEnabled {
+            smokeStatus.phase = "title"
+            smokeStatus.write()
+        }
+
         ArtCatalog.warmAtlases()
         stage.setScale(Self.worldZoom)
         addChild(stage)
