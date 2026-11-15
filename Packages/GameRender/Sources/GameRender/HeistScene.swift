@@ -164,10 +164,11 @@ public final class HeistScene: SKScene {
         #if DEBUG
         setupDebugTuning()
         #endif
-        // Audio is part of the polish gate (title sting + level/mask loops + SFX).
-        JuiceSound.shared.prepare()
-        JuiceSound.shared.playTitleSting()
+        // Defer AVAudioSession under -SmokeAutoplay — sync audio prep jetsams the sim
+        // mid-run. Real play still gets title sting + level/mask loops + SFX.
         if !smokeEnabled {
+            JuiceSound.shared.prepare()
+            JuiceSound.shared.playTitleSting()
             hapticLight.prepare(); hapticMed.prepare(); hapticHeavy.prepare()
         }
         layoutUI()
@@ -706,9 +707,11 @@ public final class HeistScene: SKScene {
     private func cg(_ v: Vec2) -> CGPoint { CGPoint(x: v.x, y: v.y) }
 
     private func beginPlay() {
-        JuiceSound.shared.play(.sfxUITap)
-        JuiceSound.shared.startLevelMusic()
-        if !smokeEnabled { hapticMed.impactOccurred() }
+        if !smokeEnabled {
+            JuiceSound.shared.play(.sfxUITap)
+            JuiceSound.shared.startLevelMusic()
+            hapticMed.impactOccurred()
+        }
         sim.startRun()
         titleRoot.isHidden = true
         layoutUI()
@@ -716,10 +719,12 @@ public final class HeistScene: SKScene {
     }
 
     private func doRetry() {
-        JuiceSound.shared.play(.sfxUITap)
+        if !smokeEnabled {
+            JuiceSound.shared.play(.sfxUITap)
+            JuiceSound.shared.startLevelMusic()
+        }
         sim.retry()
         hideOutcome()
-        JuiceSound.shared.startLevelMusic()
         updateHUDVisibility()
     }
 
@@ -822,7 +827,7 @@ public final class HeistScene: SKScene {
     private func hideOutcome() {
         outcomeRoot.isHidden = true
         maskMusicOn = false
-        JuiceSound.shared.setMaskModeMusic(false)
+        if !smokeEnabled { JuiceSound.shared.setMaskModeMusic(false) }
         maskVignette.removeAllActions()
         maskVignette.alpha = 0
         maskVignette.isHidden = true
@@ -911,65 +916,79 @@ public final class HeistScene: SKScene {
         for e in events {
             switch e.kind {
             case .jump:
-                JuiceSound.shared.play(.sfxJump)
-                if !smokeEnabled { hapticLight.impactOccurred() }
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxJump)
+                    hapticLight.impactOccurred()
+                }
                 squash(0.85, 1.2)
             case .land:
-                JuiceSound.shared.play(.sfxLand)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxLand) }
                 squash(1.25, 0.75)
                 dust(at: e.position)
             case .pounce:
-                JuiceSound.shared.play(.sfxPounce)
-                if !smokeEnabled { hapticMed.impactOccurred() }
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxPounce)
+                    hapticMed.impactOccurred()
+                }
                 shake(0.35)
             case .flop:
-                JuiceSound.shared.play(.sfxBellyFlop)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxBellyFlop) }
                 squash(1.35, 0.6)
             case .stomp:
                 smoke.noteStomp()
                 smokeStatus.stomps += 1
-                JuiceSound.shared.play(.sfxMopHit)
-                if !smokeEnabled { hapticHeavy.impactOccurred() }
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxMopHit)
+                    hapticHeavy.impactOccurred()
+                }
                 hitStop = smokeEnabled ? 0.015 : 0.04
                 shake(0.35)
                 squash(1.35, 0.55)
                 dust(at: e.position)
                 pop("STOMP", at: e.position, ArtCatalog.neonPink)
             case .shiny:
-                JuiceSound.shared.play(.sfxCollectShiny)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxCollectShiny) }
                 shinySparkle(at: e.position)
                 pop("✦", at: e.position, ArtCatalog.neonOrange)
             case .bank:
-                JuiceSound.shared.play(.sfxCollectShiny)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxCollectShiny) }
                 pop("BANK", at: e.position, ArtCatalog.neonLime)
             case .maskOn:
                 smoke.sawMask = true
                 smokeStatus.mask = true
-                JuiceSound.shared.play(.sfxMaskModeOn)
-                if !maskMusicOn {
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxMaskModeOn)
+                    if !maskMusicOn {
+                        maskMusicOn = true
+                        JuiceSound.shared.setMaskModeMusic(true)
+                    }
+                    hapticHeavy.impactOccurred()
+                } else {
                     maskMusicOn = true
-                    JuiceSound.shared.setMaskModeMusic(true)
                 }
-                if !smokeEnabled { hapticHeavy.impactOccurred() }
                 flashMask()
             case .hurt:
-                JuiceSound.shared.play(.sfxPlayerHit)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxPlayerHit) }
                 damageFlash()
                 shake(0.3)
             case .win:
                 smokeStatus.won = true
-                JuiceSound.shared.play(.sfxWin)
-                JuiceSound.shared.setMaskModeMusic(false)
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxWin)
+                    JuiceSound.shared.setMaskModeMusic(false)
+                }
                 showOutcome()
                 writeSmokeStatus()
             case .fail:
                 smokeStatus.died = true
-                JuiceSound.shared.play(.sfxFail)
-                JuiceSound.shared.setMaskModeMusic(false)
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxFail)
+                    JuiceSound.shared.setMaskModeMusic(false)
+                }
                 showOutcome()
                 writeSmokeStatus()
             case .checkpoint:
-                JuiceSound.shared.play(.sfxCheckpoint)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxCheckpoint) }
                 pop("CHECK", at: e.position, ArtCatalog.neonLime)
             case .dust:
                 dust(at: e.position)
@@ -979,7 +998,7 @@ public final class HeistScene: SKScene {
         }
         if !sim.state.bandit.maskMode, maskMusicOn {
             maskMusicOn = false
-            JuiceSound.shared.setMaskModeMusic(false)
+            if !smokeEnabled { JuiceSound.shared.setMaskModeMusic(false) }
         }
     }
 
@@ -1039,7 +1058,10 @@ public final class HeistScene: SKScene {
                 star.run(SKAction.sequence([
                     SKAction.wait(forDuration: 0.18 * Double(i)),
                     SKAction.group([
-                        SKAction.run { JuiceSound.shared.play(.sfxUITap) },
+                        SKAction.run { [weak self] in
+                            guard let self, !self.smokeEnabled else { return }
+                            JuiceSound.shared.play(.sfxUITap)
+                        },
                         SKAction.fadeAlpha(to: 1, duration: 0.12),
                         SKAction.scale(to: 1.2, duration: 0.12),
                     ]),
