@@ -26,7 +26,18 @@ public struct SmokeBrain: Equatable, Sendable {
     public var stompCount: Int = 0
     public var maskShowcaseFrames: Int = 0
 
+    /// Test override for proceed files (`nil` = check Documents).
+    public static var proceedFileOverride: Bool? = nil
+
     public init() {}
+
+    /// Smoke harness handshake files in the app Documents directory.
+    public static func smokeFlagExists(_ name: String) -> Bool {
+        if let override = proceedFileOverride { return override }
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return FileManager.default.fileExists(atPath: docs.appendingPathComponent(name).path)
+    }
 
     public mutating func next(sim: Sim) -> (input: InputFrame, start: Bool, retry: Bool) {
         tick += 1
@@ -36,9 +47,11 @@ public struct SmokeBrain: Equatable, Sendable {
 
         switch sim.state.phase {
         case .title:
+            // Stay on title until harness writes `smoke_proceed.txt` (after 01-title shot).
             titleFrames += 1
-            // ~10s at 60Hz — CI smoke script must catch 01-title before autoplay advances.
-            if titleFrames >= 600 {
+            let proceed = Self.smokeFlagExists("smoke_proceed.txt")
+            let fallback = titleFrames >= 3600 // ~60s @ 60Hz for manual runs
+            if proceed || fallback {
                 start = true
                 act = .play
             }
@@ -47,8 +60,9 @@ public struct SmokeBrain: Equatable, Sendable {
         case .failed:
             if !diedOnce { diedOnce = true }
             failWait += 1
-            // Hold death overlay ~3s so 05-death-retry can capture SPLASHED.
-            if failWait >= 180 {
+            // Hold death overlay until harness snaps 05, or ~12s fallback.
+            let deathOk = Self.smokeFlagExists("smoke_death_ok.txt")
+            if deathOk || failWait >= 720 {
                 retry = true
                 failWait = 0
                 act = .finishPush
@@ -76,8 +90,9 @@ public struct SmokeBrain: Equatable, Sendable {
                     }
                 case .showcaseMask:
                     maskShowcaseFrames += 1
-                    // Hold Mask Mode on screen ~2.5s so 04-mask-mode captures the glow.
-                    if maskShowcaseFrames >= 150 {
+                    // Hold Mask Mode until harness snaps 04, or ~8s fallback.
+                    let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
+                    if maskOk || maskShowcaseFrames >= 480 {
                         act = .seekDeath
                     }
                 default:
@@ -152,8 +167,9 @@ public struct SmokeBrain: Equatable, Sendable {
             return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
         }
 
-        // Beat 1 — run / jump / wall-slide for midrun screenshots before hunting MOPs.
-        if !sawMask, sim.state.elapsed < 6.0 {
+        // Beat 1 — run / jump / wall-slide until harness snaps 02-midrun (or elapsed fallback).
+        let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
+        if !sawMask, !midrunOk, sim.state.elapsed < 45 {
             return showcaseRunInput(sim: sim, tx: tx, ty: ty)
         }
 

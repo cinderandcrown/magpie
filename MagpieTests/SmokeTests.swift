@@ -44,6 +44,8 @@ final class SmokeTests: XCTestCase {
         tuning.comboGroundGrace = 4
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
+        SmokeBrain.proceedFileOverride = true
+        defer { SmokeBrain.proceedFileOverride = nil }
         let steps = Int(45 * tuning.simHz)
         var started = false
         var stomps = 0

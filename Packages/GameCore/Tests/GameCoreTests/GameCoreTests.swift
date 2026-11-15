@@ -277,8 +277,10 @@ final class GameCoreTests: XCTestCase {
         let map = try NeonDocksLevel.load()
         var sim = Sim(map: map, tuning: .default, seed: 1)
         var brain = SmokeBrain()
+        SmokeBrain.proceedFileOverride = true
+        defer { SmokeBrain.proceedFileOverride = nil }
         var started = false
-        for _ in 0..<650 {
+        for _ in 0..<30 {
             let cue = brain.next(sim: sim)
             if cue.start {
                 started = true
@@ -296,6 +298,8 @@ final class GameCoreTests: XCTestCase {
         tuning.maskModeAtCombo = 3
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
+        SmokeBrain.proceedFileOverride = true
+        defer { SmokeBrain.proceedFileOverride = nil }
         for _ in 0..<Int(60 * tuning.simHz) {
             let cue = brain.next(sim: sim)
             if cue.start { sim.startRun() }
@@ -317,6 +321,9 @@ final class GameCoreTests: XCTestCase {
         tuning.comboGroundGrace = 4
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
+        // Unit test: skip harness file gates so the director can run end-to-end.
+        SmokeBrain.proceedFileOverride = true
+        defer { SmokeBrain.proceedFileOverride = nil }
         var sawStomp = false
         var sawMask = false
         var sawDeath = false
