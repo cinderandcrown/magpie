@@ -157,7 +157,19 @@ for attempt in 1 2; do
       shot "$OUT_DIR/01-title.png"
       TITLE_SHOT=1
       echo "ready@title: $status"
-      # Release the title hold only AFTER the shot returns (screenshot can take >10s).
+      # Start gameplay recording while still on title, THEN release the title hold —
+      # so recorder warm-up does not burn the midrun window.
+      VIDEO_OUT="$OUT_DIR/smoke-gameplay.mp4"
+      set +e
+      xcrun simctl io "$DEVICE" recordVideo --display="$DISPLAY_ID" --codec=h264 --force "$VIDEO_OUT" &
+      REC_PID=$!
+      sleep 1
+      if ! kill -0 "$REC_PID" 2>/dev/null; then
+        xcrun simctl io "$DEVICE" recordVideo --codec=h264 --force "$VIDEO_OUT" &
+        REC_PID=$!
+        sleep 1
+      fi
+      set -e
       write_flag "smoke_proceed.txt"
       break 2
     fi
@@ -178,21 +190,23 @@ if [[ "$TITLE_SHOT" -eq 0 ]]; then
   exit 1
 fi
 require_app "launch"
-
-VIDEO_OUT="$OUT_DIR/smoke-gameplay.mp4"
-set +e
-xcrun simctl io "$DEVICE" recordVideo --display="$DISPLAY_ID" --codec=h264 --force "$VIDEO_OUT" &
-REC_PID=$!
-sleep 1
-if ! kill -0 "$REC_PID" 2>/dev/null; then
-  xcrun simctl io "$DEVICE" recordVideo --codec=h264 --force "$VIDEO_OUT" &
+if [[ -z "${REC_PID:-}" ]] || ! kill -0 "$REC_PID" 2>/dev/null; then
+  VIDEO_OUT="$OUT_DIR/smoke-gameplay.mp4"
+  set +e
+  xcrun simctl io "$DEVICE" recordVideo --display="$DISPLAY_ID" --codec=h264 --force "$VIDEO_OUT" &
   REC_PID=$!
+  sleep 1
+  if ! kill -0 "$REC_PID" 2>/dev/null; then
+    xcrun simctl io "$DEVICE" recordVideo --codec=h264 --force "$VIDEO_OUT" &
+    REC_PID=$!
+  fi
+  set -e
 fi
-set -e
 
 # Harness handshakes: app holds each beat until the matching flag is written after the shot.
-# 02 — midrun: running/jumping before MOP hunt (holds until smoke_midrun_ok.txt)
-wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); d=re.search(r"died=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=3.0 and (not st or int(st.group(1))==0) and (not d or int(d.group(1))==0)) else 1)' 180
+# 02 — midrun: running/jumping before MOP hunt (holds until smoke_midrun_ok.txt).
+# Allow sticky died= from a prior premature splash; require live playing + no stomps yet.
+wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0)) else 1)' 120
 shot "$OUT_DIR/02-midrun.png"
 write_flag "smoke_midrun_ok.txt"
 

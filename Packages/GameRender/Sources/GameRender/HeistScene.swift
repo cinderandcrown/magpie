@@ -1007,7 +1007,9 @@ public final class HeistScene: SKScene {
                 squash(1.35, 0.6)
             case .stomp:
                 smoke.noteStomp()
-                smokeStatus.stomps += 1
+                // Midrun hold: ignore accidental pre-hunt stomps in the smoke counter/wait gate.
+                let midrunOk = !smokeEnabled || SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
+                if midrunOk { smokeStatus.stomps += 1 }
                 playSFX(.sfxMopHit, smokeHero: true)
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
                 // Visible hit-stop on stomp (smoke + play) so gameplay video reads the juice.

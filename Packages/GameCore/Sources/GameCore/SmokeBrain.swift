@@ -197,8 +197,9 @@ public struct SmokeBrain: Equatable, Sendable {
         }
 
         // Beat 1 — run / jump / wall-slide until harness snaps 02-midrun (or elapsed fallback).
+        // Do NOT leave this hold on an accidental early stomp/mask — midrun shot must land first.
         let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
-        if !sawMask, !midrunOk, sim.state.elapsed < 45 {
+        if !midrunOk, sim.state.elapsed < 90 {
             return showcaseRunInput(sim: sim, tx: tx, ty: ty)
         }
 
@@ -256,13 +257,12 @@ public struct SmokeBrain: Equatable, Sendable {
         var moveX = 1.0
         var jumpPressed = false
         var jumpHeld = false
-        // Stay left of the MOP pack so midrun never accidentally stomps before the hunt beat.
+        // Stay well left of the MOP pack so midrun never accidentally stomps before the hunt beat.
         if let mop = nearestMop(sim: sim) {
             let dx = mop.position.x - b.position.x
-            if dx < tile * 2.5 {
-                moveX = -0.35
-                jumpPressed = false
-                return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false)
+            if dx < tile * 4.5 {
+                moveX = dx < tile * 2.0 ? -0.85 : -0.25
+                return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false, pouncePressed: false)
             }
         }
         // Periodic hops + wall-slide taps so 02-midrun reads as Celeste-feel movement.
