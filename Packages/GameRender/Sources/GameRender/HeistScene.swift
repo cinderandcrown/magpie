@@ -766,8 +766,10 @@ public final class HeistScene: SKScene {
 
     private func beginPlay() {
         // Start audio here (not in didMove) so smoke video has a soundtrack without launch jetsam.
+        // simctl recordVideo has no app-audio track — smoke also writes smoke_audio_events.txt for mux.
+        if smokeEnabled { JuiceSound.shared.beginSmokeAudioLog() }
         JuiceSound.shared.prepare()
-        JuiceSound.shared.play(.sfxUITap)
+        playSFX(.sfxUITap, smokeHero: true)
         JuiceSound.shared.startLevelMusic()
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
@@ -778,7 +780,7 @@ public final class HeistScene: SKScene {
 
     private func doRetry() {
         JuiceSound.shared.prepare()
-        JuiceSound.shared.play(.sfxUITap)
+        playSFX(.sfxUITap, smokeHero: true)
         JuiceSound.shared.startLevelMusic()
         sim.retry()
         hideOutcome()

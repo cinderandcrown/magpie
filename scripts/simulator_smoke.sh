@@ -260,6 +260,128 @@ if fps < need:
 print(f"OK FPS {fps:.1f} >= {need:.0f}")
 PY
 
+# simctl recordVideo is video-only — mux level music + hero SFX from the smoke audio timeline.
+AUDIO_DIR="Assets/Generated/audio"
+EVENTS_SRC="$(data_container)/Documents/smoke_audio_events.txt"
+EVENTS_COPY="$OUT_DIR/smoke_audio_events.txt"
+if [[ -f "$EVENTS_SRC" ]]; then
+  cp "$EVENTS_SRC" "$EVENTS_COPY"
+else
+  echo "WARN: missing smoke_audio_events.txt — muxing music bed only" >&2
+  : > "$EVENTS_COPY"
+fi
+python3 - "$VIDEO_OUT" "$AUDIO_DIR" "$EVENTS_COPY" <<'PY'
+import os, subprocess, sys, tempfile
+
+video, audio_dir, events_path = sys.argv[1:4]
+probe = subprocess.check_output(
+    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+     "-of", "default=noprint_wrappers=1:nokey=1", video],
+    text=True,
+).strip()
+dur = float(probe)
+if dur < 1:
+    raise SystemExit(f"FAIL: video duration {dur} too short for audio mux")
+
+def find_clip(stem: str):
+    for ext in (".wav", ".caf", ".m4a", ".mp3"):
+        p = os.path.join(audio_dir, stem + ext)
+        if os.path.isfile(p):
+            return p
+    return None
+
+music = find_clip("level_loop")
+if not music:
+    raise SystemExit("FAIL: missing Assets/Generated/audio/level_loop.* for mux")
+
+# Parse timeline: "<sec> sfx <key>" / "<sec> music <name>"
+sfx_map = {
+    "mop_hit": "mop_hit",
+    "mask_mode_on": "mask_mode_on",
+    "player_hit": "player_hit",
+    "fail": "fail",
+    "win": "win",
+    "ui_tap": "ui_tap",
+}
+events = []
+with open(events_path, encoding="utf-8") as f:
+    for line in f:
+        parts = line.strip().split()
+        if len(parts) >= 3 and parts[1] == "sfx":
+            t = float(parts[0])
+            key = parts[2]
+            stem = sfx_map.get(key, key)
+            clip = find_clip(stem)
+            if clip and 0 <= t < dur:
+                events.append((t, clip))
+
+# Cap overlays so filter graphs stay small on CI.
+events = events[:24]
+
+inputs = ["-y", "-i", video, "-stream_loop", "-1", "-i", music]
+filter_parts = [
+    f"[1:a]volume=0.45,atrim=0:{dur:.3f},asetpts=PTS-STARTPTS,aformat=sample_fmts=fltp:channel_layouts=stereo[bed]"
+]
+amix_inputs = ["[bed]"]
+idx = 2
+for t, clip in events:
+    inputs += ["-i", clip]
+    # adelay wants milliseconds per channel
+    ms = int(t * 1000)
+    filter_parts.append(
+        f"[{idx}:a]volume=0.85,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+        f"adelay={ms}|{ms},apad=whole_dur={dur:.3f},atrim=0:{dur:.3f},asetpts=PTS-STARTPTS[s{idx}]"
+    )
+    amix_inputs.append(f"[s{idx}]")
+    idx += 1
+
+n = len(amix_inputs)
+filter_parts.append(
+    f"{''.join(amix_inputs)}amix=inputs={n}:duration=first:dropout_transition=0:normalize=0[aout]"
+)
+fc = ";".join(filter_parts)
+
+muxed = video + ".mux.mp4"
+cmd = [
+    "ffmpeg", *inputs,
+    "-filter_complex", fc,
+    "-map", "0:v:0", "-map", "[aout]",
+    "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+    "-shortest", "-movflags", "+faststart",
+    muxed,
+]
+print("mux audio:", " ".join(cmd[:8]), "…", f"sfx={len(events)} dur={dur:.1f}s")
+subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+os.replace(muxed, video)
+
+# Assert an audible audio stream exists.
+streams = subprocess.check_output(
+    ["ffprobe", "-v", "error", "-select_streams", "a",
+     "-show_entries", "stream=codec_type", "-of", "csv=p=0", video],
+    text=True,
+).strip()
+if "audio" not in streams:
+    raise SystemExit("FAIL: smoke-gameplay.mp4 missing audio stream after mux")
+
+# Spot-check energy over the first 40s.
+wav = tempfile.mktemp(suffix=".wav")
+subprocess.check_call(
+    ["ffmpeg", "-y", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-t", "40", wav],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+)
+import wave, struct
+with wave.open(wav, "rb") as w:
+    raw = w.readframes(w.getnframes())
+    samples = struct.unpack("<" + "h" * (len(raw) // 2), raw)
+os.unlink(wav)
+if not samples:
+    raise SystemExit("FAIL: muxed audio decoded empty")
+rms = (sum(x * x for x in samples) / len(samples)) ** 0.5
+print(f"OK audio mux rms={rms:.1f} sfx_events={len(events)}")
+if rms < 40:
+    raise SystemExit(f"FAIL: muxed audio too quiet (rms={rms:.1f})")
+PY
+
 # Palette gate: midrun must contain bright magenta + teal neon (not dim gray placeholders).
 # Homebrew Python is PEP 668 externally-managed — prefer a throwaway venv for Pillow.
 PALETTE_PY=""
