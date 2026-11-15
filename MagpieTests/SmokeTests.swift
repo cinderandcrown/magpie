@@ -7,8 +7,8 @@ import XCTest
 final class SmokeTests: XCTestCase {
     func testCoreAndServicesLink() {
         XCTAssertEqual(ModuleInfo.name, "GameCore")
-        let clock = MockClock(now: 1)
-        XCTAssertEqual(clock.now, 1)
+        let clock = MockClock(value: 1)
+        XCTAssertEqual(clock.now(), 1)
     }
 
     func testNeonDocksLoads() throws {
