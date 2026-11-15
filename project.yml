@@ -44,7 +44,7 @@ targets:
     resources:
       - path: Magpie/Assets.xcassets
       - path: Magpie/PrivacyInfo.xcprivacy
-      # Folder reference so Generated/{audio,backgrounds,sprites,ui,icon} stay nested in the app bundle.
+      # Symlink folder reference (plus Copy Generated Assets script as a belt-and-suspenders copy).
       - path: Magpie/Generated
         type: folder
     preBuildScripts:
@@ -60,6 +60,17 @@ targets:
           test -d "$SRC/ui"
           test -f "$SRC/ui/logo_trash_panda.png"
           echo "Generated assets OK at $SRC"
+    postCompileScripts:
+      - name: Copy Generated Assets into app
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          SRC="${SRCROOT}/Assets/Generated"
+          DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Generated"
+          mkdir -p "$DEST"
+          rsync -a --delete "${SRC}/" "${DEST}/"
+          test -f "${DEST}/ui/logo_trash_panda.png"
+          echo "Copied Generated -> $DEST"
     settings:
       base:
         INFOPLIST_FILE: Magpie/Info.plist
