@@ -123,7 +123,7 @@ jobs:
           | tee xcodebuild-test.log \
           | xcbeautify --renderer github-actions
 
-      - name: Simulator smoke (3 screenshots + 30s video)
+      - name: Simulator smoke (gameplay video + moment screenshots)
         env:
           DEVICE: ${{ steps.tests.outputs.device }}
         run: |

@@ -289,6 +289,26 @@ final class GameCoreTests: XCTestCase {
         XCTAssertEqual(sim.state.phase, .playing)
     }
 
+    /// Regression for jetsam-era smoke crash: long autoplay soak must not trap or explode state.
+    func testSmokeBrainDoesNotTrapForSixtySeconds() throws {
+        let map = try NeonDocksLevel.load()
+        var tuning = Tuning.default
+        tuning.maskModeAtCombo = 3
+        var sim = Sim(map: map, tuning: tuning, seed: 7)
+        var brain = SmokeBrain()
+        for _ in 0..<Int(60 * tuning.simHz) {
+            let cue = brain.next(sim: sim)
+            if cue.start { sim.startRun() }
+            if cue.retry { sim.retry() }
+            if case .playing = sim.state.phase {
+                sim.step(cue.input)
+            }
+            // State hash must remain finite/stable enough to compute.
+            _ = sim.state.stateHash
+        }
+        XCTAssertNotEqual(sim.state.phase, .title)
+    }
+
     func testRespondsWithinTwoFrames() throws {
         let map = try TileMap.parse("###\n#@#\n###")
         // need ground under

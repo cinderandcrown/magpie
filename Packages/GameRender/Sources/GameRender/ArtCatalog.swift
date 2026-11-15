@@ -7,36 +7,22 @@ import UIKit
 
 @MainActor
 public enum ArtCatalog {
-    public static let nightSky = SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 1)
-    public static let neonPink = SKColor(red: 1.0, green: 0.32, blue: 0.72, alpha: 1)
-    public static let neonCyan = SKColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 1)
+    public static let nightSky = SKColor(red: 0.08, green: 0.06, blue: 0.18, alpha: 1)
+    public static let neonPink = SKColor(red: 1.0, green: 0.35, blue: 0.75, alpha: 1)
+    public static let neonCyan = SKColor(red: 0.3, green: 0.98, blue: 1.0, alpha: 1)
     public static let neonLime = SKColor(red: 0.62, green: 1.0, blue: 0.42, alpha: 1)
     public static let neonOrange = SKColor(red: 1.0, green: 0.62, blue: 0.22, alpha: 1)
-    public static let asphalt = SKColor(red: 0.22, green: 0.18, blue: 0.32, alpha: 1)
+    public static let asphalt = SKColor(red: 0.28, green: 0.22, blue: 0.38, alpha: 1)
+    public static let dockFill = SKColor(red: 0.10, green: 0.08, blue: 0.20, alpha: 1)
 
-    /// Soft alpha erode / green despill for chroma fringe on keyed sprites.
-    public static func makeDespillShader() -> SKShader {
-        SKShader(source: """
-        void main() {
-          vec4 c = texture2D(u_texture, v_tex_coord);
-          float mx = max(c.r, c.b);
-          float greenSpill = c.g - mx;
-          if (greenSpill > 0.02) {
-            c.g = mx + greenSpill * 0.15;
-            c.a *= smoothstep(0.02, 0.18, mx + c.a * 0.5);
-          }
-          if (c.a > 0.05 && c.a < 0.85) {
-            c.a *= 0.92;
-          }
-          gl_FragColor = c;
-        }
-        """)
-    }
+    private static var textureCache: [AssetKey: SKTexture] = [:]
 
     public static func texture(_ key: AssetKey) -> SKTexture? {
+        if let cached = textureCache[key] { return cached }
         guard let img = AssetManifest.image(for: key) else { return nil }
         let tex = SKTexture(image: img)
         tex.filteringMode = .linear
+        textureCache[key] = tex
         return tex
     }
 
@@ -44,8 +30,9 @@ public enum ArtCatalog {
         keys.compactMap { texture($0) }
     }
 
+    /// Despill disabled at runtime — per-sprite SKShader was killing FPS (~10) and contributing to jetsam.
     public static func applyDespill(_ node: SKSpriteNode) {
-        node.shader = makeDespillShader()
+        node.shader = nil
     }
 
     public static func makeBanditVisual() -> BanditVisual {
@@ -54,24 +41,18 @@ public enum ArtCatalog {
 
     public static func makeMopNode() -> SKSpriteNode {
         let tex = texture(.mopPatrol) ?? texture(.mopIdle)
-        let n = SKSpriteNode(texture: tex, size: CGSize(width: 96, height: 64))
+        let n = SKSpriteNode(texture: tex, size: CGSize(width: 72, height: 48))
         n.name = "mop"
-        if tex != nil { applyDespill(n) }
         return n
     }
 
     public static func makeShinyNode() -> SKNode {
         let frames = textures(AssetManifest.shinyFrames)
-        let n = SKSpriteNode(texture: frames.first, size: CGSize(width: 36, height: 36))
+        let n = SKSpriteNode(texture: frames.first, size: CGSize(width: 28, height: 28))
         n.name = "shiny"
-        if frames.first != nil { applyDespill(n) }
         if frames.count > 1 {
-            n.run(SKAction.repeatForever(SKAction.animate(with: frames, timePerFrame: 0.12)))
-        } else {
-            n.run(SKAction.repeatForever(SKAction.sequence([
-                SKAction.scale(to: 1.15, duration: 0.3),
-                SKAction.scale(to: 0.95, duration: 0.3),
-            ])))
+            // Slower animation = less GPU churn
+            n.run(SKAction.repeatForever(SKAction.animate(with: frames, timePerFrame: 0.18)))
         }
         return n
     }
@@ -79,7 +60,7 @@ public enum ArtCatalog {
     public static func makeLogoNode() -> SKNode {
         if let tex = texture(.logo) {
             let s = SKSpriteNode(texture: tex)
-            let maxW: CGFloat = 320
+            let maxW: CGFloat = 300
             let scale = min(1, maxW / max(s.size.width, 1))
             s.setScale(scale)
             s.name = "logo"
@@ -92,8 +73,21 @@ public enum ArtCatalog {
         return t
     }
 
+    /// Backgrounds are 2560×1440 masters — downsample before upload to GPU.
     public static func background(_ key: AssetKey, height: CGFloat) -> SKSpriteNode? {
-        guard let tex = texture(key) else { return nil }
+        guard let img = AssetManifest.image(for: key) else { return nil }
+        let maxPixel: CGFloat = 1400
+        let scale = min(1, maxPixel / max(img.size.width, img.size.height))
+        let sized: UIImage
+        if scale < 0.99 {
+            let newSize = CGSize(width: img.size.width * scale, height: img.size.height * scale)
+            let renderer = UIGraphicsImageRenderer(size: newSize)
+            sized = renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: newSize)) }
+        } else {
+            sized = img
+        }
+        let tex = SKTexture(image: sized)
+        tex.filteringMode = .linear
         let aspect = tex.size().width / max(tex.size().height, 1)
         let n = SKSpriteNode(texture: tex, size: CGSize(width: height * aspect, height: height))
         n.anchorPoint = CGPoint(x: 0.5, y: 0.5)
@@ -105,7 +99,6 @@ public enum ArtCatalog {
     public static func tileTexture(index: Int) -> SKTexture? {
         if let cached = tileCache[index] { return cached }
         let name = String(format: "tile_%02d", index)
-        // Reuse AssetManifest path roots via a tiny shim key path under sprites/tiles.
         let rel = "sprites/tiles/\(name)"
         var url: URL?
         if let res = Bundle.main.resourceURL {
@@ -125,9 +118,13 @@ public enum ArtCatalog {
               let data = try? Data(contentsOf: url),
               let img = UIImage(data: data) else { return nil }
         let tex = SKTexture(image: img)
+        tex.filteringMode = .nearest
         tileCache[index] = tex
         return tex
     }
+
+    /// Budget helper for regression tests: solids should not explode into dual edge nodes.
+    public static var expectedNodesPerSolidTile: Int { 1 }
 }
 
 /// Animated raccoon using Fire Fox frames + procedural bob for a readable run.
@@ -143,6 +140,8 @@ public final class BanditVisual: SKNode {
     private var flopTex: SKTexture?
     private var maskTex: SKTexture?
     private var bobPhase: CGFloat = 0
+    private var runIndex: Int = 0
+    private var runAcc: CGFloat = 0
 
     public override init() {
         idleTex = ArtCatalog.texture(.raccoonIdle)
@@ -153,27 +152,17 @@ public final class BanditVisual: SKNode {
         flopTex = ArtCatalog.texture(.raccoonBellyFlop)
         maskTex = ArtCatalog.texture(.raccoonMaskMode)
 
-        // ~1/7 of a typical phone height once world zoom (~1.7x) is applied.
-        sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 80, height: 80))
+        // Readable on phone (~1/7 screen with mild world zoom).
+        sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 72, height: 72))
         sprite.name = "sprite"
-        ArtCatalog.applyDespill(sprite)
 
-        shadow = SKShapeNode(ellipseOf: CGSize(width: 44, height: 12))
+        shadow = SKShapeNode(ellipseOf: CGSize(width: 40, height: 10))
         shadow.fillColor = SKColor(white: 0, alpha: 0.4)
         shadow.strokeColor = .clear
         shadow.zPosition = -1
 
         super.init()
         addChild(shadow)
-        // Magenta/teal rim via colored glow sprite behind the raccoon.
-        let glow = SKSpriteNode(texture: idleTex, size: CGSize(width: 86, height: 86))
-        glow.color = ArtCatalog.neonCyan
-        glow.colorBlendFactor = 0.85
-        glow.alpha = 0.45
-        glow.zPosition = -0.5
-        glow.name = "rim"
-        ArtCatalog.applyDespill(glow)
-        addChild(glow)
         addChild(sprite)
         name = "bandit"
     }
@@ -189,15 +178,20 @@ public final class BanditVisual: SKNode {
         sprite.removeAction(forKey: "run")
         switch anim {
         case .run:
+            // Manual frame advance — avoids SKAction allocate/churn every state flip.
             if runTextures.count >= 2 {
-                let animate = SKAction.animate(with: runTextures, timePerFrame: 0.09)
-                sprite.run(SKAction.repeatForever(animate), withKey: "run")
+                runAcc += dt
+                if runAcc >= 0.09 {
+                    runAcc = 0
+                    runIndex = (runIndex + 1) % runTextures.count
+                    sprite.texture = runTextures[runIndex]
+                }
             } else if let idleTex {
                 sprite.texture = idleTex
             }
             bobPhase += dt * 14
-            sprite.position.y = sin(bobPhase) * 3
-            let squash = 1.0 + sin(bobPhase * 2) * 0.04
+            sprite.position.y = sin(bobPhase) * 2.5
+            let squash = 1.0 + sin(bobPhase * 2) * 0.035
             sprite.yScale = squash
             sprite.xScale = (sprite.xScale >= 0 ? 1 : -1) * (2 - squash)
         case .jump:
@@ -223,15 +217,13 @@ public final class BanditVisual: SKNode {
             let face = sprite.xScale >= 0 ? 1.0 : -1.0
             sprite.xScale = face
         }
-        sprite.color = maskMode ? ArtCatalog.neonCyan : .white
-        sprite.colorBlendFactor = maskMode ? 0.28 : 0
-        if let glow = childNode(withName: "rim") as? SKSpriteNode {
-            glow.texture = sprite.texture
-            glow.xScale = sprite.xScale
-            glow.yScale = sprite.yScale
-            glow.position = sprite.position
-            glow.color = maskMode ? ArtCatalog.neonPink : ArtCatalog.neonCyan
-            glow.alpha = maskMode ? 0.7 : 0.4
+        // Rim via light color blend (no second sprite / no shader).
+        if maskMode {
+            sprite.color = ArtCatalog.neonCyan
+            sprite.colorBlendFactor = 0.3
+        } else {
+            sprite.color = ArtCatalog.neonPink
+            sprite.colorBlendFactor = 0.12
         }
     }
 }

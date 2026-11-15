@@ -68,6 +68,10 @@ public final class JuiceSound: @unchecked Sendable {
             player.play()
             oneshots.append(player)
             oneshots.removeAll { !$0.isPlaying && $0 !== player }
+            // Hard cap — prevents AVAudioPlayer pile-up under autoplay stomps/SFX spam.
+            if oneshots.count > 8 {
+                oneshots.removeFirst(oneshots.count - 8)
+            }
         } catch {
             // Missing/corrupt clip — ignore rather than crash the host.
         }

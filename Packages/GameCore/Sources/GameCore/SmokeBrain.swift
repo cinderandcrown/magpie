@@ -62,13 +62,9 @@ public struct SmokeBrain: Equatable, Sendable {
             if sim.state.bandit.maskMode { sawMask = true }
             if sim.state.bestCombo > 0 || sim.state.bandit.combo > 0 { /* stomps tracked via events in scene */ }
 
-            // After ~22s of play without a death, seek the water hazard once.
-            if !diedOnce, sim.state.elapsed > 22, act == .play {
-                act = .seekDeath
-            }
-            // After Mask Mode or enough stomps, still push forward.
+            // After Mask (or ~20s), seek a visible death once, then push for exit.
             if diedOnce { act = .finishPush }
-            if sawMask, !diedOnce, sim.state.elapsed > 28 {
+            if !diedOnce, act == .play, (sawMask || sim.state.elapsed > 20) {
                 act = .seekDeath
             }
 
