@@ -640,9 +640,16 @@ public final class HeistScene: SKScene {
         #endif
 
         statusAcc += dt
-        if smokeEnabled, statusAcc >= 0.5 {
-            statusAcc = 0
-            writeSmokeStatus()
+        if smokeEnabled {
+            // Title: write every frame so CI can snap 01-title before autoplay advances.
+            let interval: TimeInterval = {
+                if case .title = sim.state.phase { return 0.05 }
+                return 0.35
+            }()
+            if statusAcc >= interval {
+                statusAcc = 0
+                writeSmokeStatus()
+            }
         }
 
         // Cap hit-stop so we never freeze the sim for long (felt like hitches at low FPS).
