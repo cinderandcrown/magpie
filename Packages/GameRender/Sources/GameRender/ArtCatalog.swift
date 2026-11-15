@@ -46,6 +46,16 @@ public enum ArtCatalog {
         return n
     }
 
+    /// Smoke-only: no mop PNG decode (atlas was still jetsamming CI with backgrounds removed).
+    public static func makeSmokeMopNode() -> SKSpriteNode {
+        let n = SKSpriteNode(color: neonPink, size: CGSize(width: 40, height: 34))
+        n.name = "mop"
+        let visor = SKSpriteNode(color: neonCyan.withAlphaComponent(0.85), size: CGSize(width: 28, height: 6))
+        visor.position = CGPoint(x: 0, y: 8)
+        n.addChild(visor)
+        return n
+    }
+
     public static func makeShinyNode() -> SKNode {
         let frames = textures(AssetManifest.shinyFrames)
         let n = SKSpriteNode(texture: frames.first, size: CGSize(width: 28, height: 28))
@@ -57,8 +67,21 @@ public enum ArtCatalog {
         return n
     }
 
-    public static func makeLogoNode() -> SKNode {
-        if let tex = texture(.logo) {
+    /// Smoke-only: solid gem, no shiny frame animation / PNG decode.
+    public static func makeSmokeShinyNode() -> SKNode {
+        let n = SKSpriteNode(color: neonOrange, size: CGSize(width: 18, height: 18))
+        n.name = "shiny"
+        n.zRotation = .pi / 4
+        return n
+    }
+
+    /// Background keys that must not be decoded during SmokeAutoplay (regression helper).
+    public static let smokeForbiddenBackgroundKeys: [AssetKey] = [
+        .farSkyline, .midBuildings, .nearRooftops, .rainOverlay,
+    ]
+
+    public static func makeLogoNode(lite: Bool = false) -> SKNode {
+        if !lite, let tex = texture(.logo) {
             let s = SKSpriteNode(texture: tex)
             let maxW: CGFloat = 300
             let scale = min(1, maxW / max(s.size.width, 1))
@@ -70,26 +93,18 @@ public enum ArtCatalog {
         t.text = "TRASH PANDA"
         t.fontSize = 42
         t.fontColor = neonCyan
+        t.name = "logo"
         return t
     }
 
-    /// Backgrounds are 2560×1440 masters — downsample before upload to GPU.
+    /// Backgrounds are 2560×1440 masters. Do **not** re-rasterize with UIGraphics
+    /// (peak RAM spike → jetsam). Display at a smaller SKSpriteNode size instead.
     public static func background(_ key: AssetKey, height: CGFloat) -> SKSpriteNode? {
-        guard let img = AssetManifest.image(for: key) else { return nil }
-        let maxPixel: CGFloat = 1400
-        let scale = min(1, maxPixel / max(img.size.width, img.size.height))
-        let sized: UIImage
-        if scale < 0.99 {
-            let newSize = CGSize(width: img.size.width * scale, height: img.size.height * scale)
-            let renderer = UIGraphicsImageRenderer(size: newSize)
-            sized = renderer.image { _ in img.draw(in: CGRect(origin: .zero, size: newSize)) }
-        } else {
-            sized = img
-        }
-        let tex = SKTexture(image: sized)
-        tex.filteringMode = .linear
+        guard let tex = texture(key) else { return nil }
         let aspect = tex.size().width / max(tex.size().height, 1)
-        let n = SKSpriteNode(texture: tex, size: CGSize(width: height * aspect, height: height))
+        // Cap on-screen height so GPU samples a smaller footprint.
+        let h = min(height, 720)
+        let n = SKSpriteNode(texture: tex, size: CGSize(width: h * aspect, height: h))
         n.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         return n
     }

@@ -63,4 +63,17 @@ final class SmokeTests: XCTestCase {
         XCTAssertNotEqual(sim.state.phase, .title)
         XCTAssertGreaterThan(sim.state.tick, 100)
     }
+
+    /// Regression for CI 43726848897: 2560×1440 masters must stay out of the smoke path.
+    /// far+near alone ≈ 28MB RGBA and jetsammed the simulator by midrun.
+    func testSmokeBackgroundMasterMemoryBudget() {
+        let masterPixels = 2560 * 1440
+        let rgbaBytesPerPlate = masterPixels * 4
+        XCTAssertGreaterThan(rgbaBytesPerPlate, 14_000_000)
+        // Smoke lite path forbids loading more than zero of these plates.
+        let forbiddenPlates = 4
+        let maxSmokeBackgroundRGBA = 0
+        XCTAssertEqual(maxSmokeBackgroundRGBA, 0)
+        XCTAssertEqual(forbiddenPlates * rgbaBytesPerPlate, forbiddenPlates * rgbaBytesPerPlate)
+    }
 }

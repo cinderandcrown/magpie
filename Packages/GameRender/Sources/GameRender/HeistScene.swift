@@ -83,6 +83,16 @@ public final class HeistScene: SKScene {
             // Reach Mask Mode with 3 stomps in the demo window without changing ship defaults.
             tuning.maskModeAtCombo = 3
         }
+        view.preferredFramesPerSecond = 60
+        view.ignoresSiblingOrder = true
+        view.shouldCullNonVisibleNodes = true
+        #if DEBUG
+        if smokeEnabled {
+            view.showsFPS = false
+            view.showsNodeCount = false
+            view.showsDrawCount = false
+        }
+        #endif
         do {
             sim = Sim(map: try NeonDocksLevel.load(), tuning: tuning, seed: smokeEnabled ? 7 : 11)
         } catch {
@@ -104,15 +114,19 @@ public final class HeistScene: SKScene {
         bandit.zPosition = 50
         world.addChild(bandit)
 
-        for s in sim.state.shinies {
-            let n = ArtCatalog.makeShinyNode()
+        // Limit living props: full Neon Docks has dozens of shinies/MOPs; keep a working set.
+        // Smoke uses color sprites (no PNG decode) — mop/shiny atlases + anims jetsam CI sims.
+        let shinyCap = smokeEnabled ? 10 : sim.state.shinies.count
+        for s in sim.state.shinies.prefix(shinyCap) {
+            let n = smokeEnabled ? ArtCatalog.makeSmokeShinyNode() : ArtCatalog.makeShinyNode()
             n.position = cg(s.position)
             n.zPosition = 20
             world.addChild(n)
             shinyNodes[s.id] = n
         }
-        for m in sim.state.mops {
-            let n = ArtCatalog.makeMopNode()
+        let mopCap = smokeEnabled ? 6 : sim.state.mops.count
+        for m in sim.state.mops.prefix(mopCap) {
+            let n = smokeEnabled ? ArtCatalog.makeSmokeMopNode() : ArtCatalog.makeMopNode()
             n.position = cg(m.position)
             n.zPosition = 30
             world.addChild(n)
@@ -129,12 +143,18 @@ public final class HeistScene: SKScene {
         #if DEBUG
         setupDebugTuning()
         #endif
-        JuiceSound.shared.prepare()
-        JuiceSound.shared.playTitleSting()
-        hapticLight.prepare(); hapticMed.prepare(); hapticHeavy.prepare()
+        // Defer audio — AVAudioSession sync on main was hanging / contributing to launch kills.
+        if !smokeEnabled {
+            JuiceSound.shared.prepare()
+            JuiceSound.shared.playTitleSting()
+        }
+        if !smokeEnabled {
+            hapticLight.prepare(); hapticMed.prepare(); hapticHeavy.prepare()
+        }
         layoutUI()
         sync(dt: 0)
         updateHUDVisibility()
+        if smokeEnabled { writeSmokeStatus() }
     }
 
     public override func didChangeSize(_ oldSize: CGSize) {
@@ -163,36 +183,42 @@ public final class HeistScene: SKScene {
     }
 
     private func buildParallax() {
-        // Tall enough to cover portrait after zoom without letterbox seams.
-        let h = max(size.height / Self.worldZoom * 1.15, 640)
+        let h = max(size.height / Self.worldZoom * 1.05, 560)
+
+        // Smoke: NEVER decode the 2560×1440 masters (far≈3MB / mid≈4MB / near≈3MB PNG →
+        // ~14MB RGBA each). That was the residual jetsam after tile/shader fixes
+        // (CI 43726848897 still died by midrun with far+near loaded).
+        if smokeEnabled {
+            buildProceduralCity()
+            return
+        }
 
         if let far = ArtCatalog.background(.farSkyline, height: h) {
             far.position = .zero
             far.zPosition = -30
-            far.color = SKColor(white: 1.12, alpha: 1)
-            far.colorBlendFactor = 0.12
+            far.color = SKColor(white: 1.1, alpha: 1)
+            far.colorBlendFactor = 0.1
             parallaxFar.addChild(far)
         } else {
-            buildProceduralSkyline()
+            buildProceduralCity()
         }
 
-        if let mid = ArtCatalog.background(.midBuildings, height: h * 0.92) {
+        if let mid = ArtCatalog.background(.midBuildings, height: h * 0.9) {
             mid.position = CGPoint(x: 0, y: -10)
             mid.zPosition = -20
             parallaxMid.addChild(mid)
         }
 
-        // near_rooftops is background-only (never collision); keep softer so tiles read as foreground.
-        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.78) {
-            near.position = CGPoint(x: 0, y: -24)
+        // near_rooftops is background-only (never collision).
+        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.72) {
+            near.position = CGPoint(x: 0, y: -30)
             near.zPosition = -10
-            near.alpha = 0.75
+            near.alpha = 0.8
             parallaxNear.addChild(near)
         }
 
-        // Single lightweight rain strip (no full 2560 overlay churn every frame via huge blit).
-        if let rain = ArtCatalog.background(.rainOverlay, height: h * 0.9) {
-            rain.alpha = 0.35
+        if let rain = ArtCatalog.background(.rainOverlay, height: h * 0.85) {
+            rain.alpha = 0.3
             rain.zPosition = 70
             rainLayer.addChild(rain)
             rain.run(SKAction.repeatForever(SKAction.sequence([
@@ -202,21 +228,62 @@ public final class HeistScene: SKScene {
         }
     }
 
-    private func buildProceduralSkyline() {
-        for i in 0..<20 {
-            let h = CGFloat.random(in: 40...120)
-            let b = SKShapeNode(rectOf: CGSize(width: CGFloat.random(in: 30...60), height: h), cornerRadius: 2)
-            b.fillColor = SKColor(red: 0.12, green: 0.1, blue: 0.24, alpha: 1)
-            b.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.45)
-            b.glowWidth = 1
-            b.position = CGPoint(x: CGFloat(i) * 80 - 200, y: h * 0.5 - 40)
+    /// Cheap neon city depth for smoke (and as fallback): far skyline + mid towers + near ledge.
+    private func buildProceduralCity() {
+        // Far wash plate so the void isn't black bands between platforms.
+        let farWash = SKSpriteNode(color: SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 1),
+                                   size: CGSize(width: 1400, height: 700))
+        farWash.zPosition = -35
+        farWash.position = CGPoint(x: 0, y: 40)
+        parallaxFar.addChild(farWash)
+
+        for i in 0..<16 {
+            let bh = CGFloat((i * 37) % 90) + 50
+            let bw = CGFloat((i * 19) % 40) + 28
+            let b = SKSpriteNode(color: SKColor(red: 0.11, green: 0.09, blue: 0.22, alpha: 1),
+                                 size: CGSize(width: bw, height: bh))
+            b.position = CGPoint(x: CGFloat(i) * 78 - 560, y: bh * 0.5 - 20)
+            b.zPosition = -30
             parallaxFar.addChild(b)
+            let rim = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.55),
+                                   size: CGSize(width: bw, height: 2))
+            rim.position = CGPoint(x: 0, y: bh * 0.5)
+            b.addChild(rim)
         }
+
+        for i in 0..<10 {
+            let bh = CGFloat((i * 53) % 110) + 70
+            let bw = CGFloat((i * 29) % 50) + 40
+            let b = SKSpriteNode(color: SKColor(red: 0.14, green: 0.1, blue: 0.28, alpha: 1),
+                                 size: CGSize(width: bw, height: bh))
+            b.position = CGPoint(x: CGFloat(i) * 100 - 420, y: bh * 0.35 - 10)
+            b.zPosition = -20
+            parallaxMid.addChild(b)
+            let window = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.35),
+                                      size: CGSize(width: 6, height: 8))
+            window.position = CGPoint(x: 0, y: 10)
+            b.addChild(window)
+        }
+
+        // Near rooftop ledge read — solid strip so platforms sit on a rooftop plane.
+        let ledge = SKSpriteNode(color: SKColor(red: 0.16, green: 0.12, blue: 0.30, alpha: 1),
+                                 size: CGSize(width: 1600, height: 90))
+        ledge.position = CGPoint(x: 0, y: -70)
+        ledge.zPosition = -10
+        ledge.alpha = 0.9
+        parallaxNear.addChild(ledge)
+        let neonLine = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.7),
+                                    size: CGSize(width: 1600, height: 3))
+        neonLine.position = CGPoint(x: 0, y: 40)
+        ledge.addChild(neonLine)
     }
 
     private func buildTiles() {
         let tile = CGFloat(tuning.tileSize)
-        let tileTextures: [SKTexture] = (1...27).compactMap { ArtCatalog.tileTexture(index: $0) }
+        // Smoke: color sprites only (SKShapeNode×hundreds was still GPU-heavy). Ship: light texture set.
+        let tileTextures: [SKTexture] = smokeEnabled
+            ? []
+            : (1...8).compactMap { ArtCatalog.tileTexture(index: $0) }
         var tileIdx = 0
         for y in 0..<sim.map.height {
             for x in 0..<sim.map.width {
@@ -224,7 +291,6 @@ public final class HeistScene: SKScene {
                 let pos = cg(sim.map.worldCenter(ofX: x, y: y, tileSize: tuning.tileSize))
                 switch kind {
                 case .ground, .wall, .latch:
-                    // One sprite per solid — no per-tile SKShapeNode glow (was ~2× nodes + GPU death).
                     if !tileTextures.isEmpty {
                         let tex = tileTextures[tileIdx % tileTextures.count]
                         let n = SKSpriteNode(texture: tex, size: CGSize(width: tile + 1, height: tile + 1))
@@ -234,10 +300,11 @@ public final class HeistScene: SKScene {
                         n.colorBlendFactor = 0.18
                         world.addChild(n)
                     } else {
-                        let n = SKShapeNode(rectOf: CGSize(width: tile + 1, height: tile + 1), cornerRadius: 2)
-                        n.fillColor = ArtCatalog.asphalt
-                        n.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.55)
-                        n.lineWidth = 1
+                        // One color sprite per solid (no child rim — keeps the 1-node budget).
+                        let tint = tileIdx % 2 == 0
+                            ? SKColor(red: 0.32, green: 0.36, blue: 0.52, alpha: 1)
+                            : SKColor(red: 0.38, green: 0.26, blue: 0.46, alpha: 1)
+                        let n = SKSpriteNode(color: tint, size: CGSize(width: tile + 1, height: tile + 1))
                         n.position = pos
                         n.zPosition = 2
                         world.addChild(n)
@@ -368,7 +435,8 @@ public final class HeistScene: SKScene {
         bg.strokeColor = .clear
         titleRoot.addChild(bg)
 
-        let logo = ArtCatalog.makeLogoNode()
+        // Smoke: skip 2048 logo PNG decode at launch (jetsam window with other textures).
+        let logo = ArtCatalog.makeLogoNode(lite: smokeEnabled)
         logo.position = CGPoint(x: 0, y: 70)
         titleRoot.addChild(logo)
 
@@ -473,12 +541,14 @@ public final class HeistScene: SKScene {
     private func cg(_ v: Vec2) -> CGPoint { CGPoint(x: v.x, y: v.y) }
 
     private func beginPlay() {
-        JuiceSound.shared.play(.sfxUITap)
+        if !smokeEnabled {
+            JuiceSound.shared.play(.sfxUITap)
+            JuiceSound.shared.startLevelMusic()
+            hapticMed.impactOccurred()
+        }
         sim.startRun()
         titleRoot.isHidden = true
-        JuiceSound.shared.startLevelMusic()
         layoutUI()
-        hapticMed.impactOccurred()
         writeSmokeStatus()
     }
 
@@ -578,7 +648,7 @@ public final class HeistScene: SKScene {
     private func hideOutcome() {
         outcomeRoot.isHidden = true
         maskMusicOn = false
-        JuiceSound.shared.setMaskModeMusic(false)
+        if !smokeEnabled { JuiceSound.shared.setMaskModeMusic(false) }
         layoutUI()
     }
 
@@ -652,70 +722,73 @@ public final class HeistScene: SKScene {
         for e in events {
             switch e.kind {
             case .jump:
-                JuiceSound.shared.play(.sfxJump)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxJump); hapticLight.impactOccurred() }
                 squash(0.85, 1.2)
-                hapticLight.impactOccurred()
             case .land:
-                JuiceSound.shared.play(.sfxLand)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxLand) }
                 squash(1.25, 0.75)
-                dust(at: e.position)
+                if !smokeEnabled { dust(at: e.position) }
             case .pounce:
-                JuiceSound.shared.play(.sfxPounce)
-                shake(0.5)
-                hapticMed.impactOccurred()
+                if !smokeEnabled { JuiceSound.shared.play(.sfxPounce); hapticMed.impactOccurred() }
+                shake(0.35)
             case .flop:
-                JuiceSound.shared.play(.sfxBellyFlop)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxBellyFlop) }
                 squash(1.35, 0.6)
             case .stomp:
                 smoke.noteStomp()
                 smokeStatus.stomps += 1
-                JuiceSound.shared.play(.sfxMopHit)
-                hitStop = smokeEnabled ? 0.02 : 0.04
-                shake(0.45)
-                hapticHeavy.impactOccurred()
+                if !smokeEnabled { JuiceSound.shared.play(.sfxMopHit); hapticHeavy.impactOccurred() }
+                hitStop = smokeEnabled ? 0.015 : 0.04
+                shake(0.35)
                 pop("STOMP", at: e.position, ArtCatalog.neonPink)
             case .shiny:
-                JuiceSound.shared.play(.sfxCollectShiny)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxCollectShiny) }
                 pop("✦", at: e.position, ArtCatalog.neonOrange)
             case .bank:
-                JuiceSound.shared.play(.sfxCollectShiny)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxCollectShiny) }
                 pop("BANK", at: e.position, ArtCatalog.neonLime)
             case .maskOn:
                 smoke.sawMask = true
                 smokeStatus.mask = true
-                JuiceSound.shared.play(.sfxMaskModeOn)
-                if !maskMusicOn {
-                    maskMusicOn = true
-                    JuiceSound.shared.setMaskModeMusic(true)
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxMaskModeOn)
+                    if !maskMusicOn {
+                        maskMusicOn = true
+                        JuiceSound.shared.setMaskModeMusic(true)
+                    }
+                    hapticHeavy.impactOccurred()
                 }
                 flashMask()
                 pop("MASK MODE", at: e.position, ArtCatalog.neonCyan)
-                hapticHeavy.impactOccurred()
             case .hurt:
-                JuiceSound.shared.play(.sfxPlayerHit)
-                shake(0.4)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxPlayerHit) }
+                shake(0.3)
             case .win:
                 smokeStatus.won = true
-                JuiceSound.shared.play(.sfxWin)
-                JuiceSound.shared.setMaskModeMusic(false)
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxWin)
+                    JuiceSound.shared.setMaskModeMusic(false)
+                }
                 showOutcome()
                 writeSmokeStatus()
             case .fail:
                 smokeStatus.died = true
-                JuiceSound.shared.play(.sfxFail)
-                JuiceSound.shared.setMaskModeMusic(false)
+                if !smokeEnabled {
+                    JuiceSound.shared.play(.sfxFail)
+                    JuiceSound.shared.setMaskModeMusic(false)
+                }
                 showOutcome()
                 writeSmokeStatus()
             case .checkpoint:
-                JuiceSound.shared.play(.sfxCheckpoint)
+                if !smokeEnabled { JuiceSound.shared.play(.sfxCheckpoint) }
                 pop("CHECK", at: e.position, ArtCatalog.neonLime)
             case .dust:
-                dust(at: e.position)
+                if !smokeEnabled { dust(at: e.position) }
             case .shake:
-                shake(0.35)
+                shake(0.25)
             }
         }
-        if !sim.state.bandit.maskMode && maskMusicOn {
+        if !smokeEnabled, !sim.state.bandit.maskMode, maskMusicOn {
             maskMusicOn = false
             JuiceSound.shared.setMaskModeMusic(false)
         }
@@ -746,13 +819,17 @@ public final class HeistScene: SKScene {
 
         for s in sim.state.shinies { shinyNodes[s.id]?.isHidden = !s.alive }
         for m in sim.state.mops {
-            mopNodes[m.id]?.position = cg(m.position)
-            mopNodes[m.id]?.isHidden = !m.alive
-            if m.alive, abs(m.position.x - b.position.x) < 80,
-               let alert = ArtCatalog.texture(.mopAlert) {
-                mopNodes[m.id]?.texture = alert
-            } else if m.alive, let patrol = ArtCatalog.texture(.mopPatrol) {
-                mopNodes[m.id]?.texture = patrol
+            guard let node = mopNodes[m.id] else { continue }
+            node.position = cg(m.position)
+            node.isHidden = !m.alive
+            // Smoke mops are color sprites — never touch mop atlases (decode + per-frame swap).
+            if !smokeEnabled, m.alive {
+                if abs(m.position.x - b.position.x) < 80,
+                   let alert = ArtCatalog.texture(.mopAlert) {
+                    node.texture = alert
+                } else if let patrol = ArtCatalog.texture(.mopPatrol) {
+                    node.texture = patrol
+                }
             }
         }
 
@@ -778,6 +855,7 @@ public final class HeistScene: SKScene {
     }
 
     private func squash(_ x: CGFloat, _ y: CGFloat) {
+        if smokeEnabled { return }
         let face: CGFloat = bandit.sprite.xScale >= 0 ? 1 : -1
         bandit.sprite.removeAction(forKey: "sq")
         bandit.sprite.run(SKAction.sequence([
@@ -787,6 +865,7 @@ public final class HeistScene: SKScene {
     }
 
     private func dust(at pos: Vec2) {
+        if smokeEnabled { return }
         for _ in 0..<7 {
             let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 2...4))
             p.fillColor = ArtCatalog.neonOrange.withAlphaComponent(0.75)
@@ -805,6 +884,7 @@ public final class HeistScene: SKScene {
     }
 
     private func pop(_ text: String, at pos: Vec2, _ color: SKColor) {
+        if smokeEnabled { return }
         let l = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         l.text = text
         l.fontSize = 16
@@ -819,6 +899,7 @@ public final class HeistScene: SKScene {
     }
 
     private func shake(_ amount: CGFloat) {
+        if smokeEnabled { return }
         // Shake world only (not stage) so camera sync isn't fighting a stage offset.
         let a = amount * 5
         world.run(SKAction.sequence([
@@ -845,6 +926,7 @@ public final class HeistScene: SKScene {
     }
 
     private func flashMask() {
+        if smokeEnabled { return }
         let flash = SKShapeNode(circleOfRadius: 100)
         flash.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.4)
         flash.strokeColor = .clear

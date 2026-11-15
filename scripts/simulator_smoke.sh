@@ -27,20 +27,13 @@ shot() {
     || xcrun simctl io "$DEVICE" screenshot "$out"
 }
 
-app_running() {
-  # Prefer spawn launchctl list; fall back to listing processes via simctl.
-  if xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -q "$BUNDLE_ID"; then
-    return 0
-  fi
-  if xcrun simctl spawn "$DEVICE" ps -ax 2>/dev/null | grep -i "[M]agpie" >/dev/null; then
-    return 0
-  fi
-  return 1
+data_container() {
+  xcrun simctl get_app_container "$DEVICE" "$BUNDLE_ID" data 2>/dev/null || true
 }
 
 read_status() {
   local data
-  data="$(xcrun simctl get_app_container "$DEVICE" "$BUNDLE_ID" data 2>/dev/null || true)"
+  data="$(data_container)"
   if [[ -n "$data" && -f "$data/Documents/smoke_status.txt" ]]; then
     cat "$data/Documents/smoke_status.txt"
   else
@@ -48,14 +41,30 @@ read_status() {
   fi
 }
 
+# Alive iff status file exists and was updated recently (app writes every 0.5s while running).
+app_alive() {
+  local data status
+  data="$(data_container)"
+  [[ -n "$data" ]] || return 1
+  status="$data/Documents/smoke_status.txt"
+  [[ -f "$status" ]] || return 1
+  # File touched within last 8 seconds.
+  local now mtime age
+  now="$(date +%s)"
+  mtime="$(stat -f %m "$status" 2>/dev/null || stat -c %Y "$status" 2>/dev/null || echo 0)"
+  age=$((now - mtime))
+  (( age <= 8 ))
+}
+
 require_app() {
   local label="$1"
-  if ! app_running; then
-    echo "FAIL: Magpie not running at $label (crashed/exited to SpringBoard)" >&2
+  if ! app_alive; then
+    echo "FAIL: Magpie not alive at $label (no fresh smoke_status.txt — crashed/exited)" >&2
     shot "$OUT_DIR/fail-$label-homescreen.png" || true
     read_status >&2 || true
     exit 1
   fi
+  echo "alive@$label: $(read_status)"
 }
 
 echo "Smoke (autoplay) on $DEVICE (display=$DISPLAY_ID)"
@@ -64,9 +73,14 @@ xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$APP_PATH"
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
 xcrun simctl launch "$DEVICE" "$BUNDLE_ID" -SmokeAutoplay
-sleep 1.5
-require_app "launch"
 
+# Wait until smoke_status appears (didMove).
+for _ in $(seq 1 40); do
+  if [[ -n "$(read_status)" ]]; then break; fi
+  sleep 0.25
+done
+require_app "launch"
+sleep 1.0
 shot "$OUT_DIR/01-title.png"
 
 VIDEO_OUT="$OUT_DIR/smoke-gameplay.mp4"
@@ -80,7 +94,6 @@ if ! kill -0 "$REC_PID" 2>/dev/null; then
 fi
 set -e
 
-# Timeline (~55s total recording). Assert alive before every shot.
 sleep 9
 require_app "midrun"
 shot "$OUT_DIR/02-midrun.png"
@@ -121,9 +134,6 @@ if fps < need:
 print(f"OK FPS {fps:.1f} >= {need:.0f}")
 PY
 
-# Single gameplay video artifact (no duplicate copy with a different name).
-# Keep smoke-30s.mp4 as a symlink alias only if distinct names were required historically —
-# gate asks for one distinct 45-60s video: publish smoke-gameplay.mp4 only.
 rm -f "$OUT_DIR/smoke-30s.mp4"
 cp -f "$OUT_DIR/01-title.png" "$OUT_DIR/01-launch.png"
 cp -f "$OUT_DIR/02-midrun.png" "$OUT_DIR/02-mid.png"
@@ -151,8 +161,6 @@ for f in "${REQUIRED[@]}"; do
   echo "OK $path ($(wc -c < "$path") bytes)"
 done
 
-# Rough home-screen detector: SpringBoard screenshots are often a different size class /
-# very low entropy in game HUD region — also reject if status says we never left title.
 PHASE="$(echo "$STATUS" | sed -n 's/.*phase=\([^ ]*\).*/\1/p' | head -1)"
 if [[ "$PHASE" == "title" ]]; then
   echo "FAIL: still on title at end of smoke" >&2
