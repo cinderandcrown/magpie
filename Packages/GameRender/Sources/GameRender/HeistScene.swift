@@ -101,7 +101,11 @@ public final class HeistScene: SKScene {
         sync(dt: 0)
     }
 
-    public override func didChangeSize(_ oldSize: CGSize) { layoutUI() }
+    public override func didChangeSize(_ oldSize: CGSize) {
+        // SpriteKit can call this before didMove; force-unwrapped UI is not ready yet.
+        guard stickBase != nil, sim != nil else { return }
+        layoutUI()
+    }
 
     // MARK: - Parallax (known issues handled)
 
@@ -364,6 +368,7 @@ public final class HeistScene: SKScene {
     }
 
     private func layoutUI() {
+        guard stickBase != nil, jumpBtn != nil, pounceBtn != nil, sim != nil else { return }
         let hw = size.width * 0.5
         let hh = size.height * 0.5
         stickBase.position = CGPoint(x: -hw + 78, y: -hh + 90)
