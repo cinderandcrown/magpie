@@ -237,15 +237,26 @@ print(f"OK FPS {fps:.1f} >= {need:.0f}")
 PY
 
 # Palette gate: midrun must contain bright magenta + teal neon (not dim gray placeholders).
-python3 - "$OUT_DIR/02-midrun.png" "Assets/Generated/backgrounds/mid_buildings.png" "$OUT_DIR/palette-side-by-side.png" <<'PY'
+# Homebrew Python is PEP 668 externally-managed — prefer a throwaway venv for Pillow.
+PALETTE_PY=""
+PALETTE_VENV="${TMPDIR:-/tmp}/magpie-smoke-palette-venv"
+if python3 -c 'import PIL' 2>/dev/null; then
+  PALETTE_PY="$(command -v python3)"
+elif [[ -x "$PALETTE_VENV/bin/python" ]] && "$PALETTE_VENV/bin/python" -c 'import PIL' 2>/dev/null; then
+  PALETTE_PY="$PALETTE_VENV/bin/python"
+else
+  if python3 -m venv "$PALETTE_VENV" 2>/tmp/magpie-venv.err; then
+    "$PALETTE_VENV/bin/pip" install -q pillow
+    PALETTE_PY="$PALETTE_VENV/bin/python"
+  else
+    # Last resort on locked-down runners.
+    python3 -m pip install -q --user --break-system-packages pillow
+    PALETTE_PY="$(command -v python3)"
+  fi
+fi
+"$PALETTE_PY" - "$OUT_DIR/02-midrun.png" "Assets/Generated/backgrounds/mid_buildings.png" "$OUT_DIR/palette-side-by-side.png" <<'PY'
 import sys
-from pathlib import Path
-try:
-    from PIL import Image
-except ImportError:
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "pillow"])
-    from PIL import Image
+from PIL import Image
 
 midrun = Image.open(sys.argv[1]).convert("RGB")
 ref = Image.open(sys.argv[2]).convert("RGB")
