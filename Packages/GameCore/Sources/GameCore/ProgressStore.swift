@@ -106,7 +106,7 @@ public struct ProgressStore: Sendable {
         combo: Int
     ) -> LevelMedals {
         var progress = load()
-        var earned = LevelMedals(
+        let earned = LevelMedals(
             finish: true,
             allShinies: shiniesTotal > 0 && shiniesCollected >= shiniesTotal,
             parTime: seconds <= parSeconds
