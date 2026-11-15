@@ -120,7 +120,7 @@ public struct SmokeBrain: Equatable, Sendable {
 
         if act == .finishPush {
             // Always press right — never turn back to re-hunt respawning MOPs.
-            var moveX = 1.0
+            let moveX = 1.0
             var jumpPressed = false
             var jumpHeld = false
             var pouncePressed = false
