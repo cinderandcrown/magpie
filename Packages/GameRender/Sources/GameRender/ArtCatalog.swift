@@ -14,22 +14,23 @@ public enum ArtCatalog {
     public static let asphalt = SKColor(red: 0.14, green: 0.12, blue: 0.22, alpha: 1)
 
     /// Soft alpha erode / green despill for chroma fringe on keyed sprites.
-    public static let despillShader = SKShader(source: """
-    void main() {
-      vec4 c = texture2D(u_texture, v_tex_coord);
-      float mx = max(c.r, c.b);
-      float greenSpill = c.g - mx;
-      if (greenSpill > 0.02) {
-        c.g = mx + greenSpill * 0.15;
-        c.a *= smoothstep(0.02, 0.18, mx + c.a * 0.5);
-      }
-      // Mild alpha erode on fringe
-      if (c.a > 0.05 && c.a < 0.85) {
-        c.a *= 0.92;
-      }
-      gl_FragColor = c;
+    public static func makeDespillShader() -> SKShader {
+        SKShader(source: """
+        void main() {
+          vec4 c = texture2D(u_texture, v_tex_coord);
+          float mx = max(c.r, c.b);
+          float greenSpill = c.g - mx;
+          if (greenSpill > 0.02) {
+            c.g = mx + greenSpill * 0.15;
+            c.a *= smoothstep(0.02, 0.18, mx + c.a * 0.5);
+          }
+          if (c.a > 0.05 && c.a < 0.85) {
+            c.a *= 0.92;
+          }
+          gl_FragColor = c;
+        }
+        """)
     }
-    """)
 
     public static func texture(_ key: AssetKey) -> SKTexture? {
         guard let img = AssetManifest.image(for: key) else { return nil }
@@ -43,7 +44,7 @@ public enum ArtCatalog {
     }
 
     public static func applyDespill(_ node: SKSpriteNode) {
-        node.shader = despillShader
+        node.shader = makeDespillShader()
     }
 
     /// 64pt raccoon sprite; animates via `BanditVisual`.
