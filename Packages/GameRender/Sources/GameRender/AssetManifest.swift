@@ -5,9 +5,8 @@ import Foundation
 import UIKit
 #endif
 
-/// Logical keys → Fire Fox paths under `Assets/Generated/` (see `docs/ASSETS.md`).
+/// Logical keys → Fire Fox paths under `Generated/` (see `docs/ASSETS.md`).
 public enum AssetKey: String, CaseIterable, Sendable {
-    // Raccoon
     case raccoonIdle = "raccoon/idle"
     case raccoonRun1 = "raccoon/run_01"
     case raccoonRun2 = "raccoon/run_02"
@@ -22,25 +21,21 @@ public enum AssetKey: String, CaseIterable, Sendable {
     case raccoonTailSwing = "raccoon/tail_swing"
     case raccoonMaskMode = "raccoon/mask_mode"
 
-    // MOP
     case mopIdle = "mop/idle"
     case mopPatrol = "mop/patrol"
     case mopAlert = "mop/alert"
 
-    // Shinies
     case shiny1 = "shiny/shiny_01"
     case shiny2 = "shiny/shiny_02"
     case shiny3 = "shiny/shiny_03"
     case shiny4 = "shiny/shiny_04"
 
-    // World
     case farSkyline = "far_skyline"
     case midBuildings = "mid_buildings"
     case nearRooftops = "near_rooftops"
     case rainOverlay = "rain_overlay"
     case logo = "logo_trash_panda"
 
-    // Audio SFX
     case sfxJump = "jump"
     case sfxLand = "land"
     case sfxCollectShiny = "collect_shiny"
@@ -56,7 +51,6 @@ public enum AssetKey: String, CaseIterable, Sendable {
     case sfxFail = "fail"
     case sfxUITap = "ui_tap"
 
-    // Music
     case musicLevelLoop = "level_loop"
     case musicMaskLayer = "mask_mode_layer"
     case musicTitleSting = "title_sting"
@@ -68,43 +62,52 @@ public enum AssetManifest {
     ]
     public static let shinyFrames: [AssetKey] = [.shiny1, .shiny2, .shiny3, .shiny4]
 
-    /// Relative path under the Generated folder (no scale suffix, no extension).
     public static func relativePath(for key: AssetKey) -> String {
         switch key {
         case .raccoonIdle, .raccoonRun1, .raccoonRun2, .raccoonRun3, .raccoonRun4, .raccoonRun5, .raccoonRun6,
-             .raccoonJump, .raccoonFall, .raccoonPounce, .raccoonBellyFlop, .raccoonTailSwing, .raccoonMaskMode:
-            return "sprites/\(key.rawValue)"
-        case .mopIdle, .mopPatrol, .mopAlert:
-            return "sprites/\(key.rawValue)"
-        case .shiny1, .shiny2, .shiny3, .shiny4:
+             .raccoonJump, .raccoonFall, .raccoonPounce, .raccoonBellyFlop, .raccoonTailSwing, .raccoonMaskMode,
+             .mopIdle, .mopPatrol, .mopAlert, .shiny1, .shiny2, .shiny3, .shiny4:
             return "sprites/\(key.rawValue)"
         case .farSkyline, .midBuildings, .nearRooftops, .rainOverlay:
             return "backgrounds/\(key.rawValue)"
         case .logo:
             return "ui/\(key.rawValue)"
         case .sfxJump, .sfxLand, .sfxCollectShiny, .sfxPounce, .sfxBellyFlop, .sfxTailSwing,
-             .sfxMopAlert, .sfxMopHit, .sfxPlayerHit, .sfxMaskModeOn, .sfxCheckpoint, .sfxWin, .sfxFail, .sfxUITap:
-            return "audio/\(key.rawValue)"
-        case .musicLevelLoop, .musicMaskLayer, .musicTitleSting:
+             .sfxMopAlert, .sfxMopHit, .sfxPlayerHit, .sfxMaskModeOn, .sfxCheckpoint, .sfxWin, .sfxFail, .sfxUITap,
+             .musicLevelLoop, .musicMaskLayer, .musicTitleSting:
             return "audio/\(key.rawValue)"
         }
     }
 
-    public static func audioURL(_ key: AssetKey, bundle: Bundle = .main) -> URL? {
-        let rel = relativePath(for: key)
-        let name = (rel as NSString).lastPathComponent
-        let dir = (rel as NSString).deletingLastPathComponent
-        let exts: [String]
-        switch key {
-        case .musicLevelLoop, .musicMaskLayer, .musicTitleSting:
-            exts = ["m4a", "wav", "caf"]
-        default:
-            exts = ["wav", "caf", "m4a"]
+    /// Roots of the Generated tree inside the app bundle (folder reference last path component).
+    private static func generatedRoots(bundle: Bundle) -> [URL] {
+        var roots: [URL] = []
+        if let res = bundle.resourceURL {
+            roots.append(res.appendingPathComponent("Generated", isDirectory: true))
+            roots.append(res.appendingPathComponent("Assets/Generated", isDirectory: true))
         }
-        for root in ["Generated", "Assets/Generated", ""] {
-            let sub = root.isEmpty ? dir : (dir.isEmpty ? root : "\(root)/\(dir)")
-            for ext in exts {
-                if let u = bundle.url(forResource: name, withExtension: ext, subdirectory: sub.isEmpty ? nil : sub) {
+        if let direct = bundle.url(forResource: "Generated", withExtension: nil) {
+            roots.append(direct)
+        }
+        return roots
+    }
+
+    private static func fileURL(relative: String, extensions: [String], bundle: Bundle) -> URL? {
+        for root in generatedRoots(bundle: bundle) {
+            for ext in extensions {
+                let url = root.appendingPathComponent(relative).appendingPathExtension(ext)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    return url
+                }
+            }
+        }
+        // Fallback: Bundle API with subdirectory
+        let name = (relative as NSString).lastPathComponent
+        let dir = (relative as NSString).deletingLastPathComponent
+        for rootName in ["Generated", "Assets/Generated"] {
+            let sub = dir.isEmpty ? rootName : "\(rootName)/\(dir)"
+            for ext in extensions {
+                if let u = bundle.url(forResource: name, withExtension: ext, subdirectory: sub) {
                     return u
                 }
             }
@@ -112,23 +115,29 @@ public enum AssetManifest {
         return nil
     }
 
+    public static func audioURL(_ key: AssetKey, bundle: Bundle = .main) -> URL? {
+        let rel = relativePath(for: key)
+        let exts: [String]
+        switch key {
+        case .musicLevelLoop, .musicMaskLayer, .musicTitleSting:
+            exts = ["m4a", "wav", "caf"]
+        default:
+            exts = ["wav", "caf", "m4a"]
+        }
+        return fileURL(relative: rel, extensions: exts, bundle: bundle)
+    }
+
     #if canImport(UIKit)
-    /// Loads @2x/@3x preferred for a 64pt sprite (masters are 256; @2x=128, @3x=192).
-    /// Prefer @2x then @3x without touching UIScreen (keeps this nonisolated / Sendable-safe).
+    /// Prefer @2x then @3x then master for a 64pt sprite.
     public static func image(for key: AssetKey, bundle: Bundle = .main) -> UIImage? {
         let rel = relativePath(for: key)
-        let base = (rel as NSString).lastPathComponent
-        let dir = (rel as NSString).deletingLastPathComponent
         let candidates: [(suffix: String, scale: CGFloat)] = [("@2x", 2), ("@3x", 3), ("", 1)]
-        for root in ["Generated", "Assets/Generated"] {
-            let sub = dir.isEmpty ? root : "\(root)/\(dir)"
-            for c in candidates {
-                let name = base + c.suffix
-                if let u = bundle.url(forResource: name, withExtension: "png", subdirectory: sub),
-                   let data = try? Data(contentsOf: u),
-                   let img = UIImage(data: data, scale: c.scale) {
-                    return img
-                }
+        for c in candidates {
+            let path = rel + c.suffix
+            if let url = fileURL(relative: path, extensions: ["png"], bundle: bundle),
+               let data = try? Data(contentsOf: url),
+               let img = UIImage(data: data, scale: c.scale) {
+                return img
             }
         }
         return nil

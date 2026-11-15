@@ -44,8 +44,22 @@ targets:
     resources:
       - path: Magpie/Assets.xcassets
       - path: Magpie/PrivacyInfo.xcprivacy
-      - path: Assets/Generated
+      # Folder reference so Generated/{audio,backgrounds,sprites,ui,icon} stay nested in the app bundle.
+      - path: Magpie/Generated
         type: folder
+    preBuildScripts:
+      - name: Ensure Generated assets present
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          SRC="${SRCROOT}/Assets/Generated"
+          LINK="${SRCROOT}/Magpie/Generated"
+          if [[ ! -e "$LINK" ]]; then
+            ln -sfn ../Assets/Generated "$LINK"
+          fi
+          test -d "$SRC/ui"
+          test -f "$SRC/ui/logo_trash_panda.png"
+          echo "Generated assets OK at $SRC"
     settings:
       base:
         INFOPLIST_FILE: Magpie/Info.plist

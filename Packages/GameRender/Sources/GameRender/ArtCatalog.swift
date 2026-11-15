@@ -105,16 +105,28 @@ public enum ArtCatalog {
     public static func tileTexture(index: Int) -> SKTexture? {
         if let cached = tileCache[index] { return cached }
         let name = String(format: "tile_%02d", index)
-        for root in ["Generated/sprites/tiles", "Assets/Generated/sprites/tiles"] {
-            if let u = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: root),
-               let data = try? Data(contentsOf: u),
-               let img = UIImage(data: data) {
-                let tex = SKTexture(image: img)
-                tileCache[index] = tex
-                return tex
+        // Reuse AssetManifest path roots via a tiny shim key path under sprites/tiles.
+        let rel = "sprites/tiles/\(name)"
+        var url: URL?
+        if let res = Bundle.main.resourceURL {
+            for root in ["Generated", "Assets/Generated"] {
+                let candidate = res.appendingPathComponent(root).appendingPathComponent(rel).appendingPathExtension("png")
+                if FileManager.default.fileExists(atPath: candidate.path) {
+                    url = candidate
+                    break
+                }
             }
         }
-        return nil
+        if url == nil {
+            url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "Generated/sprites/tiles")
+                ?? Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "Assets/Generated/sprites/tiles")
+        }
+        guard let url,
+              let data = try? Data(contentsOf: url),
+              let img = UIImage(data: data) else { return nil }
+        let tex = SKTexture(image: img)
+        tileCache[index] = tex
+        return tex
     }
 }
 
