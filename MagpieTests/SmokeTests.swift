@@ -96,6 +96,7 @@ final class SmokeTests: XCTestCase {
     }
 
     /// Gate: title wordmark must fit inside the iPhone 16 Pro Max safe area at 85% width.
+    @MainActor
     func testTitleLogoFitsSafeArea() {
         #if canImport(SpriteKit) && canImport(UIKit)
         let sceneSize = CGSize(width: 430, height: 932)
