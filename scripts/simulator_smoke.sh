@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copyright © 2026 Cinder and Crown LLC. All rights reserved.
-# Launch Magpie with -SmokeAutoplay, keep the app alive, record one ~55s gameplay video,
-# capture in-game moment screenshots, assert average FPS >= 50.
+# Launch Magpie with -SmokeAutoplay, record gameplay, capture moment screenshots
+# driven by smoke_status milestones (not blind sleeps), assert avg FPS >= 55.
 set -euo pipefail
 
 DEVICE="${1:?simulator UDID}"
@@ -9,7 +9,7 @@ APP_PATH="${2:?path to Magpie.app}"
 OUT_DIR="${3:-smoke-artifacts}"
 BUNDLE_ID="${BUNDLE_ID:-com.cinderandcrown.magpie}"
 DISPLAY_ID="${SIMCTL_DISPLAY:-1}"
-MIN_FPS="${SMOKE_MIN_FPS:-50}"
+MIN_FPS="${SMOKE_MIN_FPS:-55}"
 
 mkdir -p "$OUT_DIR"
 
@@ -41,15 +41,17 @@ read_status() {
   fi
 }
 
-# Alive iff status file exists and was updated recently (app writes every 0.5s while running).
+status_field() {
+  local key="$1"
+  echo "$(read_status)" | sed -n "s/.*${key}=\([^ ]*\).*/\1/p" | head -1
+}
+
 app_alive() {
-  local data status
+  local data status now mtime age
   data="$(data_container)"
   [[ -n "$data" ]] || return 1
   status="$data/Documents/smoke_status.txt"
   [[ -f "$status" ]] || return 1
-  # File touched within last 8 seconds.
-  local now mtime age
   now="$(date +%s)"
   mtime="$(stat -f %m "$status" 2>/dev/null || stat -c %Y "$status" 2>/dev/null || echo 0)"
   age=$((now - mtime))
@@ -59,12 +61,37 @@ app_alive() {
 require_app() {
   local label="$1"
   if ! app_alive; then
-    echo "FAIL: Magpie not alive at $label (no fresh smoke_status.txt — crashed/exited)" >&2
+    echo "FAIL: Magpie not alive at $label" >&2
     shot "$OUT_DIR/fail-$label-homescreen.png" || true
     read_status >&2 || true
     exit 1
   fi
   echo "alive@$label: $(read_status)"
+}
+
+# Poll until python predicate on status line prints YES, or timeout.
+# Predicate receives the status line as sys.argv[1].
+wait_status() {
+  local label="$1"
+  local pypred="$2"
+  local timeout="${3:-90}"
+  local start now status
+  start="$(date +%s)"
+  while true; do
+    require_app "$label"
+    status="$(read_status)"
+    if STATUS_LINE="$status" python3 -c "$pypred"; then
+      echo "ready@$label: $status"
+      return 0
+    fi
+    now="$(date +%s)"
+    if (( now - start >= timeout )); then
+      echo "FAIL: timeout waiting for $label (status=$status)" >&2
+      shot "$OUT_DIR/fail-$label-timeout.png" || true
+      exit 1
+    fi
+    sleep 0.35
+  done
 }
 
 echo "Smoke (autoplay) on $DEVICE (display=$DISPLAY_ID)"
@@ -74,13 +101,14 @@ xcrun simctl install "$DEVICE" "$APP_PATH"
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
 xcrun simctl launch "$DEVICE" "$BUNDLE_ID" -SmokeAutoplay
 
-# Wait until smoke_status appears (didMove).
 for _ in $(seq 1 40); do
   if [[ -n "$(read_status)" ]]; then break; fi
   sleep 0.25
 done
 require_app "launch"
-sleep 1.0
+
+# 01 — title while still on title
+wait_status "title" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "phase=title" in s else 1)' 20
 shot "$OUT_DIR/01-title.png"
 
 VIDEO_OUT="$OUT_DIR/smoke-gameplay.mp4"
@@ -94,24 +122,26 @@ if ! kill -0 "$REC_PID" 2>/dev/null; then
 fi
 set -e
 
-sleep 9
-require_app "midrun"
+# 02 — midrun: running/jumping before the first stomp (SmokeBrain delays MOP hunt ~4.2s)
+wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); d=re.search(r"died=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0) and (not d or int(d.group(1))==0)) else 1)' 40
 shot "$OUT_DIR/02-midrun.png"
 
-sleep 8
-require_app "stomp"
+# 03 — real MOP stomp (after the run showcase)
+wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 50
 shot "$OUT_DIR/03-mop-stomp.png"
 
-sleep 8
-require_app "mask"
+# 04 — Mask Mode (status latches; capture while still playing shortly after stomp)
+wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("mask=1" in s and "phase=playing" in s) else 1)' 45
+sleep 0.45
 shot "$OUT_DIR/04-mask-mode.png"
 
-sleep 10
-require_app "death"
+# 05 — death / retry overlay
+wait_status "death" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("died=1" in s and "phase=failed" in s) else 1)' 50
+sleep 0.35
 shot "$OUT_DIR/05-death-retry.png"
 
-sleep 12
-require_app "results"
+# 06 — RESULTS (win after retry)
+wait_status "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("won=1" in s or "phase=won" in s) else 1)' 70
 shot "$OUT_DIR/06-results.png"
 
 kill -INT "$REC_PID" 2>/dev/null || true
@@ -134,6 +164,45 @@ if fps < need:
 print(f"OK FPS {fps:.1f} >= {need:.0f}")
 PY
 
+# Palette gate: midrun must contain bright magenta + teal neon (not dim gray placeholders).
+python3 - "$OUT_DIR/02-midrun.png" "Assets/Generated/backgrounds/mid_buildings.png" "$OUT_DIR/palette-side-by-side.png" <<'PY'
+import sys
+from pathlib import Path
+try:
+    from PIL import Image
+except ImportError:
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "pillow"])
+    from PIL import Image
+
+midrun = Image.open(sys.argv[1]).convert("RGB")
+ref = Image.open(sys.argv[2]).convert("RGB")
+# Sample center crop of gameplay (skip HUD/controls)
+w, h = midrun.size
+crop = midrun.crop((int(w*0.1), int(h*0.18), int(w*0.9), int(h*0.62)))
+pixels = list(crop.getdata())
+n = len(pixels)
+# Magenta-ish and teal-ish counts (bright neon, not dim)
+mag = sum(1 for r,g,b in pixels if r > 160 and b > 100 and r > g + 30)
+teal = sum(1 for r,g,b in pixels if b > 140 and g > 120 and b > r + 20)
+bright = sum(1 for r,g,b in pixels if (r+g+b)/3 > 70)
+print(f"palette midrun magenta={mag/n:.3%} teal={teal/n:.3%} bright={bright/n:.3%}")
+if mag / n < 0.004 and teal / n < 0.004:
+    raise SystemExit("FAIL: midrun lacks bright magenta/teal neon (looks like flat placeholders)")
+if bright / n < 0.08:
+    raise SystemExit("FAIL: midrun too dim vs Game Plan bright-neon-on-dark")
+
+# Side-by-side vs mid_buildings reference strip
+rw, rh = 480, 270
+left = crop.resize((rw, rh))
+right = ref.resize((rw, rh))
+board = Image.new("RGB", (rw * 2 + 16, rh + 40), (12, 8, 28))
+board.paste(left, (0, 32))
+board.paste(right, (rw + 16, 32))
+board.save(sys.argv[3])
+print(f"OK wrote {sys.argv[3]}")
+PY
+
 rm -f "$OUT_DIR/smoke-30s.mp4"
 cp -f "$OUT_DIR/01-title.png" "$OUT_DIR/01-launch.png"
 cp -f "$OUT_DIR/02-midrun.png" "$OUT_DIR/02-mid.png"
@@ -147,6 +216,7 @@ REQUIRED=(
   05-death-retry.png
   06-results.png
   smoke-gameplay.mp4
+  palette-side-by-side.png
   01-launch.png
   02-mid.png
   03-end.png
@@ -161,27 +231,17 @@ for f in "${REQUIRED[@]}"; do
   echo "OK $path ($(wc -c < "$path") bytes)"
 done
 
-PHASE="$(echo "$STATUS" | sed -n 's/.*phase=\([^ ]*\).*/\1/p' | head -1)"
+PHASE="$(status_field phase)"
+STOMPS="$(status_field stomps)"; STOMPS="${STOMPS:-0}"
+MASK="$(status_field mask)"; MASK="${MASK:-0}"
+DIED="$(status_field died)"; DIED="${DIED:-0}"
+WON="$(status_field won)"; WON="${WON:-0}"
 if [[ "$PHASE" == "title" ]]; then
-  echo "FAIL: still on title at end of smoke" >&2
+  echo "FAIL: still on title" >&2
   exit 1
 fi
-
-# Milestone gates — screenshots must show real in-game beats, not just “still alive”.
-STOMPS="$(echo "$STATUS" | sed -n 's/.*stomps=\([0-9][0-9]*\).*/\1/p' | head -1)"
-MASK="$(echo "$STATUS" | sed -n 's/.*mask=\([0-9][0-9]*\).*/\1/p' | head -1)"
-DIED="$(echo "$STATUS" | sed -n 's/.*died=\([0-9][0-9]*\).*/\1/p' | head -1)"
-STOMPS="${STOMPS:-0}"; MASK="${MASK:-0}"; DIED="${DIED:-0}"
-if (( STOMPS < 1 )); then
-  echo "FAIL: expected MOP stomp during smoke (stomps=$STOMPS)" >&2
+if (( STOMPS < 1 || MASK < 1 || DIED < 1 || WON < 1 )); then
+  echo "FAIL: milestones stomps=$STOMPS mask=$MASK died=$DIED won=$WON" >&2
   exit 1
 fi
-if (( MASK < 1 )); then
-  echo "FAIL: expected Mask Mode during smoke (mask=$MASK)" >&2
-  exit 1
-fi
-if (( DIED < 1 )); then
-  echo "FAIL: expected death/results during smoke (died=$DIED)" >&2
-  exit 1
-fi
-echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED)"
+echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED won=$WON)"

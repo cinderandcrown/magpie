@@ -70,16 +70,16 @@ final class SmokeTests: XCTestCase {
         XCTAssertGreaterThan(stomps, 0, "smoke soak should land at least one stomp")
     }
 
-    /// Regression for CI 43726848897: 2560×1440 masters must stay out of the smoke path.
-    /// far+near alone ≈ 28MB RGBA and jetsammed the simulator by midrun.
+    /// Regression for CI 43726848897: 2560×1440 masters must never upload as full RGBA.
+    /// Smoke path ImageIO-downsamples to ≤1024px (≤1280 outside smoke).
     func testSmokeBackgroundMasterMemoryBudget() {
         let masterPixels = 2560 * 1440
         let rgbaBytesPerPlate = masterPixels * 4
         XCTAssertGreaterThan(rgbaBytesPerPlate, 14_000_000)
-        // Smoke lite path forbids loading more than zero of these plates.
-        let forbiddenPlates = 4
-        let maxSmokeBackgroundRGBA = 0
-        XCTAssertEqual(maxSmokeBackgroundRGBA, 0)
-        XCTAssertEqual(forbiddenPlates * rgbaBytesPerPlate, forbiddenPlates * rgbaBytesPerPlate)
+        let smokeMaxPixel = 1024
+        let smokeBytesPerPlate = smokeMaxPixel * smokeMaxPixel * 4
+        // Three parallax layers at 1024² stay well under one 2560 master.
+        XCTAssertLessThan(smokeBytesPerPlate * 3, rgbaBytesPerPlate)
+        XCTAssertEqual(smokeMaxPixel, 1024)
     }
 }

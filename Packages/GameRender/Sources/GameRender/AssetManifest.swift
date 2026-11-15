@@ -115,6 +115,11 @@ public enum AssetManifest {
         return nil
     }
 
+    /// Public wrapper for ArtCatalog / ImageIO loaders.
+    public static func fileURLPublic(relative: String, extensions: [String], bundle: Bundle = .main) -> URL? {
+        fileURL(relative: relative, extensions: extensions, bundle: bundle)
+    }
+
     public static func audioURL(_ key: AssetKey, bundle: Bundle = .main) -> URL? {
         let rel = relativePath(for: key)
         let exts: [String]
@@ -128,10 +133,15 @@ public enum AssetManifest {
     }
 
     #if canImport(UIKit)
-    /// Prefer @2x then @3x then master for a 64pt sprite.
-    public static func image(for key: AssetKey, bundle: Bundle = .main) -> UIImage? {
+    /// Prefer @2x (or preferScale) then other scales then master.
+    public static func image(for key: AssetKey, bundle: Bundle = .main, preferScale: CGFloat = 2) -> UIImage? {
         let rel = relativePath(for: key)
-        let candidates: [(suffix: String, scale: CGFloat)] = [("@2x", 2), ("@3x", 3), ("", 1)]
+        var candidates: [(suffix: String, scale: CGFloat)] = [("@2x", 2), ("@3x", 3), ("", 1)]
+        if preferScale >= 2.5 {
+            candidates = [("@3x", 3), ("@2x", 2), ("", 1)]
+        } else if preferScale < 1.5 {
+            candidates = [("", 1), ("@2x", 2), ("@3x", 3)]
+        }
         for c in candidates {
             let path = rel + c.suffix
             if let url = fileURL(relative: path, extensions: ["png"], bundle: bundle),

@@ -321,7 +321,8 @@ final class GameCoreTests: XCTestCase {
         var sawMask = false
         var sawDeath = false
         var sawRetry = false
-        for _ in 0..<Int(50 * tuning.simHz) {
+        var sawWin = false
+        for _ in 0..<Int(100 * tuning.simHz) {
             let cue = brain.next(sim: sim)
             if cue.start { sim.startRun() }
             if cue.retry {
@@ -335,17 +336,21 @@ final class GameCoreTests: XCTestCase {
                     case .stomp: sawStomp = true; brain.noteStomp()
                     case .maskOn: sawMask = true
                     case .fail: sawDeath = true
+                    case .win: sawWin = true
                     default: break
                     }
                 }
             } else if case .failed = sim.state.phase {
                 sawDeath = true
+            } else if case .won = sim.state.phase {
+                sawWin = true
             }
         }
         XCTAssertTrue(sawStomp, "expected at least one MOP stomp")
         XCTAssertTrue(sawMask, "expected Mask Mode")
         XCTAssertTrue(sawDeath, "expected a death for results screenshot")
         XCTAssertTrue(sawRetry || brain.diedOnce, "expected retry after death")
+        XCTAssertTrue(sawWin, "expected win RESULTS after retry")
     }
 
     func testSmokeDemoLevelLoads() throws {

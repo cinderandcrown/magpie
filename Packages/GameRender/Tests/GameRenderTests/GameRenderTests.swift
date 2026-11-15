@@ -14,12 +14,11 @@ final class GameRenderTests: XCTestCase {
     }
 
     #if canImport(SpriteKit) && canImport(UIKit)
-    /// Regression for CI 43726848897 jetsam: smoke must refuse 2560 background masters.
-    func testSmokeForbidsBackgroundMasters() {
-        XCTAssertEqual(ArtCatalog.smokeForbiddenBackgroundKeys.count, 4)
+    /// Glow is baked into PNGs; solids stay one visual node (SKTileMap / atlas).
+    func testBakedGlowNodeBudget() {
         XCTAssertEqual(ArtCatalog.expectedNodesPerSolidTile, 1)
-        XCTAssertTrue(ArtCatalog.smokeForbiddenBackgroundKeys.contains(.farSkyline))
-        XCTAssertTrue(ArtCatalog.smokeForbiddenBackgroundKeys.contains(.nearRooftops))
+        XCTAssertGreaterThan(ArtCatalog.paletteMagenta.r, 0.8)
+        XCTAssertGreaterThan(ArtCatalog.paletteTeal.b, 0.8)
     }
     #endif
 }

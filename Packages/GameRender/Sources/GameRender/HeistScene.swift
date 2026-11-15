@@ -7,8 +7,9 @@ import UIKit
 
 /// Side-view neon docks heist wired to `Assets/Generated/` via AssetManifest.
 public final class HeistScene: SKScene {
-    /// Mild zoom: raccoon ~1/7–1/8 of screen height without stripping the level into bands.
-    public static let worldZoom: CGFloat = 1.28
+    /// Zoom so playfield + skyline fill portrait (no empty black letterbox bands).
+    public static let worldZoom: CGFloat = 1.42
+    private var tileMapNode: SKTileMapNode?
 
     private var sim: Sim!
     private var tuning = Tuning.default
@@ -102,6 +103,7 @@ public final class HeistScene: SKScene {
             sim = Sim(map: try! TileMap.parse("###\n#@#\n###"), tuning: tuning)
         }
 
+        ArtCatalog.warmAtlases()
         stage.setScale(Self.worldZoom)
         addChild(stage)
         stage.addChild(parallaxFar)
@@ -117,19 +119,18 @@ public final class HeistScene: SKScene {
         bandit.zPosition = 50
         world.addChild(bandit)
 
-        // Limit living props: full Neon Docks has dozens of shinies/MOPs; keep a working set.
-        // Smoke uses color sprites (no PNG decode) — mop/shiny atlases + anims jetsam CI sims.
-        let shinyCap = smokeEnabled ? 10 : sim.state.shinies.count
+        // Real MOP / Shiny art always. Cap only on the huge Neon Docks prop count.
+        let shinyCap = smokeEnabled ? sim.state.shinies.count : min(sim.state.shinies.count, 40)
         for s in sim.state.shinies.prefix(shinyCap) {
-            let n = smokeEnabled ? ArtCatalog.makeSmokeShinyNode() : ArtCatalog.makeShinyNode()
+            let n = ArtCatalog.makeShinyNode()
             n.position = cg(s.position)
             n.zPosition = 20
             world.addChild(n)
             shinyNodes[s.id] = n
         }
-        let mopCap = smokeEnabled ? 6 : sim.state.mops.count
+        let mopCap = smokeEnabled ? sim.state.mops.count : min(sim.state.mops.count, 24)
         for m in sim.state.mops.prefix(mopCap) {
-            let n = smokeEnabled ? ArtCatalog.makeSmokeMopNode() : ArtCatalog.makeMopNode()
+            let n = ArtCatalog.makeMopNode()
             n.position = cg(m.position)
             n.zPosition = 30
             world.addChild(n)
@@ -167,168 +168,111 @@ public final class HeistScene: SKScene {
 
     // MARK: - Atmosphere / Parallax
 
-    /// Soft dock wash behind platforms — translucent so parallax city reads through (opaque
-    /// plates previously hid the skyline and left platforms as floating strips on navy).
+    /// Thin translucent wash only — real parallax fills the sky (no opaque plate / black bands).
     private func buildAtmosphere() {
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
         let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
-        let plate = SKSpriteNode(
-            color: ArtCatalog.dockFill.withAlphaComponent(0.55),
-            size: CGSize(width: mapW + 240, height: mapH + 160)
-        )
-        plate.position = CGPoint(x: mapW * 0.5, y: mapH * 0.45)
-        plate.zPosition = -5
-        world.addChild(plate)
-
         let wash = SKSpriteNode(
-            color: ArtCatalog.neonCyan.withAlphaComponent(0.08),
-            size: CGSize(width: mapW + 240, height: mapH)
+            color: ArtCatalog.dockFill.withAlphaComponent(0.22),
+            size: CGSize(width: mapW + 280, height: mapH + 200)
         )
-        wash.position = plate.position
-        wash.zPosition = -4
+        wash.position = CGPoint(x: mapW * 0.5, y: mapH * 0.55)
+        wash.zPosition = -6
         world.addChild(wash)
-
-        // Rooftop ledge strip under the playfield so decks read as one plane.
-        let ledge = SKSpriteNode(
-            color: SKColor(red: 0.14, green: 0.11, blue: 0.28, alpha: 0.9),
-            size: CGSize(width: mapW + 200, height: 48)
-        )
-        ledge.position = CGPoint(x: mapW * 0.5, y: 8)
-        ledge.zPosition = -3
-        world.addChild(ledge)
-        let neon = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.55), size: CGSize(width: mapW + 200, height: 2))
-        neon.position = CGPoint(x: 0, y: 22)
-        ledge.addChild(neon)
     }
 
     private func buildParallax() {
-        let h = max(size.height / Self.worldZoom * 1.05, 560)
+        let h = max(size.height / Self.worldZoom * 1.15, 620)
+        // ImageIO-downsampled masters (≤1280px) — real neon city, safe GPU footprint.
+        let maxPx: CGFloat = smokeEnabled ? 1024 : 1280
 
-        // Smoke: NEVER decode the 2560×1440 masters (far≈3MB / mid≈4MB / near≈3MB PNG →
-        // ~14MB RGBA each). That was the residual jetsam after tile/shader fixes
-        // (CI 43726848897 still died by midrun with far+near loaded).
-        if smokeEnabled {
-            buildProceduralCity()
-            return
-        }
-
-        if let far = ArtCatalog.background(.farSkyline, height: h) {
-            far.position = .zero
+        if let far = ArtCatalog.background(.farSkyline, height: h, maxPixel: maxPx) {
+            far.position = CGPoint(x: 0, y: 40)
             far.zPosition = -30
-            far.color = SKColor(white: 1.1, alpha: 1)
-            far.colorBlendFactor = 0.1
             parallaxFar.addChild(far)
-        } else {
-            buildProceduralCity()
         }
 
-        if let mid = ArtCatalog.background(.midBuildings, height: h * 0.9) {
-            mid.position = CGPoint(x: 0, y: -10)
+        if let mid = ArtCatalog.background(.midBuildings, height: h * 0.92, maxPixel: maxPx) {
+            mid.position = CGPoint(x: 0, y: -6)
             mid.zPosition = -20
+            // Brighten shop-row neon toward Game Plan magenta/teal.
+            mid.color = SKColor(red: 1.15, green: 1.05, blue: 1.2, alpha: 1)
+            mid.colorBlendFactor = 0.14
             parallaxMid.addChild(mid)
         }
 
-        // near_rooftops is background-only (never collision).
-        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.72) {
-            near.position = CGPoint(x: 0, y: -30)
+        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.75, maxPixel: maxPx) {
+            near.position = CGPoint(x: 0, y: -36)
             near.zPosition = -10
-            near.alpha = 0.8
+            near.alpha = 0.92
             parallaxNear.addChild(near)
         }
 
-        if let rain = ArtCatalog.background(.rainOverlay, height: h * 0.85) {
-            rain.alpha = 0.3
-            rain.zPosition = 70
-            rainLayer.addChild(rain)
-            rain.run(SKAction.repeatForever(SKAction.sequence([
-                SKAction.moveBy(x: -30, y: -90, duration: 1.1),
-                SKAction.moveBy(x: 30, y: 90, duration: 0),
-            ])))
-        }
-    }
-
-    /// Cheap neon city depth for smoke (and as fallback): far skyline + mid towers + near ledge.
-    private func buildProceduralCity() {
-        // Far wash plate so the void isn't black bands between platforms.
-        let farWash = SKSpriteNode(color: SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 1),
-                                   size: CGSize(width: 1400, height: 700))
-        farWash.zPosition = -35
-        farWash.position = CGPoint(x: 0, y: 40)
-        parallaxFar.addChild(farWash)
-
-        for i in 0..<16 {
-            let bh = CGFloat((i * 37) % 90) + 50
-            let bw = CGFloat((i * 19) % 40) + 28
-            let b = SKSpriteNode(color: SKColor(red: 0.11, green: 0.09, blue: 0.22, alpha: 1),
-                                 size: CGSize(width: bw, height: bh))
-            b.position = CGPoint(x: CGFloat(i) * 78 - 560, y: bh * 0.5 - 20)
-            b.zPosition = -30
-            parallaxFar.addChild(b)
-            let rim = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.55),
-                                   size: CGSize(width: bw, height: 2))
-            rim.position = CGPoint(x: 0, y: bh * 0.5)
-            b.addChild(rim)
-        }
-
-        for i in 0..<10 {
-            let bh = CGFloat((i * 53) % 110) + 70
-            let bw = CGFloat((i * 29) % 50) + 40
-            let b = SKSpriteNode(color: SKColor(red: 0.14, green: 0.1, blue: 0.28, alpha: 1),
-                                 size: CGSize(width: bw, height: bh))
-            b.position = CGPoint(x: CGFloat(i) * 100 - 420, y: bh * 0.35 - 10)
-            b.zPosition = -20
-            parallaxMid.addChild(b)
-            let window = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.35),
-                                      size: CGSize(width: 6, height: 8))
-            window.position = CGPoint(x: 0, y: 10)
-            b.addChild(window)
-        }
-
-        // Near rooftop ledge read — solid strip so platforms sit on a rooftop plane.
-        let ledge = SKSpriteNode(color: SKColor(red: 0.16, green: 0.12, blue: 0.30, alpha: 1),
-                                 size: CGSize(width: 1600, height: 90))
-        ledge.position = CGPoint(x: 0, y: -70)
-        ledge.zPosition = -10
-        ledge.alpha = 0.9
-        parallaxNear.addChild(ledge)
-        let neonLine = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.7),
-                                    size: CGSize(width: 1600, height: 3))
-        neonLine.position = CGPoint(x: 0, y: 40)
-        ledge.addChild(neonLine)
+        // Rain via capped SKEmitterNode (not a 2560 overlay blit).
+        let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: size.width / Self.worldZoom, height: h))
+        rainLayer.addChild(rain)
     }
 
     private func buildTiles() {
         let tile = CGFloat(tuning.tileSize)
-        // Smoke: color sprites only (SKShapeNode×hundreds was still GPU-heavy). Ship: light texture set.
-        let tileTextures: [SKTexture] = smokeEnabled
-            ? []
-            : (1...8).compactMap { ArtCatalog.tileTexture(index: $0) }
+        let tileSize = CGSize(width: tile, height: tile)
+        let tileSet = ArtCatalog.makePlatformTileSet(tileSize: tileSize)
+        let groups = tileSet.tileGroups
+        guard !groups.isEmpty else { return }
+
+        let mapNode = SKTileMapNode(
+            tileSet: tileSet,
+            columns: sim.map.width,
+            rows: sim.map.height,
+            tileSize: tileSize
+        )
+        mapNode.anchorPoint = CGPoint(x: 0, y: 0)
+        mapNode.position = .zero
+        mapNode.zPosition = 2
         var tileIdx = 0
+        for y in 0..<sim.map.height {
+            for x in 0..<sim.map.width {
+                let kind = sim.map.tile(atX: x, y: y)
+                switch kind {
+                case .ground, .wall, .latch:
+                    let group = groups[tileIdx % groups.count]
+                    mapNode.setTileGroup(group, forColumn: x, row: y)
+                    tileIdx += 1
+                default:
+                    break
+                }
+            }
+        }
+        world.addChild(mapNode)
+        tileMapNode = mapNode
+
+        // Decorative props from remaining tile art (pipes / grates / crates) as sparse overlays.
+        let propTextures = (18...27).compactMap { ArtCatalog.tileTexture(index: $0) }
+        if !propTextures.isEmpty {
+            var propI = 0
+            for y in 0..<sim.map.height {
+                for x in 0..<sim.map.width where sim.map.tile(atX: x, y: y) == .ground {
+                    if (x + y * 3) % 11 == 0 {
+                        let tex = propTextures[propI % propTextures.count]
+                        propI += 1
+                        let n = SKSpriteNode(texture: tex, size: CGSize(width: tile * 0.9, height: tile * 0.55))
+                        n.position = cg(sim.map.worldCenter(ofX: x, y: y, tileSize: tuning.tileSize))
+                        n.position.y += tile * 0.35
+                        n.zPosition = 3
+                        n.alpha = 0.95
+                        world.addChild(n)
+                    }
+                }
+            }
+        }
+
         for y in 0..<sim.map.height {
             for x in 0..<sim.map.width {
                 let kind = sim.map.tile(atX: x, y: y)
                 let pos = cg(sim.map.worldCenter(ofX: x, y: y, tileSize: tuning.tileSize))
                 switch kind {
                 case .ground, .wall, .latch:
-                    if !tileTextures.isEmpty {
-                        let tex = tileTextures[tileIdx % tileTextures.count]
-                        let n = SKSpriteNode(texture: tex, size: CGSize(width: tile + 1, height: tile + 1))
-                        n.position = pos
-                        n.zPosition = 2
-                        n.color = (tileIdx % 2 == 0) ? ArtCatalog.neonCyan : ArtCatalog.neonPink
-                        n.colorBlendFactor = 0.18
-                        world.addChild(n)
-                    } else {
-                        // One color sprite per solid (no child rim — keeps the 1-node budget).
-                        let tint = tileIdx % 2 == 0
-                            ? SKColor(red: 0.32, green: 0.36, blue: 0.52, alpha: 1)
-                            : SKColor(red: 0.38, green: 0.26, blue: 0.46, alpha: 1)
-                        let n = SKSpriteNode(color: tint, size: CGSize(width: tile + 1, height: tile + 1))
-                        n.position = pos
-                        n.zPosition = 2
-                        world.addChild(n)
-                    }
-                    tileIdx += 1
+                    break
                 case .crate:
                     let n = SKShapeNode(rectOf: CGSize(width: tile * 0.9, height: tile * 0.9), cornerRadius: 2)
                     n.fillColor = SKColor(red: 0.62, green: 0.38, blue: 0.2, alpha: 1)
@@ -454,8 +398,7 @@ public final class HeistScene: SKScene {
         bg.strokeColor = .clear
         titleRoot.addChild(bg)
 
-        // Smoke: skip 2048 logo PNG decode at launch (jetsam window with other textures).
-        let logo = ArtCatalog.makeLogoNode(lite: smokeEnabled)
+        let logo = ArtCatalog.makeLogoNode(lite: false)
         logo.position = CGPoint(x: 0, y: 70)
         titleRoot.addChild(logo)
 
@@ -783,7 +726,6 @@ public final class HeistScene: SKScene {
                     hapticHeavy.impactOccurred()
                 }
                 flashMask()
-                pop("MASK MODE", at: e.position, ArtCatalog.neonCyan)
             case .hurt:
                 if !smokeEnabled { JuiceSound.shared.play(.sfxPlayerHit) }
                 shake(0.3)
@@ -822,14 +764,19 @@ public final class HeistScene: SKScene {
         outcomeRoot.isHidden = false
         layoutUI()
         guard let label = outcomeRoot.childNode(withName: "olabel") as? SKLabelNode else { return }
+        let shinies = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
+        let stars: String = {
+            let s = min(3, max(1, shinies / 2 + (sim.state.bestCombo >= 3 ? 1 : 0)))
+            return String(repeating: "★", count: s) + String(repeating: "☆", count: 3 - s)
+        }()
         switch sim.state.phase {
-        case .won(let seconds, let shinies, let combo):
+        case .won(let seconds, let shinyCount, let combo):
             label.fontColor = ArtCatalog.neonLime
-            label.text = "HEIST COMPLETE\n\(String(format: "%.1f", seconds))s · \(shinies) Shinies\nBest combo x\(combo)\nTap to retry"
+            label.text = "RESULTS\n\(stars)\n\(String(format: "%.1f", seconds))s · \(shinyCount) Shinies\nBest combo x\(combo)\nTap to retry"
         case .failed(let reason):
             label.fontColor = ArtCatalog.neonPink
             let why = reason == .fellInWater ? "SPLASHED" : (reason == .spiked ? "SPIKED" : "BAGGED")
-            label.text = "\(why)\nTap to retry"
+            label.text = "\(why)\n\(stars)\n\(shinies) Shinies · \(String(format: "%.0f", sim.state.elapsed))s\nTap to retry"
         default: break
         }
     }
@@ -846,13 +793,18 @@ public final class HeistScene: SKScene {
             guard let node = mopNodes[m.id] else { continue }
             node.position = cg(m.position)
             node.isHidden = !m.alive
-            // Smoke mops are color sprites — never touch mop atlases (decode + per-frame swap).
-            if !smokeEnabled, m.alive {
-                if abs(m.position.x - b.position.x) < 80,
-                   let alert = ArtCatalog.texture(.mopAlert) {
-                    node.texture = alert
-                } else if let patrol = ArtCatalog.texture(.mopPatrol) {
-                    node.texture = patrol
+            if m.alive {
+                // Swap at most when crossing the alert threshold (avoid per-frame texture thrash).
+                let alertNow = abs(m.position.x - b.position.x) < 80
+                let key = alertNow ? "alert" : "patrol"
+                if node.userData?["pose"] as? String != key {
+                    if node.userData == nil { node.userData = NSMutableDictionary() }
+                    node.userData?["pose"] = key
+                    if alertNow, let alert = ArtCatalog.texture(.mopAlert) {
+                        node.texture = alert
+                    } else if let patrol = ArtCatalog.texture(.mopPatrol) {
+                        node.texture = patrol
+                    }
                 }
             }
         }
@@ -866,16 +818,16 @@ public final class HeistScene: SKScene {
         hudTime.text = String(format: "Time %.0fs", sim.state.elapsed)
 
         let lead = CGFloat(b.facing * tuning.cameraLeadTiles * tuning.tileSize)
-        let target = CGPoint(x: CGFloat(b.position.x) + lead, y: CGFloat(b.position.y) + 28)
+        // Bias camera up so skyline fills the top of the portrait frame (no empty black band).
+        let target = CGPoint(x: CGFloat(b.position.x) + lead, y: CGFloat(b.position.y) + 56)
         let s = CGFloat(tuning.cameraSmooth)
         cameraFocus.x += (target.x - cameraFocus.x) * s
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
-        // Parallax offsets inside stage (already scaled)
-        parallaxFar.position = CGPoint(x: cameraFocus.x * 0.88, y: cameraFocus.y * 0.96)
-        parallaxMid.position = CGPoint(x: cameraFocus.x * 0.65, y: cameraFocus.y * 0.92)
-        parallaxNear.position = CGPoint(x: cameraFocus.x * 0.45, y: cameraFocus.y * 0.88)
+        parallaxFar.position = CGPoint(x: cameraFocus.x * 0.9, y: cameraFocus.y * 0.97)
+        parallaxMid.position = CGPoint(x: cameraFocus.x * 0.7, y: cameraFocus.y * 0.93)
+        parallaxNear.position = CGPoint(x: cameraFocus.x * 0.5, y: cameraFocus.y * 0.9)
     }
 
     private func squash(_ x: CGFloat, _ y: CGFloat) {
@@ -908,7 +860,7 @@ public final class HeistScene: SKScene {
     }
 
     private func pop(_ text: String, at pos: Vec2, _ color: SKColor) {
-        if smokeEnabled { return }
+        // Allow Mask/Stomp pops during smoke so moment screenshots read clearly.
         let l = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         l.text = text
         l.fontSize = 16
@@ -950,18 +902,16 @@ public final class HeistScene: SKScene {
     }
 
     private func flashMask() {
-        if smokeEnabled { return }
-        let flash = SKShapeNode(circleOfRadius: 100)
-        flash.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.4)
-        flash.strokeColor = .clear
-        flash.glowWidth = 8
+        // Visible Mask Mode beat (baked look — no SKEffectNode). Always shown, including smoke.
+        let flash = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.45), size: CGSize(width: 160, height: 160))
         flash.position = bandit.position
         flash.zPosition = 45
         world.addChild(flash)
         flash.run(SKAction.sequence([
-            SKAction.group([SKAction.scale(to: 2.4, duration: 0.35), SKAction.fadeOut(withDuration: 0.35)]),
+            SKAction.group([SKAction.scale(to: 2.6, duration: 0.4), SKAction.fadeOut(withDuration: 0.4)]),
             SKAction.removeFromParent(),
         ]))
+        pop("MASK MODE", at: sim.state.bandit.position, ArtCatalog.neonCyan)
     }
 }
 #endif
