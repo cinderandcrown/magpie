@@ -26,17 +26,32 @@ public struct SmokeBrain: Equatable, Sendable {
     public var stompCount: Int = 0
     public var maskShowcaseFrames: Int = 0
 
-    /// Test override for proceed files (`nil` = check Documents).
-    public static var proceedFileOverride: Bool? = nil
-
     public init() {}
 
     /// Smoke harness handshake files in the app Documents directory.
     public static func smokeFlagExists(_ name: String) -> Bool {
-        if let override = proceedFileOverride { return override }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
         return FileManager.default.fileExists(atPath: docs.appendingPathComponent(name).path)
+    }
+
+    /// Unit-test helper: create/remove harness flags in Documents.
+    public static func setSmokeFlag(_ name: String, present: Bool) {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let url = docs.appendingPathComponent(name)
+        if present {
+            try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+            try? "ok".write(to: url, atomically: true, encoding: .utf8)
+        } else {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    public static func clearSmokeFlags() {
+        for name in ["smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_death_ok.txt"] {
+            setSmokeFlag(name, present: false)
+        }
     }
 
     public mutating func next(sim: Sim) -> (input: InputFrame, start: Bool, retry: Bool) {

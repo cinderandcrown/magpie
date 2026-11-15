@@ -277,8 +277,9 @@ final class GameCoreTests: XCTestCase {
         let map = try NeonDocksLevel.load()
         var sim = Sim(map: map, tuning: .default, seed: 1)
         var brain = SmokeBrain()
-        SmokeBrain.proceedFileOverride = true
-        defer { SmokeBrain.proceedFileOverride = nil }
+        SmokeBrain.clearSmokeFlags()
+        SmokeBrain.setSmokeFlag("smoke_proceed.txt", present: true)
+        defer { SmokeBrain.clearSmokeFlags() }
         var started = false
         for _ in 0..<30 {
             let cue = brain.next(sim: sim)
@@ -298,8 +299,11 @@ final class GameCoreTests: XCTestCase {
         tuning.maskModeAtCombo = 3
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
-        SmokeBrain.proceedFileOverride = true
-        defer { SmokeBrain.proceedFileOverride = nil }
+        SmokeBrain.clearSmokeFlags()
+        for name in ["smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_death_ok.txt"] {
+            SmokeBrain.setSmokeFlag(name, present: true)
+        }
+        defer { SmokeBrain.clearSmokeFlags() }
         for _ in 0..<Int(60 * tuning.simHz) {
             let cue = brain.next(sim: sim)
             if cue.start { sim.startRun() }
@@ -321,9 +325,12 @@ final class GameCoreTests: XCTestCase {
         tuning.comboGroundGrace = 4
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
-        // Unit test: skip harness file gates so the director can run end-to-end.
-        SmokeBrain.proceedFileOverride = true
-        defer { SmokeBrain.proceedFileOverride = nil }
+        // Unit test: pre-arm harness flags so the director can run end-to-end without waits.
+        SmokeBrain.clearSmokeFlags()
+        for name in ["smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_death_ok.txt"] {
+            SmokeBrain.setSmokeFlag(name, present: true)
+        }
+        defer { SmokeBrain.clearSmokeFlags() }
         var sawStomp = false
         var sawMask = false
         var sawDeath = false
