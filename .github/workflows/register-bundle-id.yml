@@ -1,0 +1,50 @@
+name: Register Bundle ID
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Write API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          for name in ASC_KEY_ID ASC_KEY_P8 ASC_ISSUER_ID; do
+            test -n "${!name}" || { echo "Missing $name"; exit 1; }
+          done
+          umask 077
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s\n' "$ASC_KEY_P8" > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "ASC_KEY_PATH=$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+      - name: Ensure App ID
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: python3 scripts/appstore_connect.py ensure-bundle-id --bundle-id com.cinderandcrown.magpie --name MAGPIE
+      - name: Check app record
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set +e
+          python3 scripts/appstore_connect.py check-app --bundle-id com.cinderandcrown.magpie
+          code=$?
+          set -e
+          if [ "$code" = 2 ]; then
+            echo "::warning::ASC app record missing — see OWNER_SETUP.md"
+            exit 0
+          fi
+          exit "$code"
+      - if: always()
+        run: rm -rf "$HOME/.appstoreconnect"

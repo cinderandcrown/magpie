@@ -10,6 +10,20 @@ Nov 14, 2026 · Nicholas Will
 
 If Grok is handed this whole file: read all of it, then do Mission 0 only and stop at its checkpoint.
 
+
+## Theme amendment (2026-11-14, binding)
+
+Nicholas approved **Trash Panda Heist: Game Plan v1** ([canvas](https://cursor.com/canvas/store-f0dfaef1-646f-4cb3-b3a2-4edd43f95165/7412b08b-bc3e-4248-b762-a4a8b08a389d)). Full design: `docs/DESIGN.md`.
+
+- Hero: cocky masked raccoon (“the Bandit” until named). Villain: **MOP**. Goal: free the captured raccoon crew.
+- Moves: **Pounce**, **Belly Flop**, **Tail Swing** (replaces glide; A/B in Mission 1), **Mask Mode** at combo **x5** (shareable moment). Hijack Hop for vehicles.
+- Glossary: Shinies · Stash Chute · The Den · Bagged · Sweepbot/Scrubber/Spotlight Drone/Barrier Bot · Junk Gadgets · Neon Docks / Glow Market / Arcade Row / Spotless Tower · MOP Safe Rooms.
+- Visual: distinct from Sony’s Sly Cooper (no cane, no top-hat thief look, no blue/gold). Mascot needs attorney review.
+- Codename **MAGPIE** stays in code identifiers. The game is **Trash Panda**; working title **Trash Panda Heist** until availability is confirmed. One user-facing title constant: `ProductIdentity.displayTitle`.
+- Open questions for Nicholas: confirm “Trash Panda” availability; sell masks directly; no Shinies packs at soft launch; rename Golden Ticket → **Crew Pass**.
+
+**Missions 1–10 target this raccoon heist theme.** Mission 0 stays the follow-square loop. Gates, budgets, and process numbers are unchanged. Where older Part 1–2 sentences still say “bird / toy city / hop / glide / Shine / Nest,” treat them as superseded by this amendment and `docs/DESIGN.md`.
+
 ---
 
 # Part 1: Start here (for Nicholas)
@@ -45,26 +59,26 @@ What you give up without a Mac: each code change takes roughly 10 to 25 minutes 
 
 ## The game
 
-Codename MAGPIE is a small bird loose in a big toy city: hop, stomp, borrow any car, and bank the loot before a 3-minute timer runs out.
+Codename MAGPIE (engineering only). The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed) — a cocky masked raccoon loose in a neon night city: pounce, belly-flop bots, hijack rides, bank Shinies before a 3-minute timer runs out. Villain: **MOP**. Free the captured raccoon crew.
 
 | Parent | The idea we take (never the IP) | In MAGPIE |
 | --- | --- | --- |
-| Mario | Jumping that feels great | Hop, glide, dive-stomp, bounce combos up to x10 |
-| Zelda | Tools open the world; puzzle rooms; bosses | 4 tools, each opens a district; 12 vaults; 4 bosses |
-| GTA | Open city; take any vehicle; heat escalates | Stomp a roof to drive it; Heat 0 to 5; toll-bots give chase |
+| Mario | Jumping that feels great | Pounce, Tail Swing, Belly Flop, bounce combos up to x10; Mask Mode at x5 |
+| Zelda | Tools open the world; puzzle rooms; bosses | 4 Junk Gadgets, each opens a district; 12 MOP Safe Rooms; 4 bosses |
+| GTA | Open city; take any vehicle; heat escalates | Belly Flop a roof to hijack; Heat 0 to 5; Sweepbots give chase |
 
 - 2D top-down. Portrait. One thumb. 180-second runs.
 - Free to play: in-app purchases plus opt-in rewarded ads.
-- Rating target 9+: cartoon mischief, robot enemies, nobody gets hurt.
-- Every run ends in a 10-second Final Dash, and the game saves that clip to share.
+- Rating target 9+: cartoon mischief, robot enemies, nobody gets hurt. Rob robots and corp vaults only — never people.
+- Every run ends in a 10-second Final Dash, and the game saves that clip to share. Mask Mode at x5 is the shareable in-run moment.
 - One Daily Run: the same city for everyone, one ranked try a day.
-- Soft launch ships half of it: 2 districts, 2 tools, 6 vaults, 1 boss.
+- Soft launch ships half of it: 2 districts (Neon Docks, Glow Market), 2 gadgets, 6 safe rooms, 1 boss.
 
 Why 2D: a 3D open world takes a studio. One founder plus AI agents can finish 2D. That is my judgment, not a measured fact.
 
 Why Swift and SpriteKit: the whole game is code, with no editor clicking, so an agent can build and test it end to end. Trade-offs: iPhone only at first, and Apple has not given SpriteKit a major update in years.
 
-The bird, the names and the city theme are placeholders. Swap them freely. No system depends on them.
+Names and skin are product decisions (`docs/DESIGN.md`). Systems use MAGPIE identifiers; user-facing title is one constant. Keep the hero visually distinct from Sony’s Sly Cooper.
 
 ## Roadmap
 
@@ -167,8 +181,8 @@ You are lead engineer on a native iPhone game. Nicholas owns the product and app
 
 ## 2. The product
 
-- Codename: MAGPIE. The final name comes later, from Nicholas.
-- One line: a small bird in a big toy city. Hop, stomp, borrow any car, bank the loot before time runs out.
+- Codename: MAGPIE. The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed).
+- One line: a cocky masked raccoon in a neon night city. Pounce, belly-flop, hijack rides, bank Shinies before time runs out. Free the crew from MOP.
 - Genre: 2D top-down action sandbox, played in 180-second runs.
 - Device: iPhone only. Portrait only. One thumb. iOS 17.0 minimum.
 - Audience: ages 13 to 35, casual to mid-core. Not a kids app.
@@ -199,68 +213,70 @@ These are legal rules. No exceptions.
 
 ### Controls
 
-- Drag anywhere to move. The hero coasts for 0.25 seconds after the finger lifts.
-- Quick tap to hop. A tap is a touch shorter than 180 ms that moves less than 10 points. A second finger counts.
-- Touch and hold in the air to glide. Drag while holding to steer.
-- Quick tap in the air to dive-stomp the nearest target within 1.5 tiles. With no target, stomp straight down.
-- One Tool button on the thumb side. It shows only when a tool can be used.
-- Variant B, behind a debug toggle: a fixed Hop button. Gate 1 picks the winner.
+- Drag anywhere to move. The Bandit coasts for 0.25 seconds after the finger lifts.
+- Quick tap to **Pounce**. A tap is a touch shorter than 180 ms that moves less than 10 points. A second finger counts.
+- Touch and hold in the air for **Tail Swing**: latch a lamp/sign/wire and fling (or a short coat-flap if nothing to grab). Drag while holding to steer. Mission 1 A/B-tests Tail Swing vs classic glide behind a debug toggle.
+- Quick tap in the air to **Belly Flop** the nearest target within 1.5 tiles. With no target, flop straight down.
+- One Junk Gadget button on the thumb side. It shows only when a gadget can be used.
+- Variant B, behind a debug toggle: a fixed Pounce button. Gate 1 picks the winner.
 
 ### The hero
 
+- Cocky masked raccoon. Visually distinct from Sony’s Sly Cooper: no cane, no top-hat gentleman-thief look, no blue/gold palette. Scruffy junk-gadget chaos. Mascot needs attorney review.
 - The world is 2.5D: x and y on the ground, plus height. Anything in the air casts a shadow.
-- A hop clears a 1-tile gap and lands on anything up to 1 tile tall.
-- A glide lasts up to 1.2 seconds and crosses up to 4 tiles.
-- A stomp that hits bounces the hero up, adds 1 to the combo and refreshes the glide.
+- A Pounce clears a 1-tile gap and lands on anything up to 1 tile tall.
+- A Tail Swing lasts up to 1.2 seconds and crosses up to 4 tiles (same tuning keys as the old glide until retuned).
+- A Belly Flop that hits bounces the Bandit up, adds 1 to the combo and refreshes Tail Swing.
 - The combo breaks after 0.4 seconds on the ground. It caps at x10.
-- 3 hearts. A hit costs 1 heart and 10% of carried Shine, then gives 1 second of safety.
+- At combo **x5**, **Mask Mode** turns on: mask lights neon, double loot while active, flourishes, bots stagger — the shareable moment.
+- 3 hearts. A hit costs 1 heart and 10% of carried Shinies, then gives 1 second of safety.
 
 ### Vehicles
 
-- Stomp a roof to borrow the vehicle. It drives itself forward. Drag steers. Tap ejects with a high hop.
+- Belly Flop a roof to **Hijack Hop**. It drives itself forward. Drag steers. Tap ejects with a high Pounce.
 - Three at first: Scooter (fast, fragile), Taxi (balanced), Box Truck (slow, rams bots).
-- Vehicles take damage, smoke, then break down. Borrowed vehicles respawn off-screen.
-- Townies walk the sidewalks. They dodge, cheer or gasp. Nothing can hurt them.
+- Vehicles take damage, smoke, then break down. Hijacked vehicles respawn off-screen.
+- Townies walk the sidewalks. They dodge, cheer or gasp. Nothing can hurt them. Rob robots and Spotless Inc. only.
 
 ### Heat
 
-- Heat runs 0 to 5. Chaos raises it: stomping bots, smashing props, borrowing vehicles, speeding.
-- Heat drops one level after 6 seconds out of every bot's sight. Alleys and bushes are cool-off spots.
-- Higher Heat sends more toll-bots and pays more Shine.
-- Bots: Walker from Heat 1 (one stomp). Roller from Heat 2 (two stomps or a ram). Drone from Heat 3 (it flies; its shadow warns you). Roadblock from Heat 4.
-- Zero hearts means Busted. The run ends. Carried Shine is lost. Banked Shine is safe.
+- Heat runs 0 to 5. Chaos raises it: flopping bots, smashing props, hijacking vehicles, speeding.
+- Heat drops one level after 6 seconds out of every bot's sight. Alleys and dumpsters are cool-off spots.
+- Higher Heat sends more Sweepbots and pays more Shinies.
+- Bots: Sweepbot from Heat 1 (one flop). Scrubber from Heat 2 (two flops or a ram). Spotlight Drone from Heat 3 (it flies; its shadow warns you). Barrier Bot from Heat 4.
+- Zero hearts means **Bagged**. The run ends. Carried Shinies are lost. Banked Shinies are safe.
 
-### Shine and banking
+### Shinies and banking
 
-- Shine is the loot and the only currency. Sources: street pickups 1, props 1 to 3, bots 5, strongboxes 25.
-- Shine from a stomp is multiplied by the combo.
-- Carried Shine is at risk. Fly through a Nest Ring to bank it. Each district has 4 rings. A used ring rests for 20 seconds.
+- Shinies are the loot and the only currency. Sources: street pickups 1, props 1 to 3, bots 5, strongboxes 25.
+- Shinies from a Belly Flop are multiplied by the combo (and by Mask Mode when active).
+- Carried Shinies are at risk. Dive through a **Stash Chute** to bank them. Each district has 4 chutes. A used chute rests for 20 seconds.
 - Banking multiplies by Heat: x1.0, x1.2, x1.5, x2.0, x2.5, x3.0 for Heat 0 to 5.
 
 ### The run
 
 - Ready, then 180 seconds of play, then a 10-second Final Dash, then Results.
-- In the Final Dash every ring is open. Reach one or lose what you carry.
-- Results show banked Shine, best combo, top Heat, new records, the saved clip and Play Again.
+- In the Final Dash every stash chute is open. Reach one or lose what you carry.
+- Results show banked Shinies, best combo, top Heat, new records, the saved clip and Play Again.
 - Play Again puts the player back in control within 1.5 seconds.
 
 ## 6. Meta game
 
-- The Nest is the home screen. Nest levels 1 to 10 cost Shine. Each level unlocks one thing: a skin, a vehicle type, a perk or a tool.
-- Tools: 4 at v1.0. Each has three uses, one for travel, one for bots, one for puzzles. Tools run on an 8-second cooldown, never ammo.
+- **The Den** is the home screen. Den levels 1 to 10 cost Shinies. Each level unlocks one thing: a mask/skin, a vehicle type, a perk or a Junk Gadget.
+- Junk Gadgets: 4 at v1.0. Each has three uses, one for travel, one for bots, one for puzzles. Gadgets run on an 8-second cooldown, never ammo.
 
-| Tool | Travel | Bots | Puzzles | Arrives |
+| Junk Gadget | Travel | Bots | Puzzles | Arrives |
 | --- | --- | --- | --- | --- |
-| Zip Line | Zip to hook points, cross canals | Yank a Roller's shield | Pull levers from range | Nest level 2 |
-| Boom Berry | Launch yourself or a vehicle | Clear a cluster | Break cracked walls | Boss 1 |
-| Magnet Charm | Ride metal rails | Pull a Drone down | Drag metal crates | Boss 2 |
-| Gust Feather | Dash across wide gaps | Blow bots off ledges | Spin fans and switches | Boss 3 |
+| Bungee Cord | Zip to hook points, cross canals | Yank a Scrubber's shield | Pull levers from range | Den level 2 |
+| Fizz Can | Launch yourself or a vehicle | Clear a cluster | Break cracked walls | Boss 1 |
+| Magnet Glove | Ride metal rails | Pull a Spotlight Drone down | Drag metal crates | Boss 2 |
+| Leaf Blower | Dash across wide gaps | Blow bots off ledges | Spin fans and switches | Boss 3 |
 
-- Vaults are single-screen puzzle rooms. Untimed. 60 to 120 seconds each. Spotting a Vault Door during a run unlocks that vault on the map. Each vault pays 1 Relic.
-- Every vault ships with a recorded solution replay. A test plays it back to prove the vault can be solved.
-- Bosses: one per district. 3 Relics open the gate. The fight uses that district's tool and lasts 90 to 150 seconds. Winning opens the next district and grants the next tool.
-- Districts at v1.0: Harbor, Midtown, Old Quarter, The Heights. Each is 96 by 160 tiles with 4 rings, 3 vaults and 1 boss.
-- Soft launch ships Harbor and Midtown, Zip Line and Boom Berry, 6 vaults and the Harbor boss.
+- **MOP Safe Rooms** are single-screen puzzle rooms. Untimed. 60 to 120 seconds each. Spotting a Safe Room Door during a run unlocks that room on the map. Each pays 1 Relic.
+- Every safe room ships with a recorded solution replay. A test plays it back to prove it can be solved.
+- Bosses: one per district (MOP lieutenants / Spotless hardware). 3 Relics open the gate. The fight uses that district's gadget and lasts 90 to 150 seconds. Winning opens the next district, grants the next gadget, and advances crew-rescue beats.
+- Districts at v1.0: Neon Docks, Glow Market, Arcade Row, Spotless Tower. Each is 96 by 160 tiles with 4 stash chutes, 3 safe rooms and 1 boss.
+- Soft launch ships Neon Docks and Glow Market, Bungee Cord and Fizz Can, 6 safe rooms and the Neon Docks boss.
 
 ## 7. Daily Run
 
@@ -273,9 +289,9 @@ These are legal rules. No exceptions.
 
 Built in Mission 8. Design for it from day one.
 
-- Rewarded ads only, always opt-in, never during a run. Three placements: double the banked Shine at Results, one revive when Busted, one free daily crate.
+- Rewarded ads only, always opt-in, never during a run. Three placements: double the banked Shinies at Results, one revive when Bagged, one free daily crate.
 - No full-screen ads in a player's first 5 sessions. The policy after that waits for Gate 3 data.
-- Starting catalog: Golden Ticket $4.99 (no forced ads, rewarded bonuses without watching). Starter Pack $2.99, offered once after run 5. Shine packs $1.99, $4.99, $9.99 and $19.99. Skins $0.99 to $3.99.
+- Starting catalog (proposed; open questions for Nicholas): **Crew Pass** $4.99 (rename from Golden Ticket; no forced ads, rewarded bonuses without watching). Starter Pack $2.99, offered once after run 5. Shinies packs $1.99, $4.99, $9.99 and $19.99 — **proposed: none at soft launch**. Masks/skins $0.99 to $3.99 — **proposed: sell masks directly** (cosmetic, what-you-see).
 - Nothing for sale raises the Daily Run score ceiling.
 - Prices are starting points. Nicholas approves every price and offer.
 
@@ -301,8 +317,8 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 | Camera width | 12 tiles |
 | Hero run speed | 5.5 tiles a second |
 | Coast after release | 0.25 s |
-| Hop airtime | 0.45 s |
-| Glide max time | 1.2 s |
+| Pounce airtime (was Hop) | 0.45 s |
+| Tail Swing max time (was Glide) | 1.2 s |
 | Stomp bounce airtime | 0.6 s |
 | Eject hop airtime | 0.7 s |
 | Coyote time | 0.10 s |
@@ -465,59 +481,59 @@ Send the checkpoint report. Then stop and wait for APPROVED M0.
 
 ## Mission 1: The toy
 
-Goal: moving the bird around an empty block is fun for 60 seconds with no goals at all.
+Goal: moving the Bandit (placeholder raccoon silhouette) around an empty neon alley block is fun for 60 seconds with no goals at all.
 
 Build:
 
 1. The GameCore loop: fixed 60 Hz step, seeded random generator, input commands, state hash, replay record and playback.
-2. A map loader for text grids. One test block, 40 by 60 tiles: ground, 1-tile walls, water gaps, ramps, crates.
-3. The hero: run, coast, hop, glide, dive-stomp, bounce, coyote time, input buffer, height and shadow.
-4. Collision: tiles plus boxes, height-aware, so the hero can land on anything up to 1 tile tall.
-5. Ten stomp dummies that respawn, and a combo counter.
+2. A map loader for text grids. One test block, 40 by 60 tiles: ground, 1-tile walls, canal gaps, ramps, crates, latch points for Tail Swing.
+3. The Bandit: run, coast, Pounce, Tail Swing (A/B vs glide behind debug toggle), Belly Flop, bounce, coyote time, input buffer, height and shadow. Mask Mode trigger stub at combo x5 (juice can be minimal).
+4. Collision: tiles plus boxes, height-aware, so the Bandit can land on anything up to 1 tile tall.
+5. Ten flop dummies that respawn, and a combo counter.
 6. The camera: follows with look-ahead, 12 tiles wide, with a shake hook.
 7. Both control variants, A and B, behind a debug toggle.
 8. The debug menu: live edit of every Tuning.json value, time scale, hitbox view, seed entry, replay record and play, Export tuning, and Copy perf report (average fps, worst 1% fps, frame time).
-9. Placeholder visuals drawn in code through the ArtCatalog. No image files yet.
-10. First juice: squash and stretch on hop and landing, a dust puff, a 50 ms hit-pause on stomp, a light haptic on stomp.
+9. Placeholder visuals drawn in code through the ArtCatalog (raccoon-shaped silhouette, not a bird). No image files yet. No cane / top-hat / blue-gold Sly-like look.
+10. First juice: squash and stretch on Pounce and landing, a dust puff, a 50 ms hit-pause on Belly Flop, a light haptic on flop, a brief Mask Mode flash at x5.
 
-Not in this mission: vehicles, Heat, Shine, menus, sound.
+Not in this mission: vehicles, Heat, Shinies, menus, sound.
 
 Checkpoint, all must be true:
 
-- At least 25 GameCore tests pass, including: a hop clears a 1-tile gap; a glide crosses 4 tiles; stomp bounces chain; coyote time works; a buffered hop fires.
+- At least 25 GameCore tests pass, including: a Pounce clears a 1-tile gap; a Tail Swing (or glide variant) crosses 4 tiles; Belly Flop bounces chain; coyote time works; a buffered Pounce fires; Mask Mode arms at x5.
 - One golden replay of 30 seconds reproduces the same final state hash 100 times in a row.
-- The hero responds within 2 frames of input.
+- The Bandit responds within 2 frames of input.
 - Nicholas's perf report from his iPhone shows 60 fps average and no worse than 55 fps in the worst 1%.
-- Nicholas answers five feel checks on the phone: the hop feels snappy; the glide feels controllable; stomps feel punchy; I never fought the controls; I wanted to keep moving. At least four are yes.
+- Nicholas answers five feel checks on the phone: the Pounce feels snappy; Tail Swing (or glide) feels controllable; Belly Flops feel punchy; I never fought the controls; I wanted to keep moving. At least four are yes.
 
 Send the checkpoint report, plus a 30-second video of each control variant. Then stop and wait for APPROVED M1.
 
 ## Mission 2: The sandbox, then Gate 1
 
-Goal: the city fights back, and strangers keep playing without being told what to do.
+Goal: the neon city fights back (Sweepbots), and strangers keep playing without being told what to do.
 
 Build:
 
-1. Vehicles: Scooter, Taxi, Box Truck. Lane-following traffic. Stomp a roof to borrow. Auto-drive, drag to steer, tap to eject. Damage, smoke, breakdown.
-2. Townies: they wander, dodge and react. Nothing can hurt them. Vehicles and the hero nudge them aside.
-3. Toll-bots: Walker and Roller. They spawn by Heat, chase with simple steering and line of sight, and cost hearts on a hit.
-4. Heat 0 to 3: sources, decay, cool-off spots and a HUD meter.
-5. Eight breakable props, including a hydrant whose water launches the hero, and ramps that launch vehicles.
-6. The combo system with number pop-ups.
-7. A test district, 64 by 96 tiles: roads, sidewalks, alleys, a canal and 2 ramps.
-8. Hearts, the Busted state and an instant restart.
+1. Vehicles: Scooter, Taxi, Box Truck. Lane-following traffic. Belly Flop a roof to Hijack Hop. Auto-drive, drag to steer, tap to eject. Damage, smoke, breakdown.
+2. Townies: they wander, dodge and react. Nothing can hurt them. Vehicles and the Bandit nudge them aside.
+3. Sweepbots and Scrubbers. They spawn by Heat, chase with simple steering and line of sight, and cost hearts on a hit.
+4. Heat 0 to 3: sources, decay, cool-off spots (alleys, dumpsters) and a HUD meter.
+5. Eight breakable props, including a hydrant whose water launches the Bandit, and ramps that launch vehicles.
+6. The combo system with number pop-ups, plus Mask Mode at x5 (double loot stub, neon flash, bots stagger briefly).
+7. A test district, 64 by 96 tiles: neon roads, sidewalks, alleys, a canal and 2 ramps.
+8. Hearts, the Bagged state and an instant restart.
 9. Twelve placeholder sound effects, CC0 only, each logged in ASSETS_LICENSES.md.
 
-Not in this mission: Shine, the timer, menus, tools, vaults.
+Not in this mission: Shinies, the timer, menus, Junk Gadgets, MOP Safe Rooms.
 
 Checkpoint, all must be true:
 
 - At least 60 GameCore tests pass, and 3 golden replays reproduce their hashes.
-- The 10-minute random-input soak test ends with no crash and the hero never stuck for more than 5 seconds.
+- The 10-minute random-input soak test ends with no crash and the Bandit never stuck for more than 5 seconds.
 - Nicholas's perf report shows 60 fps average with 20 vehicles, 40 townies and 15 bots active.
 - A TestFlight build is ready for Gate 1.
 
-Gate 1, run by Nicholas: hand the phone to 5 people who have never seen the game and say nothing. Record minutes played before they put it down, whether they borrowed a vehicle unprompted, and whether they asked to play again.
+Gate 1, run by Nicholas: hand the phone to 5 people who have never seen the game and say nothing. Record minutes played before they put it down, whether they hijacked a vehicle unprompted, whether they noticed Mask Mode, and whether they asked to play again.
 
 - Go: 3 of 5 play 5 minutes or more, and 3 of 5 ask to play again.
 - Otherwise: Nicholas sends you the notes. Rework the feel. Two rework rounds at most, then stop and rethink the concept together.
@@ -526,45 +542,45 @@ Send the checkpoint report. Then stop and wait for APPROVED M2 and the Gate 1 re
 
 ## Mission 3: The run
 
-Goal: one complete 3-minute run, from first touch to Results, that a new player understands without reading.
+Goal: one complete 3-minute heist, from first touch to Results, that a new player understands without reading.
 
 Build:
 
-1. The run state machine: Ready, Run for 180 seconds, Final Dash for 10 seconds, Results, plus the Busted path.
-2. Shine: every source, carrying, the HUD count, 4 Nest Rings with a 20-second rest, the Heat multiplier at banking and the combo bonus.
-3. Heat 4 and 5, the Drone bot and the Roadblock.
-4. District 1, Harbor: 96 by 160 tiles as a hand-written text grid in the private content repo. A pier, a market, a canal, a ferry ramp and rooftops. 4 rings, 3 locked Vault Doors, 12 cool-off spots, 6 secrets.
-5. The HUD as a SwiftUI overlay: timer, carried Shine, banked Shine, Heat, hearts, combo. Nothing sits under the thumb.
+1. The run state machine: Ready, Run for 180 seconds, Final Dash for 10 seconds, Results, plus the Bagged path.
+2. Shinies: every source, carrying, the HUD count, 4 Stash Chutes with a 20-second rest, the Heat multiplier at banking, the combo bonus, and Mask Mode double-loot while active.
+3. Heat 4 and 5, the Spotlight Drone and the Barrier Bot.
+4. District 1, Neon Docks: 96 by 160 tiles as a hand-written text grid in the private content repo. A pier, a night market stub, a canal, a ferry ramp and rooftops. 4 stash chutes, 3 locked Safe Room Doors, 12 cool-off spots, 6 secrets. Story beat: first clue to the caged crew.
+5. The HUD as a SwiftUI overlay: timer, carried Shinies, banked Shinies, Heat, hearts, combo / Mask Mode. Nothing sits under the thumb.
 6. The Results screen: stats, records and Play Again.
-7. First launch: the player controls the hero within 5 seconds. No menu first. Three prompts in context, for move, hop and stomp, each 5 words or fewer.
+7. First launch: the player controls the Bandit within 5 seconds. No menu first. Three prompts in context, for move, Pounce and Belly Flop, each 5 words or fewer.
 8. Save version 1: local, versioned, written to a temp file and swapped in, so a crash cannot corrupt it.
 9. Personal bests.
 
-Not in this mission: the Nest, tools, vaults, bosses, sharing, purchases.
+Not in this mission: The Den, Junk Gadgets, MOP Safe Rooms, bosses, sharing, purchases.
 
 Checkpoint, all must be true:
 
-- At least 100 GameCore tests pass. Every score multiplier path has a test.
+- At least 100 GameCore tests pass. Every score multiplier path has a test (including Mask Mode).
 - A scripted replay bot finishes 20 full runs in a row in CI with no crash.
 - The same seed and inputs give the same final score in CI and in a replay exported from Nicholas's phone.
 - Play Again reaches gameplay within 1.5 seconds on Nicholas's phone.
-- Three fresh testers, run by Nicholas: first stomp inside 20 seconds, first borrowed vehicle inside 90 seconds, and all three finish a run without help.
+- Three fresh testers, run by Nicholas: first Belly Flop inside 20 seconds, first hijacked vehicle inside 90 seconds, and all three finish a run without help.
 
 Send the checkpoint report. Then stop and wait for APPROVED M3.
 
 ## Mission 4: The meta
 
-Goal: a reason to come back tomorrow. Shine buys progress, tools open the world, vaults and a boss give it shape.
+Goal: a reason to come back tomorrow. Shinies buy progress, Junk Gadgets open the world, MOP Safe Rooms and a boss give it shape — and the crew-rescue track advances.
 
 Build:
 
-1. The Nest as the home screen: levels 1 to 10, the unlock track, and a Play button that is always one tap from a run.
-2. Two tools, Zip Line and Boom Berry: three uses each, the 8-second cooldown, 3 upgrade levels.
-3. The vault system: a room loader, the puzzle pieces (switch, door, crate, pressure plate, laser gate, moving platform, hook point, cracked wall), a win check and the Relic reward.
-4. Six vaults, 3 per tool, rising in difficulty. Each has a solution replay that CI plays back.
-5. The Harbor boss: 3 phases, beaten with the Zip Line. Winning grants Boom Berry and opens Midtown.
-6. District 2, Midtown: 96 by 160 tiles, same rules as Harbor.
-7. The map screen: districts, vaults found and cleared, the boss gate.
+1. The Den as the home screen: levels 1 to 10, the unlock track (masks, vehicles, perks, gadgets), and a Play button that is always one tap from a run. Show which crew members are still caged.
+2. Two Junk Gadgets, Bungee Cord and Fizz Can: three uses each, the 8-second cooldown, 3 upgrade levels.
+3. The MOP Safe Room system: a room loader, the puzzle pieces (switch, door, crate, pressure plate, laser gate, moving platform, hook point, cracked wall), a win check and the Relic reward.
+4. Six safe rooms, 3 per gadget, rising in difficulty. Each has a solution replay that CI plays back.
+5. The Neon Docks boss (MOP lieutenant / Spotless hardware): 3 phases, beaten with the Bungee Cord. Winning grants Fizz Can, opens Glow Market, and frees one crew member.
+6. District 2, Glow Market: 96 by 160 tiles, same rules as Neon Docks.
+7. The map screen: districts, safe rooms found and cleared, the boss gate, crew status.
 8. Economy version 1 in Economy.json, in the private content repo. Simulate a scripted average player and export the progression curve as a CSV.
 9. Save version 2, with a tested migration from version 1.
 
@@ -572,26 +588,26 @@ Not in this mission: final art, sharing, purchases, ads.
 
 Checkpoint, all must be true:
 
-- All 6 vault solution replays pass in CI.
-- The economy CSV shows: Nest level 3 by the end of session 1, the second tool by day 3, and no unlock before Nest level 6 that takes more than 8 runs of saving.
+- All 6 safe-room solution replays pass in CI.
+- The economy CSV shows: Den level 3 by the end of session 1, the second gadget by day 3, and no unlock before Den level 6 that takes more than 8 runs of saving.
 - The save migration test passes.
-- Three fresh testers, run by Nicholas, each clear Vault 1 in under 3 minutes without help.
-- Nicholas beats the Harbor boss and reports the number of tries. Target: 2 to 5.
+- Three fresh testers, run by Nicholas, each clear Safe Room 1 in under 3 minutes without help.
+- Nicholas beats the Neon Docks boss and reports the number of tries. Target: 2 to 5.
 
 Send the checkpoint report. Then stop and wait for APPROVED M4.
 
 ## Mission 5: Juice and identity
 
-Goal: the game looks and sounds like its own thing, and still runs at 60 fps.
+Goal: the game looks and sounds like Trash Panda (working title Trash Panda Heist until availability is confirmed) — neon night, masked raccoon, MOP menace — and still runs at 60 fps.
 
 Build:
 
-1. The art pass through the ArtCatalog. Nicholas supplies or approves every source: a human artist for the hero, logo and key art; CC0 or licensed packs for the rest. Integrate texture atlases from the private content repo. Never generate look-alikes of existing games.
-2. Hero animation in 4 directions: run, hop, glide, stomp, hurt, celebrate.
-3. Particles, screen shake that respects reduce-motion, hit-pause, a short slow-motion at combo x10, number pops.
-4. Core Haptics patterns for hop, stomp, bank, Busted and each combo tier.
-5. Audio: about 40 sound effects and 3 music loops for the Nest, the run and the Final Dash. The player's own music keeps playing if it is on.
-6. The app icon and launch screen, for Nicholas's approval.
+1. The art pass through the ArtCatalog. Nicholas supplies or approves every source: a human artist for the Bandit, MOP, logo and key art (attorney review before locking the mascot); CC0 or licensed packs for the rest. Integrate texture atlases from the private content repo. Never generate look-alikes of existing games (especially no Sly Cooper cane/top-hat/blue-gold).
+2. Bandit animation in 4 directions: run, Pounce, Tail Swing, Belly Flop, hurt, celebrate, Mask Mode idle.
+3. Particles, screen shake that respects reduce-motion, hit-pause, Mask Mode neon bloom at x5, a short slow-motion at combo x10, number pops.
+4. Core Haptics patterns for Pounce, Belly Flop, bank, Bagged, Mask Mode and each combo tier.
+5. Audio: about 40 sound effects and 3 music loops for The Den, the heist run and the Final Dash. The player's own music keeps playing if it is on.
+6. The app icon and launch screen, for Nicholas's approval (uses `ProductIdentity.displayTitle` only — no scattered title strings).
 7. The accessibility pass from the tech spec.
 
 Not in this mission: new mechanics or content.
@@ -600,22 +616,22 @@ Checkpoint, all must be true:
 
 - Nicholas's perf report still shows 60 fps average. Memory stays under 200 MB. Download size stays under 150 MB.
 - Every asset is listed in ASSETS_LICENSES.md with its source and license. Nothing licensed sits in the public repo.
-- A before-and-after video of the same replay.
-- Nicholas approves the look, the icon and the sound.
+- A before-and-after video of the same replay, including a Mask Mode moment.
+- Nicholas approves the look, the icon and the sound. Attorney note on mascot filed or explicitly deferred.
 
 Send the checkpoint report. Then stop and wait for APPROVED M5.
 
 ## Mission 6: Share and social
 
-Goal: every run ends with something worth sending to a friend, and one tap sends it.
+Goal: every heist ends with something worth sending to a friend (especially Mask Mode + Final Dash), and one tap sends it.
 
 Build:
 
-1. The ReplayKit rolling clip: the pre-prompt before run 2, export of the last 15 seconds at Results, a preview and a Share button.
-2. The branded Final Dash HUD.
-3. The result card image, 1080 by 1920, with score, best combo, top Heat and the day number.
+1. The ReplayKit rolling clip: the pre-prompt before run 2, export of the last 15 seconds at Results, a preview and a Share button. Prefer clips that include Mask Mode when it fired.
+2. The branded Final Dash HUD using `ProductIdentity.displayTitle` only.
+3. The result card image, 1080 by 1920, with score, best combo, top Heat, Mask Mode peak and the day number.
 4. The Daily Run: UTC seed, fixed loadout, first attempt ranked, practice after, the streak counter.
-5. Game Center: sign-in that never blocks play, 3 leaderboards (daily, best run, best combo), 20 achievements, and Challenges plus Activities on the iOS versions that support them.
+5. Game Center: sign-in that never blocks play, 3 leaderboards (daily, best run, best combo), 20 achievements (include Mask Mode / crew-rescue beats), and Challenges plus Activities on the iOS versions that support them.
 6. The Beat My Run link, which opens the same seeded run.
 7. A rating prompt after a personal best, within Apple's rules for how often it may appear.
 
@@ -638,11 +654,11 @@ Build:
 
 1. Bring Nicholas a one-page comparison of analytics options: cost, SDK size, privacy manifest status, what each measures. Candidates include Firebase, PostHog and TelemetryDeck. He picks. Check current terms; do not rely on memory.
 2. Analytics behind an AnalyticsSink protocol, so the vendor can be swapped. No personal data in any event.
-3. Events: app open, first control, first hop, first stomp, first borrow, run start, run end (banked, best combo, top Heat, cause, length), bank, Busted, Final Dash result, vault found, vault cleared, boss result, Nest level up, tool unlock, clip prompt result, clip shared, Daily start and end, session end.
+3. Events: app open, first control, first Pounce, first Belly Flop, first hijack, Mask Mode start/end, run start, run end (banked, best combo, top Heat, cause, length), bank, Bagged, Final Dash result, safe room found, safe room cleared, boss result, crew freed, Den level up, gadget unlock, clip prompt result, clip shared, Daily start and end, session end.
 4. Remote config for Tuning.json overrides, with safe offline defaults.
 5. Crash reporting.
-6. A funnel view: install, first control, first stomp, first run finished, third run, day-1 return, day-7 return.
-7. The external TestFlight build: the What to Test text and the beta review answers, drafted for Nicholas to submit.
+6. A funnel view: install, first control, first Belly Flop, first Mask Mode, first run finished, third run, day-1 return, day-7 return.
+7. The external TestFlight build: the What to Test text and the beta review answers, drafted for Nicholas to submit (raccoon heist framing; MAGPIE codename internal only).
 
 Not in this mission: purchases, ads.
 
@@ -661,15 +677,15 @@ Send the checkpoint report. Then stop and wait for APPROVED M7 and the Gate 2 re
 
 ## Mission 8: Money
 
-Goal: the game can earn, without ever getting in the way of a run.
+Goal: the game can earn, without ever getting in the way of a heist.
 
 Build:
 
 1. Bring Nicholas a one-page comparison of ad mediation options: current terms, SDK size, privacy manifest status. Candidates include AppLovin MAX and Google AdMob. He picks.
-2. StoreKit 2: the starting catalog, a StoreKit configuration file for local tests, purchase, restore, refunds, Ask to Buy and interrupted purchases. Prices always come from StoreKit, never hard-coded.
+2. StoreKit 2: the starting catalog per open questions — **Crew Pass** (proposed rename of Golden Ticket), Starter Pack, masks for sale (proposed), **no Shinies packs at soft launch** (proposed). StoreKit configuration for local tests; purchase, restore, refunds, Ask to Buy and interrupted purchases. Prices always come from StoreKit, never hard-coded. Do not ship contested SKUs until Nicholas answers the open questions in `docs/DESIGN.md`.
 3. Rewarded ads in the 3 placements, with frequency caps. No ad during a run, ever. Test ads only until Nicholas approves live ads.
 4. The tracking-permission prompt only if the chosen SDK needs it, after run 3, with a pre-prompt. The game works fully if the player declines.
-5. The Starter Pack offer after run 5, and the store screen.
+5. The Starter Pack offer after run 5, and the store screen (masks / Crew Pass framing).
 6. The privacy manifest, plus draft answers for the App Privacy labels and the age-rating questionnaire, for Nicholas to review.
 7. A test proving purchases change nothing in Daily Run scoring.
 
@@ -682,24 +698,25 @@ Checkpoint, all must be true:
 - No ad offer and no purchase offer appears before run 3.
 - The app works in airplane mode. Download size is still under 150 MB.
 - No ad or store key sits in the public repo.
+- Open questions on Crew Pass / masks / Shinies packs are either answered or explicitly deferred with Nicholas.
 
 Send the checkpoint report. Then stop and wait for APPROVED M8.
 
 ## Mission 9: Store and soft launch, then Gate 3
 
-Goal: the game is live in four small markets, and the numbers say go, fix or stop.
+Goal: the raccoon heist is live in four small markets, and the numbers say go, fix or stop.
 
 Build:
 
-1. Ten name candidates, each with evidence from an App Store search and a USPTO trademark search. Drop any name close to an existing game. Nicholas picks.
-2. The store listing draft: name, subtitle, keywords, description, promotional text. Confirm Apple's current length limits and screenshot sizes before writing.
-3. Six screenshots and 2 preview videos, cut from real gameplay only.
-4. Review prep: App Review notes, the content rights statement, the age rating, the privacy labels, export compliance. All drafted for Nicholas to submit.
-5. The soft-launch setup: the Canada, Australia, New Zealand and Philippines storefronts only. Nicholas confirms the list.
-6. Ten short ad videos, 5 to 15 seconds each, cut from real gameplay clips, with a naming scheme so each can be tracked. Never show gameplay that is not in the game.
-7. Live-ops basics: a weekly modifier, such as low-gravity week, switched by remote config.
+1. Confirm **Trash Panda** availability (App Store search + USPTO). If blocked, keep working title **Trash Panda Heist** or Nicholas picks an alternate. Drop anything close to Sony’s Sly Cooper. Then set `ProductIdentity.displayTitle` only.
+2. The store listing draft: name, subtitle, keywords, description, promotional text (neon heist / Mask Mode / free the crew). Confirm Apple's current length limits and screenshot sizes before writing.
+3. Six screenshots and 2 preview videos, cut from real gameplay only — include at least one Mask Mode moment.
+4. Review prep: App Review notes, the content rights statement, the age rating, the privacy labels, export compliance, attorney note on mascot. All drafted for Nicholas to submit.
+5. The soft-launch setup: the Canada, Australia, New Zealand and Philippines storefronts only. Nicholas confirms the list. Catalog respects soft-launch IAP decisions (Crew Pass / masks / no Shinies packs if still proposed).
+6. Ten short ad videos, 5 to 15 seconds each, cut from real gameplay clips (Mask Mode and Belly Flop moments), with a naming scheme so each can be tracked. Never show gameplay that is not in the game.
+7. Live-ops basics: a weekly modifier, such as low-gravity week or double Mask Mode window, switched by remote config.
 
-Not in this mission: new districts, tools or modes.
+Not in this mission: new districts, gadgets or modes.
 
 Checkpoint, all must be true:
 
@@ -722,9 +739,9 @@ Goal: act on the Gate 3 result with no drift.
 
 If Go:
 
-1. Worldwide release.
-2. Old Quarter and The Heights, Magnet Charm and Gust Feather, 6 more vaults, 3 more bosses.
-3. A season pass and a 28-day season calendar.
+1. Worldwide release as **Trash Panda** once availability is confirmed (`ProductIdentity.displayTitle` + ASC rename as needed; MAGPIE stays in code).
+2. Arcade Row and Spotless Tower, Magnet Glove and Leaf Blower, 6 more MOP Safe Rooms, 3 more bosses; finish freeing the raccoon crew.
+3. A season pass and a 28-day season calendar (masks / neon seasons).
 4. Localization, starting with Spanish.
 5. A written recommendation on Android: GameCore carries over, the drawing layer does not.
 6. A written recommendation on taking the code private and adding a Mac runner.
