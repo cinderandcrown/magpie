@@ -7,8 +7,12 @@ import UIKit
 
 /// Side-view neon docks heist wired to `Assets/Generated/` via AssetManifest.
 public final class HeistScene: SKScene {
+    /// World zoom so the raccoon reads ~1/8–1/6 of screen height on phone.
+    public static let worldZoom: CGFloat = 1.7
+
     private var sim: Sim!
     private var tuning = Tuning.default
+    private let stage = SKNode()
     private let world = SKNode()
     private let parallaxFar = SKNode()
     private let parallaxMid = SKNode()
@@ -19,6 +23,7 @@ public final class HeistScene: SKScene {
     private var mopNodes: [Int: SKSpriteNode] = [:]
     private let hud = SKNode()
     private let overlay = SKNode()
+    private let playHUD = SKNode()
 
     private var moveX: Double = 0
     private var jumpHeld = false
@@ -52,19 +57,36 @@ public final class HeistScene: SKScene {
     private var hapticMed = UIImpactFeedbackGenerator(style: .medium)
     private var hapticHeavy = UIImpactFeedbackGenerator(style: .heavy)
 
+    private var smokeEnabled = false
+    private var smoke = SmokeBrain()
+    #if DEBUG
+    private var tuningMenu: DebugTuningMenu?
+    private var debugToggle: SKLabelNode?
+    #endif
+
+    public convenience init(size: CGSize, smokeAutoplay: Bool) {
+        self.init(size: size)
+        self.smokeEnabled = smokeAutoplay
+    }
+
     public override func didMove(to view: SKView) {
         backgroundColor = ArtCatalog.nightSky
         anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        if ProcessInfo.processInfo.arguments.contains("-SmokeAutoplay") {
+            smokeEnabled = true
+        }
         do {
-            sim = Sim(map: try NeonDocksLevel.load(), tuning: tuning, seed: 11)
+            sim = Sim(map: try NeonDocksLevel.load(), tuning: tuning, seed: smokeEnabled ? 7 : 11)
         } catch {
             sim = Sim(map: try! TileMap.parse("###\n#@#\n###"), tuning: tuning)
         }
 
-        addChild(parallaxFar)
-        addChild(parallaxMid)
-        addChild(parallaxNear)
-        addChild(world)
+        stage.setScale(Self.worldZoom)
+        addChild(stage)
+        stage.addChild(parallaxFar)
+        stage.addChild(parallaxMid)
+        stage.addChild(parallaxNear)
+        stage.addChild(world)
         world.addChild(rainLayer)
         buildParallax()
         buildTiles()
@@ -89,78 +111,67 @@ public final class HeistScene: SKScene {
         }
 
         addChild(hud)
+        hud.addChild(playHUD)
         addChild(overlay)
         setupControls()
         setupHUD()
         setupTitle()
         setupOutcome()
+        #if DEBUG
+        setupDebugTuning()
+        #endif
         JuiceSound.shared.prepare()
         JuiceSound.shared.playTitleSting()
         hapticLight.prepare(); hapticMed.prepare(); hapticHeavy.prepare()
         layoutUI()
         sync(dt: 0)
+        updateHUDVisibility()
     }
 
     public override func didChangeSize(_ oldSize: CGSize) {
-        // SpriteKit can call this before didMove; force-unwrapped UI is not ready yet.
         guard stickBase != nil, sim != nil else { return }
         layoutUI()
     }
 
-    // MARK: - Parallax (known issues handled)
+    // MARK: - Parallax
 
     private func buildParallax() {
-        let h = max(size.height, 700)
+        let h = max(size.height / Self.worldZoom, 520)
 
-        // Far skyline: wide, NON-repeating (centered moon). Slow drift only.
         if let far = ArtCatalog.background(.farSkyline, height: h * 0.95) {
             far.position = .zero
             far.zPosition = -30
-            far.name = "farSkyline"
+            far.color = SKColor(red: 1.15, green: 1.05, blue: 1.25, alpha: 1)
+            far.colorBlendFactor = 0.15
             parallaxFar.addChild(far)
         } else {
             buildProceduralSkyline()
         }
 
-        // Mid buildings: single wide plate (not tiled)
         if let mid = ArtCatalog.background(.midBuildings, height: h * 0.85) {
             mid.position = CGPoint(x: 0, y: -20)
             mid.zPosition = -20
+            mid.color = .white
+            mid.colorBlendFactor = 0.08
             parallaxMid.addChild(mid)
         }
 
-        // Near rooftops: BACKGROUND ONLY — never used for collision
         if let near = ArtCatalog.background(.nearRooftops, height: h * 0.7) {
             near.position = CGPoint(x: 0, y: -40)
             near.zPosition = -10
-            near.alpha = 0.95
+            near.alpha = 0.98
             parallaxNear.addChild(near)
         }
 
-        // Rain overlay (additive-ish)
         if let rain = ArtCatalog.background(.rainOverlay, height: h) {
             rain.blendMode = .alpha
-            rain.alpha = 0.65
+            rain.alpha = 0.55
             rain.zPosition = 70
-            rain.name = "rain"
             rainLayer.addChild(rain)
             rain.run(SKAction.repeatForever(SKAction.sequence([
                 SKAction.moveBy(x: -40, y: -120, duration: 0.8),
                 SKAction.moveBy(x: 40, y: 120, duration: 0),
             ])))
-        } else {
-            for _ in 0..<40 {
-                let drop = SKShapeNode(rectOf: CGSize(width: 1.5, height: CGFloat.random(in: 8...14)))
-                drop.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.25)
-                drop.strokeColor = .clear
-                drop.position = CGPoint(x: CGFloat.random(in: -800...1200), y: CGFloat.random(in: -200...400))
-                drop.zPosition = 70
-                rainLayer.addChild(drop)
-                drop.run(SKAction.repeatForever(SKAction.sequence([
-                    SKAction.moveBy(x: -20, y: -500, duration: Double.random(in: 0.5...1.0)),
-                    SKAction.run { drop.position.y = 400 },
-                ])))
-            }
         }
     }
 
@@ -168,8 +179,9 @@ public final class HeistScene: SKScene {
         for i in 0..<20 {
             let h = CGFloat.random(in: 40...120)
             let b = SKShapeNode(rectOf: CGSize(width: CGFloat.random(in: 30...60), height: h), cornerRadius: 2)
-            b.fillColor = SKColor(red: 0.08, green: 0.07, blue: 0.18, alpha: 1)
-            b.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.2)
+            b.fillColor = SKColor(red: 0.12, green: 0.1, blue: 0.24, alpha: 1)
+            b.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.45)
+            b.glowWidth = 1
             b.position = CGPoint(x: CGFloat(i) * 80 - 200, y: h * 0.5 - 40)
             parallaxFar.addChild(b)
         }
@@ -177,7 +189,6 @@ public final class HeistScene: SKScene {
 
     private func buildTiles() {
         let tile = CGFloat(tuning.tileSize)
-        // Preload the 27 tile textures once; never hit disk per cell.
         let tileTextures: [SKTexture] = (1...27).compactMap { ArtCatalog.tileTexture(index: $0) }
         var tileIdx = 0
         for y in 0..<sim.map.height {
@@ -191,11 +202,25 @@ public final class HeistScene: SKScene {
                         let n = SKSpriteNode(texture: tex, size: CGSize(width: tile + 1, height: tile + 1))
                         n.position = pos
                         n.zPosition = 2
+                        // Brighten muddy tiles
+                        n.color = SKColor(red: 1.2, green: 1.05, blue: 1.25, alpha: 1)
+                        n.colorBlendFactor = 0.22
                         world.addChild(n)
+                        let edge = SKShapeNode(rectOf: CGSize(width: tile + 1, height: tile + 1), cornerRadius: 2)
+                        edge.fillColor = .clear
+                        edge.strokeColor = (tileIdx % 2 == 0 ? ArtCatalog.neonCyan : ArtCatalog.neonPink)
+                            .withAlphaComponent(0.55)
+                        edge.lineWidth = 1.5
+                        edge.glowWidth = 1.2
+                        edge.position = pos
+                        edge.zPosition = 3
+                        world.addChild(edge)
                     } else {
                         let n = SKShapeNode(rectOf: CGSize(width: tile + 1, height: tile + 1), cornerRadius: 2)
                         n.fillColor = ArtCatalog.asphalt
-                        n.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.25)
+                        n.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.7)
+                        n.lineWidth = 1.5
+                        n.glowWidth = 2
                         n.position = pos
                         n.zPosition = 2
                         world.addChild(n)
@@ -203,15 +228,17 @@ public final class HeistScene: SKScene {
                     tileIdx += 1
                 case .crate:
                     let n = SKShapeNode(rectOf: CGSize(width: tile * 0.9, height: tile * 0.9), cornerRadius: 2)
-                    n.fillColor = SKColor(red: 0.55, green: 0.32, blue: 0.18, alpha: 1)
+                    n.fillColor = SKColor(red: 0.62, green: 0.38, blue: 0.2, alpha: 1)
                     n.strokeColor = ArtCatalog.neonOrange
+                    n.lineWidth = 2
+                    n.glowWidth = 1
                     n.position = pos
                     n.zPosition = 4
                     world.addChild(n)
                 case .water:
                     let n = SKShapeNode(rectOf: CGSize(width: tile, height: tile))
-                    n.fillColor = SKColor(red: 0.08, green: 0.28, blue: 0.48, alpha: 0.9)
-                    n.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.4)
+                    n.fillColor = SKColor(red: 0.12, green: 0.42, blue: 0.62, alpha: 0.95)
+                    n.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.7)
                     n.position = pos
                     n.zPosition = 1
                     world.addChild(n)
@@ -219,6 +246,7 @@ public final class HeistScene: SKScene {
                     let n = SKShapeNode(rectOf: CGSize(width: tile * 0.8, height: tile * 0.5))
                     n.fillColor = ArtCatalog.neonPink
                     n.strokeColor = .clear
+                    n.glowWidth = 2
                     n.position = pos
                     n.zPosition = 5
                     world.addChild(n)
@@ -226,16 +254,16 @@ public final class HeistScene: SKScene {
                     let pole = SKShapeNode(rectOf: CGSize(width: 4, height: tile * 1.4))
                     pole.fillColor = ArtCatalog.neonLime
                     pole.strokeColor = .clear
-                    pole.glowWidth = 3
+                    pole.glowWidth = 4
                     pole.position = pos
                     pole.zPosition = 6
                     world.addChild(pole)
                 case .stash, .exit:
                     let door = SKShapeNode(rectOf: CGSize(width: tile * 1.2, height: tile * 1.6), cornerRadius: 4)
-                    door.fillColor = SKColor(red: 0.1, green: 0.35, blue: 0.25, alpha: 0.9)
+                    door.fillColor = SKColor(red: 0.12, green: 0.4, blue: 0.28, alpha: 0.95)
                     door.strokeColor = ArtCatalog.neonLime
                     door.lineWidth = 2
-                    door.glowWidth = 4
+                    door.glowWidth = 5
                     door.position = pos
                     door.zPosition = 6
                     world.addChild(door)
@@ -256,28 +284,28 @@ public final class HeistScene: SKScene {
 
     private func setupControls() {
         stickBase = SKShapeNode(circleOfRadius: 56)
-        stickBase.fillColor = SKColor(white: 1, alpha: 0.08)
-        stickBase.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.5)
+        stickBase.fillColor = SKColor(white: 1, alpha: 0.1)
+        stickBase.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.7)
         stickBase.lineWidth = 2
         stickBase.zPosition = 200
-        hud.addChild(stickBase)
+        playHUD.addChild(stickBase)
 
         stickKnob = SKShapeNode(circleOfRadius: 28)
-        stickKnob.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
+        stickKnob.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.5)
         stickKnob.strokeColor = ArtCatalog.neonCyan
         stickKnob.lineWidth = 2
         stickKnob.zPosition = 201
-        hud.addChild(stickKnob)
+        playHUD.addChild(stickKnob)
 
         jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime)
-        hud.addChild(jumpBtn)
+        playHUD.addChild(jumpBtn)
         pounceBtn = makeFaceButton(title: "POUNCE", color: ArtCatalog.neonPink)
-        hud.addChild(pounceBtn)
+        playHUD.addChild(pounceBtn)
     }
 
     private func makeFaceButton(title: String, color: SKColor) -> SKShapeNode {
         let b = SKShapeNode(circleOfRadius: 42)
-        b.fillColor = color.withAlphaComponent(0.4)
+        b.fillColor = color.withAlphaComponent(0.45)
         b.strokeColor = color
         b.lineWidth = 2
         b.glowWidth = 2
@@ -298,12 +326,12 @@ public final class HeistScene: SKScene {
             (hudCombo, ArtCatalog.neonCyan),
             (hudTime, SKColor.white),
         ] as [(SKLabelNode, SKColor)] {
-            label.fontSize = 15
+            label.fontSize = 16
             label.fontColor = color
             label.horizontalAlignmentMode = .left
             label.verticalAlignmentMode = .top
             label.zPosition = 210
-            hud.addChild(label)
+            playHUD.addChild(label)
         }
         #if DEBUG
         fpsLabel.fontSize = 11
@@ -319,7 +347,7 @@ public final class HeistScene: SKScene {
         titleRoot.zPosition = 300
         overlay.addChild(titleRoot)
         let bg = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
-        bg.fillColor = SKColor(red: 0.03, green: 0.02, blue: 0.1, alpha: 0.82)
+        bg.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.12, alpha: 0.78)
         bg.strokeColor = .clear
         titleRoot.addChild(bg)
 
@@ -348,7 +376,7 @@ public final class HeistScene: SKScene {
         let hint = SKLabelNode(fontNamed: "AvenirNext-Medium")
         hint.text = "Left stick · JUMP · POUNCE  ·  Stomp MOPs for Mask Mode"
         hint.fontSize = 11
-        hint.fontColor = SKColor(white: 1, alpha: 0.7)
+        hint.fontColor = SKColor(white: 1, alpha: 0.75)
         hint.position = CGPoint(x: 0, y: -100)
         titleRoot.addChild(hint)
     }
@@ -370,6 +398,28 @@ public final class HeistScene: SKScene {
         outcomeRoot.addChild(label)
     }
 
+    #if DEBUG
+    private func setupDebugTuning() {
+        let menu = DebugTuningMenu(tuning: tuning)
+        menu.onChange = { [weak self] t in
+            guard let self else { return }
+            self.tuning = t
+            self.sim.tuning = t
+        }
+        overlay.addChild(menu)
+        tuningMenu = menu
+
+        let btn = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        btn.text = "TUNING"
+        btn.fontSize = 11
+        btn.fontColor = ArtCatalog.neonCyan.withAlphaComponent(0.8)
+        btn.name = "debugToggle"
+        btn.zPosition = 880
+        hud.addChild(btn)
+        debugToggle = btn
+    }
+    #endif
+
     private func layoutUI() {
         guard stickBase != nil, jumpBtn != nil, pounceBtn != nil, sim != nil else { return }
         let hw = size.width * 0.5
@@ -384,37 +434,67 @@ public final class HeistScene: SKScene {
         hudTime.position = CGPoint(x: -hw + 16, y: hh - 84)
         #if DEBUG
         fpsLabel.position = CGPoint(x: -hw + 16, y: -hh + 16)
+        debugToggle?.position = CGPoint(x: hw - 40, y: hh - 18)
+        tuningMenu?.position = .zero
         #endif
-        let playing = { if case .playing = sim.state.phase { return true }; return false }()
-        stickBase.isHidden = !playing
-        stickKnob.isHidden = !playing
-        jumpBtn.isHidden = !playing
-        pounceBtn.isHidden = !playing
+        updateHUDVisibility()
+    }
+
+    private func updateHUDVisibility() {
+        let playing: Bool = {
+            if case .playing = sim.state.phase { return true }
+            return false
+        }()
+        playHUD.isHidden = !playing
+        if !playing {
+            stickKnob.position = stickBase.position
+            moveX = 0
+        }
     }
 
     private func cg(_ v: Vec2) -> CGPoint { CGPoint(x: v.x, y: v.y) }
 
+    private func beginPlay() {
+        JuiceSound.shared.play(.sfxUITap)
+        sim.startRun()
+        titleRoot.isHidden = true
+        JuiceSound.shared.startLevelMusic()
+        layoutUI()
+        hapticMed.impactOccurred()
+    }
+
+    private func doRetry() {
+        JuiceSound.shared.play(.sfxUITap)
+        sim.retry()
+        hideOutcome()
+        JuiceSound.shared.startLevelMusic()
+        updateHUDVisibility()
+    }
+
     // MARK: - Touch
 
     public override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if smokeEnabled { return } // scripted input only
         for touch in touches {
             let p = touch.location(in: hud)
+            #if DEBUG
+            if let toggle = debugToggle, toggle.contains(p) {
+                tuningMenu?.toggle()
+                return
+            }
+            if let menu = tuningMenu, !menu.isHidden {
+                if menu.handleTap(at: touch.location(in: overlay)) { return }
+            }
+            #endif
             if case .title = sim.state.phase {
-                JuiceSound.shared.play(.sfxUITap)
-                sim.startRun()
-                titleRoot.isHidden = true
-                JuiceSound.shared.startLevelMusic()
-                layoutUI()
-                hapticMed.impactOccurred()
+                beginPlay()
                 return
             }
             if case .won = sim.state.phase {
-                JuiceSound.shared.play(.sfxUITap)
-                sim.retry(); hideOutcome(); JuiceSound.shared.startLevelMusic(); return
+                doRetry(); return
             }
             if case .failed = sim.state.phase {
-                JuiceSound.shared.play(.sfxUITap)
-                sim.retry(); hideOutcome(); JuiceSound.shared.startLevelMusic(); return
+                doRetry(); return
             }
             if jumpBtn.contains(p) {
                 jumpTouch = touch
@@ -437,12 +517,14 @@ public final class HeistScene: SKScene {
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if smokeEnabled { return }
         for touch in touches where touch === stickTouch {
             updateStick(touch.location(in: hud))
         }
     }
 
     public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if smokeEnabled { return }
         for touch in touches {
             if touch === stickTouch {
                 stickTouch = nil
@@ -503,9 +585,23 @@ public final class HeistScene: SKScene {
         accumulator += dt
         var steps = 0
         while accumulator >= tuning.dt && steps < 5 {
-            let input = InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
+            var input = InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
             jumpPressed = false
             pouncePressed = false
+
+            if smokeEnabled {
+                let cue = smoke.next(sim: sim)
+                if cue.start { beginPlay() }
+                if cue.retry { doRetry() }
+                input = cue.input
+                if stickBase != nil {
+                    stickKnob.position = CGPoint(
+                        x: stickBase.position.x + CGFloat(input.moveX) * 40,
+                        y: stickBase.position.y
+                    )
+                }
+            }
+
             if case .playing = sim.state.phase {
                 sim.step(input)
                 handle(sim.state.events)
@@ -514,6 +610,7 @@ public final class HeistScene: SKScene {
             steps += 1
         }
         sync(dt: CGFloat(dt))
+        updateHUDVisibility()
     }
 
     private func handle(_ events: [SimEvent]) {
@@ -535,6 +632,7 @@ public final class HeistScene: SKScene {
                 JuiceSound.shared.play(.sfxBellyFlop)
                 squash(1.35, 0.6)
             case .stomp:
+                smoke.noteStomp()
                 JuiceSound.shared.play(.sfxMopHit)
                 hitStop = 0.05
                 shake(0.7)
@@ -547,6 +645,7 @@ public final class HeistScene: SKScene {
                 JuiceSound.shared.play(.sfxCollectShiny)
                 pop("BANK", at: e.position, ArtCatalog.neonLime)
             case .maskOn:
+                smoke.sawMask = true
                 JuiceSound.shared.play(.sfxMaskModeOn)
                 if !maskMusicOn {
                     maskMusicOn = true
@@ -608,7 +707,6 @@ public final class HeistScene: SKScene {
         for m in sim.state.mops {
             mopNodes[m.id]?.position = cg(m.position)
             mopNodes[m.id]?.isHidden = !m.alive
-            // Alert texture when close
             if m.alive, abs(m.position.x - b.position.x) < 80,
                let alert = ArtCatalog.texture(.mopAlert) {
                 mopNodes[m.id]?.texture = alert
@@ -624,15 +722,16 @@ public final class HeistScene: SKScene {
         hudTime.text = String(format: "Time %.0fs", sim.state.elapsed)
 
         let lead = CGFloat(b.facing * tuning.cameraLeadTiles * tuning.tileSize)
-        let target = CGPoint(x: CGFloat(b.position.x) + lead, y: CGFloat(b.position.y) + 40)
+        let target = CGPoint(x: CGFloat(b.position.x) + lead, y: CGFloat(b.position.y) + 28)
         let s = CGFloat(tuning.cameraSmooth)
         cameraFocus.x += (target.x - cameraFocus.x) * s
         cameraFocus.y += (target.y - cameraFocus.y) * s
-        world.position = CGPoint(x: -cameraFocus.x, y: -cameraFocus.y)
-        // Slow non-tiling parallax (far skyline must not repeat)
-        parallaxFar.position = CGPoint(x: -cameraFocus.x * 0.12, y: -cameraFocus.y * 0.04)
-        parallaxMid.position = CGPoint(x: -cameraFocus.x * 0.35, y: -cameraFocus.y * 0.08)
-        parallaxNear.position = CGPoint(x: -cameraFocus.x * 0.55, y: -cameraFocus.y * 0.12)
+        let z = Self.worldZoom
+        stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
+        // Parallax offsets inside stage (already scaled)
+        parallaxFar.position = CGPoint(x: cameraFocus.x * 0.88, y: cameraFocus.y * 0.96)
+        parallaxMid.position = CGPoint(x: cameraFocus.x * 0.65, y: cameraFocus.y * 0.92)
+        parallaxNear.position = CGPoint(x: cameraFocus.x * 0.45, y: cameraFocus.y * 0.88)
     }
 
     private func squash(_ x: CGFloat, _ y: CGFloat) {
@@ -647,7 +746,7 @@ public final class HeistScene: SKScene {
     private func dust(at pos: Vec2) {
         for _ in 0..<7 {
             let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 2...4))
-            p.fillColor = ArtCatalog.neonOrange.withAlphaComponent(0.7)
+            p.fillColor = ArtCatalog.neonOrange.withAlphaComponent(0.75)
             p.strokeColor = .clear
             p.position = cg(pos)
             p.zPosition = 40
@@ -665,7 +764,7 @@ public final class HeistScene: SKScene {
     private func pop(_ text: String, at pos: Vec2, _ color: SKColor) {
         let l = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         l.text = text
-        l.fontSize = 14
+        l.fontSize = 16
         l.fontColor = color
         l.position = cg(pos)
         l.zPosition = 60
@@ -678,7 +777,7 @@ public final class HeistScene: SKScene {
 
     private func shake(_ amount: CGFloat) {
         let a = amount * 7
-        world.run(SKAction.sequence([
+        stage.run(SKAction.sequence([
             SKAction.moveBy(x: a, y: 0, duration: 0.03),
             SKAction.moveBy(x: -2 * a, y: 0, duration: 0.04),
             SKAction.moveBy(x: a, y: 0, duration: 0.03),
@@ -686,9 +785,10 @@ public final class HeistScene: SKScene {
     }
 
     private func flashMask() {
-        let flash = SKShapeNode(circleOfRadius: 90)
-        flash.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.35)
+        let flash = SKShapeNode(circleOfRadius: 100)
+        flash.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.4)
         flash.strokeColor = .clear
+        flash.glowWidth = 8
         flash.position = bandit.position
         flash.zPosition = 45
         world.addChild(flash)

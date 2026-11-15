@@ -246,7 +246,8 @@ final class GameCoreTests: XCTestCase {
         XCTAssertEqual(sim.state.phase, .failed(.fellInWater))
     }
 
-    func testReplayHashStable() throws {
+    /// Golden replay: the same input log must reproduce the same state hash 100 times.
+    func testGoldenReplayHashX100() throws {
         let map = try NeonDocksLevel.load()
         let tuning = Tuning.default
         var recorder = ReplayRecorder()
@@ -265,10 +266,27 @@ final class GameCoreTests: XCTestCase {
             sim.step(input)
         }
         let expected = sim.state.stateHash
+        XCTAssertFalse(recorder.inputs.isEmpty)
         for i in 0..<100 {
             let replayed = ReplayPlayer.play(map: map, tuning: tuning, seed: 42, inputs: recorder.inputs)
-            XCTAssertEqual(replayed.stateHash, expected, "iter \(i)")
+            XCTAssertEqual(replayed.stateHash, expected, "golden replay iter \(i)")
         }
+    }
+
+    func testSmokeBrainStartsAfterTitleHold() throws {
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 1)
+        var brain = SmokeBrain()
+        var started = false
+        for _ in 0..<120 {
+            let cue = brain.next(sim: sim)
+            if cue.start {
+                started = true
+                sim.startRun()
+            }
+        }
+        XCTAssertTrue(started)
+        XCTAssertEqual(sim.state.phase, .playing)
     }
 
     func testRespondsWithinTwoFrames() throws {

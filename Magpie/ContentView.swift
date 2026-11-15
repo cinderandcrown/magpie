@@ -7,7 +7,8 @@ import SwiftUI
 /// SwiftUI shell hosting the Mission 1 neon heist scene.
 struct ContentView: View {
     @State private var scene: HeistScene = {
-        let s = HeistScene(size: CGSize(width: 390, height: 844))
+        let smoke = ProcessInfo.processInfo.arguments.contains("-SmokeAutoplay")
+        let s = HeistScene(size: CGSize(width: 390, height: 844), smokeAutoplay: smoke)
         s.scaleMode = .resizeFill
         return s
     }()
