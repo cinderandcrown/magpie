@@ -978,46 +978,53 @@ public final class HeistScene: SKScene {
         updateHUDVisibility()
     }
 
+    /// Smoke keeps music + hero SFX (stomp/mask/fail/win) so the video has a soundtrack,
+    /// but skips per-jump/land spam — AVAudioPlayer decode on every event tanks sim FPS below 55.
+    private func playSFX(_ key: AssetKey, smokeHero: Bool = false) {
+        if smokeEnabled, !smokeHero { return }
+        JuiceSound.shared.play(key)
+    }
+
     private func handle(_ events: [SimEvent]) {
         for e in events {
             switch e.kind {
             case .jump:
-                JuiceSound.shared.play(.sfxJump)
+                playSFX(.sfxJump)
                 if !smokeEnabled { hapticLight.impactOccurred() }
                 squash(0.85, 1.2)
             case .land:
-                JuiceSound.shared.play(.sfxLand)
+                playSFX(.sfxLand)
                 squash(1.25, 0.75)
                 dust(at: e.position)
             case .pounce:
-                JuiceSound.shared.play(.sfxPounce)
+                playSFX(.sfxPounce)
                 if !smokeEnabled { hapticMed.impactOccurred() }
                 shake(0.35)
             case .flop:
-                JuiceSound.shared.play(.sfxBellyFlop)
+                playSFX(.sfxBellyFlop)
                 squash(1.35, 0.6)
             case .stomp:
                 smoke.noteStomp()
                 smokeStatus.stomps += 1
-                JuiceSound.shared.play(.sfxMopHit)
+                playSFX(.sfxMopHit, smokeHero: true)
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
                 // Visible hit-stop on stomp (smoke + play) so gameplay video reads the juice.
-                hitStop = smokeEnabled ? 0.055 : 0.07
+                hitStop = smokeEnabled ? 0.045 : 0.07
                 shake(0.45)
                 squash(1.35, 0.55)
                 dust(at: e.position)
                 pop("STOMP", at: e.position, ArtCatalog.neonPink)
             case .shiny:
-                JuiceSound.shared.play(.sfxCollectShiny)
+                playSFX(.sfxCollectShiny)
                 shinySparkle(at: e.position)
                 pop("✦", at: e.position, ArtCatalog.neonOrange)
             case .bank:
-                JuiceSound.shared.play(.sfxCollectShiny)
+                playSFX(.sfxCollectShiny)
                 pop("BANK", at: e.position, ArtCatalog.neonLime)
             case .maskOn:
                 smoke.sawMask = true
                 smokeStatus.mask = true
-                JuiceSound.shared.play(.sfxMaskModeOn)
+                playSFX(.sfxMaskModeOn, smokeHero: true)
                 if !maskMusicOn {
                     maskMusicOn = true
                     JuiceSound.shared.setMaskModeMusic(true)
@@ -1025,18 +1032,18 @@ public final class HeistScene: SKScene {
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
                 flashMask()
             case .hurt:
-                JuiceSound.shared.play(.sfxPlayerHit)
+                playSFX(.sfxPlayerHit, smokeHero: true)
                 damageFlash()
                 shake(0.3)
             case .win:
                 smokeStatus.won = true
-                JuiceSound.shared.play(.sfxWin)
+                playSFX(.sfxWin, smokeHero: true)
                 JuiceSound.shared.setMaskModeMusic(false)
                 showOutcome()
                 writeSmokeStatus()
             case .fail:
                 smokeStatus.died = true
-                JuiceSound.shared.play(.sfxFail)
+                playSFX(.sfxFail, smokeHero: true)
                 JuiceSound.shared.setMaskModeMusic(false)
                 // Smoke: never overlay SPLASHED during the Mask beat capture window.
                 let maskOk = SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
@@ -1047,7 +1054,7 @@ public final class HeistScene: SKScene {
                     writeSmokeStatus()
                 }
             case .checkpoint:
-                JuiceSound.shared.play(.sfxCheckpoint)
+                playSFX(.sfxCheckpoint)
                 pop("CHECK", at: e.position, ArtCatalog.neonLime)
             case .dust:
                 dust(at: e.position)
@@ -1206,7 +1213,8 @@ public final class HeistScene: SKScene {
             maskVignette.isHidden = false
             maskVignette.alpha = min(1, maskVignette.alpha + dt * 4)
             maskTrailAcc += dt
-            if maskTrailAcc >= 0.05 {
+            let trailEvery: CGFloat = smokeEnabled ? 0.08 : 0.05
+            if maskTrailAcc >= trailEvery {
                 maskTrailAcc = 0
                 bandit.emitMaskTrail()
             }
@@ -1229,7 +1237,7 @@ public final class HeistScene: SKScene {
     }
 
     private func dust(at pos: Vec2) {
-        let count = smokeEnabled ? 4 : 7
+        let count = smokeEnabled ? 3 : 7
         for _ in 0..<count {
             let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 2...4))
             p.fillColor = ArtCatalog.neonOrange.withAlphaComponent(0.75)
@@ -1248,11 +1256,12 @@ public final class HeistScene: SKScene {
     }
 
     private func shinySparkle(at pos: Vec2) {
-        for _ in 0..<6 {
+        let count = smokeEnabled ? 3 : 6
+        for _ in 0..<count {
             let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 1.5...3.5))
             p.fillColor = ArtCatalog.neonOrange
             p.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.8)
-            p.glowWidth = 1
+            if !smokeEnabled { p.glowWidth = 1 }
             p.position = cg(pos)
             p.zPosition = 55
             world.addChild(p)
