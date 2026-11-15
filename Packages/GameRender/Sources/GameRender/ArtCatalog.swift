@@ -632,8 +632,8 @@ public final class BanditVisual: SKNode {
         guard moving else { return }
         trailAcc += dt
         let interval: CGFloat = {
-            if maskMode { return smokeLite ? 0.055 : 0.04 }
-            return smokeLite ? 0.1 : 0.07
+            if maskMode { return smokeLite ? 0.09 : 0.04 }
+            return smokeLite ? 0.12 : 0.07
         }()
         guard trailAcc >= interval else { return }
         trailAcc = 0

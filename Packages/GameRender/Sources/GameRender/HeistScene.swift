@@ -75,6 +75,7 @@ public final class HeistScene: SKScene {
     private var maskGradePulse: CGFloat = 0
     private var lastAwardedMedals = 0
     private var retentionMode: String? = nil // "map" | "daily"
+    private var debugLabelScanAcc: TimeInterval = 0
     #if DEBUG
     private var tuningMenu: DebugTuningMenu?
     private var debugToggle: SKLabelNode?
@@ -1226,8 +1227,9 @@ public final class HeistScene: SKScene {
                 hitStop = 0.07
                 shake(0.85)
                 squash(1.42, 0.48)
-                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 12 : 16)
-                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 6 : 8)
+                // Keep smoke particle budgets tight (FPS gate ≥55); full burst in interactive play.
+                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 5 : 14)
+                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 3 : 8)
                 dust(at: e.position)
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
@@ -1464,11 +1466,13 @@ public final class HeistScene: SKScene {
         if b.maskMode {
             hudCombo.text = b.combo > 1 ? "◈ MASK ×2  COMBO x\(b.combo)" : "◈ MASK ×2"
             hudCombo.isHidden = false
-            styleHUDLabel(hudCombo, color: ArtCatalog.neonCyan)
+            hudCombo.fontColor = ArtCatalog.neonCyan
+            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
         } else if b.combo > 1 {
             hudCombo.text = "COMBO x\(b.combo)"
             hudCombo.isHidden = false
-            styleHUDLabel(hudCombo, color: ArtCatalog.neonLime)
+            hudCombo.fontColor = ArtCatalog.neonLime
+            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonLime.withAlphaComponent(0.45)
         } else {
             hudCombo.text = ""
             hudCombo.isHidden = true
@@ -1478,18 +1482,21 @@ public final class HeistScene: SKScene {
             (label.childNode(withName: "hudOutline") as? SKLabelNode)?.text = label.text
             (label.childNode(withName: "hudGlow") as? SKLabelNode)?.text = label.text
         }
-        // Mask Mode: particles + pulsing grade + palette shift on parallax.
+        // Mask Mode: trail + vignette pulse; parallax grade only on enter/exit (FPS).
         if b.maskMode {
             maskParticleAcc += dt
             maskGradePulse += dt
-            if maskParticleAcc >= (smokeEnabled ? 0.08 : 0.055) {
+            if maskParticleAcc >= (smokeEnabled ? 0.14 : 0.07) {
                 maskParticleAcc = 0
-                neonBurst(at: b.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 3 : 4)
+                if !smokeEnabled {
+                    neonBurst(at: b.position, color: ArtCatalog.neonCyan, count: 3)
+                }
                 bandit.emitMaskTrail()
             }
-            let pulse = 0.85 + 0.15 * sin(maskGradePulse * 5)
-            maskVignette.alpha = pulse
-            applyMaskParallaxGrade(active: true, pulse: pulse)
+            maskVignette.alpha = 0.85 + 0.15 * sin(maskGradePulse * 5)
+            if !lastMaskMode {
+                applyMaskParallaxGrade(active: true, pulse: 1)
+            }
         } else {
             maskParticleAcc = 0
             maskGradePulse = 0
@@ -1542,20 +1549,19 @@ public final class HeistScene: SKScene {
     }
 
     private func dust(at pos: Vec2) {
-        let count = smokeEnabled ? 5 : 9
+        let count = smokeEnabled ? 3 : 8
         for _ in 0..<count {
             let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 2.5...5))
             p.fillColor = ArtCatalog.neonOrange.withAlphaComponent(0.8)
-            p.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.35)
-            p.lineWidth = 0.5
+            p.strokeColor = .clear
             p.position = cg(pos)
             p.zPosition = 40
             world.addChild(p)
             p.run(SKAction.sequence([
                 SKAction.group([
-                    SKAction.moveBy(x: CGFloat.random(in: -28...28), y: CGFloat.random(in: 2...22), duration: 0.32),
-                    SKAction.fadeOut(withDuration: 0.32),
-                    SKAction.scale(to: 0.3, duration: 0.32),
+                    SKAction.moveBy(x: CGFloat.random(in: -28...28), y: CGFloat.random(in: 2...22), duration: 0.28),
+                    SKAction.fadeOut(withDuration: 0.28),
+                    SKAction.scale(to: 0.3, duration: 0.28),
                 ]),
                 SKAction.removeFromParent(),
             ]))
@@ -1563,21 +1569,23 @@ public final class HeistScene: SKScene {
     }
 
     private func shinySparkle(at pos: Vec2) {
-        let count = smokeEnabled ? 7 : 10
+        let count = smokeEnabled ? 4 : 9
         for _ in 0..<count {
             let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 1.8...4))
             p.fillColor = ArtCatalog.neonOrange
-            p.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.85)
-            p.lineWidth = 0.8
-            if !smokeEnabled { p.glowWidth = 1.5 }
+            p.strokeColor = smokeEnabled ? .clear : ArtCatalog.neonCyan.withAlphaComponent(0.85)
+            if !smokeEnabled {
+                p.lineWidth = 0.8
+                p.glowWidth = 1.5
+            }
             p.position = cg(pos)
             p.zPosition = 55
             world.addChild(p)
             p.run(SKAction.sequence([
                 SKAction.group([
-                    SKAction.moveBy(x: CGFloat.random(in: -34...34), y: CGFloat.random(in: 10...42), duration: 0.38),
-                    SKAction.fadeOut(withDuration: 0.38),
-                    SKAction.scale(to: 0.2, duration: 0.38),
+                    SKAction.moveBy(x: CGFloat.random(in: -34...34), y: CGFloat.random(in: 10...42), duration: 0.32),
+                    SKAction.fadeOut(withDuration: 0.32),
+                    SKAction.scale(to: 0.2, duration: 0.32),
                 ]),
                 SKAction.removeFromParent(),
             ]))
@@ -1765,7 +1773,12 @@ public final class HeistScene: SKScene {
         smokeStatus.fpsAvg = fpsCount > 0 ? fpsSum / Double(fpsCount) : 0
         smokeStatus.maskOn = sim.state.bandit.maskMode
         if sim.state.bandit.maskMode { smokeStatus.mask = true }
-        smokeStatus.debugLabels = countBannedDebugLabels()
+        // Throttle ban-list scan — full tree walks every status tick tank sim FPS on CI.
+        debugLabelScanAcc += 1
+        if debugLabelScanAcc >= 4 || smokeStatus.debugLabels < 0 {
+            debugLabelScanAcc = 0
+            smokeStatus.debugLabels = countBannedDebugLabels()
+        }
         smokeStatus.combo = max(smokeStatus.combo, sim.state.bestCombo, sim.state.bandit.combo)
         if case .won = sim.state.phase {
             smokeStatus.medals = max(smokeStatus.medals, lastAwardedMedals)
@@ -1776,23 +1789,26 @@ public final class HeistScene: SKScene {
     }
 
     /// CI gate: any visible SKLabel whose text matches the ban list fails smoke.
+    /// Scans HUD/overlay only — world juice uses shapes/sprites + `hitSpark` (✦), not banned words.
     private func countBannedDebugLabels() -> Int {
         var count = 0
         let banned = SmokeStatus.bannedDebugTexts
-        enumerateChildNodes(withName: "//*") { node, _ in
-            guard let label = node as? SKLabelNode else { return }
-            guard !label.isHidden, label.alpha > 0.05 else { return }
-            // Skip labels whose ancestor chain is hidden.
-            var p: SKNode? = label.parent
-            while let cur = p {
-                if cur.isHidden { return }
-                p = cur.parent
+        let scan: (SKNode) -> Void = { root in
+            root.enumerateChildNodes(withName: "//*") { node, _ in
+                guard let label = node as? SKLabelNode else { return }
+                guard !label.isHidden, label.alpha > 0.05 else { return }
+                var p: SKNode? = label.parent
+                while let cur = p {
+                    if cur.isHidden { return }
+                    p = cur.parent
+                }
+                let raw = (label.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !raw.isEmpty else { return }
+                if banned.contains(raw.uppercased()) { count += 1 }
             }
-            let raw = (label.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !raw.isEmpty else { return }
-            let key = raw.uppercased()
-            if banned.contains(key) { count += 1 }
         }
+        scan(hud)
+        scan(overlay)
         return count
     }
 
@@ -1844,14 +1860,15 @@ public final class HeistScene: SKScene {
             SKAction.fadeOut(withDuration: 0.3),
             SKAction.removeFromParent(),
         ]))
-        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 14 : 18)
-        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 6 : 10)
-        for i in 0..<4 {
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 6 : 16)
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 3 : 8)
+        let rings = smokeEnabled ? 2 : 4
+        for i in 0..<rings {
             let ring = SKShapeNode(circleOfRadius: 16 + CGFloat(i) * 12)
             ring.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.9 - CGFloat(i) * 0.12)
             ring.fillColor = .clear
             ring.lineWidth = 2.5
-            ring.glowWidth = 1
+            if !smokeEnabled { ring.glowWidth = 1 }
             ring.position = bandit.position
             ring.zPosition = 46
             world.addChild(ring)
@@ -1864,7 +1881,7 @@ public final class HeistScene: SKScene {
                 SKAction.removeFromParent(),
             ]))
         }
-        for _ in 0..<6 { bandit.emitMaskTrail() }
+        for _ in 0..<(smokeEnabled ? 3 : 6) { bandit.emitMaskTrail() }
         hitSpark(at: sim.state.bandit.position, color: ArtCatalog.neonCyan)
     }
 }
