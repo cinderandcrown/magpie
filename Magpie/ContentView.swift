@@ -4,22 +4,26 @@ import GameRender
 import SpriteKit
 import SwiftUI
 
-/// SwiftUI shell hosting the Mission 0 SpriteKit scene.
-///
-/// Apple docs checked:
-/// - [SpriteView](https://developer.apple.com/documentation/spritekit/spriteview)
-/// - [SwiftUI App](https://developer.apple.com/documentation/swiftui/app)
+/// SwiftUI shell hosting the Mission 1 neon heist scene.
 struct ContentView: View {
+    @State private var scene: HeistScene = {
+        let s = HeistScene(size: CGSize(width: 390, height: 844))
+        s.scaleMode = .resizeFill
+        return s
+    }()
+
     var body: some View {
         GeometryReader { geo in
-            SpriteView(scene: makeScene(size: geo.size), options: [.allowsTransparency])
+            SpriteView(scene: sized(scene, to: geo.size))
                 .ignoresSafeArea()
         }
+        .statusBarHidden()
     }
 
-    private func makeScene(size: CGSize) -> SKScene {
-        let scene = FollowSquareScene(size: size)
-        scene.scaleMode = .resizeFill
+    private func sized(_ scene: HeistScene, to size: CGSize) -> HeistScene {
+        if scene.size != size {
+            scene.size = size
+        }
         return scene
     }
 }

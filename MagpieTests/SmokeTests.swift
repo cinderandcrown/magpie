@@ -7,6 +7,13 @@ import XCTest
 final class SmokeTests: XCTestCase {
     func testCoreAndServicesLink() {
         XCTAssertEqual(ModuleInfo.name, "GameCore")
-        XCTAssertEqual(ServicesInfo.name, "Services")
+        let clock = MockClock(now: 1)
+        XCTAssertEqual(clock.now, 1)
+    }
+
+    func testNeonAlleyMapLoads() throws {
+        let map = try NeonAlleyMap.load()
+        XCTAssertNotNil(map.findFirst(.start))
+        XCTAssertNotNil(map.findFirst(.stash))
     }
 }

@@ -6,7 +6,6 @@ enum ProductIdentity {
     /// Engineering / repo codename. Never change without an explicit rename mission.
     static let codename = "MAGPIE"
 
-    /// Intended commercial name: Trash Panda (confirm App Store / USPTO availability).
-    /// User-facing working title until availability is confirmed.
-    static let displayTitle = "Trash Panda Heist"
+    /// User-facing display title. Home screen uses CFBundleDisplayName = Trash Panda.
+    static let displayTitle = "Trash Panda"
 }

@@ -2,6 +2,16 @@
 
 Every choice that changes the plan, with the reason. Newest first.
 
+## 2026-11-15 — APPROVED M0; Mission 1 toy + home-screen name
+
+| Decision | Reason |
+| --- | --- |
+| Start Mission 1 on `cursor/mission-1-raccoon-toy-0c7d` | Fire Fox / Nicholas: APPROVED M0; build 12.1 on device. |
+| `CFBundleDisplayName` = **Trash Panda**; `ProductIdentity.displayTitle` = Trash Panda | Nicholas: home screen still said Magpie. |
+| `ITSAppUsesNonExemptEncryption` = false | Nicholas verified: no encryption/networking in the app. |
+| Mission 1 includes Shinies, stash win, water fail, and procedural sound (beyond strict PLAN “no goals/sound”) | Nicholas: “this isn’t a game” — next build must feel like a real fun game. PLAN M1 mechanics (Pounce, Tail Swing A/B, Belly Flop, coyote, buffer, Mask Mode) still required. |
+| Placeholder raccoon via SpriteKit shapes; no Sly Cooper cane/top-hat/blue-gold | DESIGN.md visual distinctness. |
+
 ## 2026-11-14 — Name: Trash Panda
 
 | Decision | Reason |

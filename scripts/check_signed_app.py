@@ -6,7 +6,7 @@
         --team TEAMID --bundle-id com.cinderandcrown.magpie --version 0.1.0 --build 42.1
 
 Optional: --require-export-compliance  (enforce ITSAppUsesNonExemptEncryption == false)
-Mission 0 leaves that flag unset until Nicholas approves the proposal.
+Mission 1+ sets ITSAppUsesNonExemptEncryption = false (no encryption/networking).
 """
 
 from __future__ import annotations

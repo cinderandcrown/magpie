@@ -202,7 +202,8 @@ jobs:
             --team "$APPLE_TEAM_ID" \
             --bundle-id "$BUNDLE_ID" \
             --version "$VERSION" \
-            --build "$BUILD"
+            --build "$BUILD" \
+            --require-export-compliance
 
       - name: Validate with Apple
         # altool needs the ASC app record; skip on PR sign-checks until Nicholas creates it.
