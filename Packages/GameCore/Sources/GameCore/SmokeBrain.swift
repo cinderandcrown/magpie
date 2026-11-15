@@ -75,9 +75,10 @@ public struct SmokeBrain: Equatable, Sendable {
         case .failed:
             if !diedOnce { diedOnce = true }
             failWait += 1
-            // Hold death overlay until harness snaps 05, or ~12s fallback.
+            // Hold death overlay until harness snaps 05. Fallback ~60s for manual runs
+            // (CI screenshots can take >12s — a short hold races past phase=failed into won).
             let deathOk = Self.smokeFlagExists("smoke_death_ok.txt")
-            if deathOk || failWait >= 720 {
+            if deathOk || failWait >= 3600 {
                 retry = true
                 failWait = 0
                 act = .finishPush
@@ -105,9 +106,11 @@ public struct SmokeBrain: Equatable, Sendable {
                     }
                 case .showcaseMask:
                     maskShowcaseFrames += 1
-                    // Hold Mask Mode until harness snaps 04, or ~8s fallback.
+                    // Hold Mask Mode until harness snaps 04. Fallback ~60s for manual runs —
+                    // a short hold lets seekDeath/die/retry finish during a slow 04 screenshot,
+                    // so the death wait never sees phase=failed.
                     let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
-                    if maskOk || maskShowcaseFrames >= 480 {
+                    if maskOk || maskShowcaseFrames >= 3600 {
                         act = .seekDeath
                     }
                 default:
