@@ -133,3 +133,24 @@ public enum NeonDocksLevel {
         try TileMap.parse(ascii)
     }
 }
+
+/// Compact neon rooftop used by `-SmokeAutoplay`.
+/// Same-level MOPs (jump-stomp), wall pillar, shinies, water pit, exit — fits the jump budget
+/// and the CI smoke window. Full Neon Docks stays the ship level.
+public enum SmokeDemoLevel {
+    public static let ascii = """
+    ##################################################
+    #................................................#
+    #........................................==......#
+    #.......................................|  |.....#
+    #.......................................|  |.....#
+    #.@.*.M.*.M.*.M...*..P...~~~~...........|  |...E.#
+    #=======================================|  |=====#
+    #................................................#
+    ##################################################
+    """
+
+    public static func load() throws -> TileMap {
+        try TileMap.parse(ascii)
+    }
+}

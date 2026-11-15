@@ -80,8 +80,9 @@ public final class HeistScene: SKScene {
             smokeEnabled = true
         }
         if smokeEnabled {
-            // Reach Mask Mode with 3 stomps in the demo window without changing ship defaults.
-            tuning.maskModeAtCombo = 3
+            // One stomp → Mask Mode in the demo window (combo grace is too short for spaced stomps).
+            tuning.maskModeAtCombo = 1
+            tuning.comboGroundGrace = 4
         }
         view.preferredFramesPerSecond = 60
         view.ignoresSiblingOrder = true
@@ -94,7 +95,9 @@ public final class HeistScene: SKScene {
         }
         #endif
         do {
-            sim = Sim(map: try NeonDocksLevel.load(), tuning: tuning, seed: smokeEnabled ? 7 : 11)
+            // Smoke uses the compact demo rooftop so CI can hit stomp/mask/death in-window.
+            let map = smokeEnabled ? try SmokeDemoLevel.load() : try NeonDocksLevel.load()
+            sim = Sim(map: map, tuning: tuning, seed: smokeEnabled ? 7 : 11)
         } catch {
             sim = Sim(map: try! TileMap.parse("###\n#@#\n###"), tuning: tuning)
         }
@@ -164,22 +167,38 @@ public final class HeistScene: SKScene {
 
     // MARK: - Atmosphere / Parallax
 
-    /// Continuous dock plate behind platforms so empty map rows don't read as cut strips.
+    /// Soft dock wash behind platforms — translucent so parallax city reads through (opaque
+    /// plates previously hid the skyline and left platforms as floating strips on navy).
     private func buildAtmosphere() {
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
         let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
-        let plate = SKShapeNode(rectOf: CGSize(width: mapW + 200, height: mapH + 120), cornerRadius: 0)
-        plate.fillColor = ArtCatalog.dockFill
-        plate.strokeColor = .clear
+        let plate = SKSpriteNode(
+            color: ArtCatalog.dockFill.withAlphaComponent(0.55),
+            size: CGSize(width: mapW + 240, height: mapH + 160)
+        )
         plate.position = CGPoint(x: mapW * 0.5, y: mapH * 0.45)
         plate.zPosition = -5
         world.addChild(plate)
 
-        // Soft teal/magenta wash so the void between platforms stays neon, not black bands.
-        let wash = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.06), size: CGSize(width: mapW + 200, height: mapH))
+        let wash = SKSpriteNode(
+            color: ArtCatalog.neonCyan.withAlphaComponent(0.08),
+            size: CGSize(width: mapW + 240, height: mapH)
+        )
         wash.position = plate.position
         wash.zPosition = -4
         world.addChild(wash)
+
+        // Rooftop ledge strip under the playfield so decks read as one plane.
+        let ledge = SKSpriteNode(
+            color: SKColor(red: 0.14, green: 0.11, blue: 0.28, alpha: 0.9),
+            size: CGSize(width: mapW + 200, height: 48)
+        )
+        ledge.position = CGPoint(x: mapW * 0.5, y: 8)
+        ledge.zPosition = -3
+        world.addChild(ledge)
+        let neon = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.55), size: CGSize(width: mapW + 200, height: 2))
+        neon.position = CGPoint(x: 0, y: 22)
+        ledge.addChild(neon)
     }
 
     private func buildParallax() {
@@ -688,7 +707,12 @@ public final class HeistScene: SKScene {
 
         accumulator += dt
         var steps = 0
-        let maxSteps = smokeEnabled ? 3 : 4
+        // Smoke: 1:1 with display so wall-clock screenshots match sim moments / title hold.
+        let maxSteps: Int = {
+            if !smokeEnabled { return 4 }
+            if case .title = sim.state.phase { return 1 }
+            return 2
+        }()
         while accumulator >= tuning.dt && steps < maxSteps {
             var input = InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
             jumpPressed = false

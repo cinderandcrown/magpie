@@ -166,4 +166,22 @@ if [[ "$PHASE" == "title" ]]; then
   echo "FAIL: still on title at end of smoke" >&2
   exit 1
 fi
-echo "Smoke passed (phase=$PHASE)"
+
+# Milestone gates — screenshots must show real in-game beats, not just “still alive”.
+STOMPS="$(echo "$STATUS" | sed -n 's/.*stomps=\([0-9][0-9]*\).*/\1/p' | head -1)"
+MASK="$(echo "$STATUS" | sed -n 's/.*mask=\([0-9][0-9]*\).*/\1/p' | head -1)"
+DIED="$(echo "$STATUS" | sed -n 's/.*died=\([0-9][0-9]*\).*/\1/p' | head -1)"
+STOMPS="${STOMPS:-0}"; MASK="${MASK:-0}"; DIED="${DIED:-0}"
+if (( STOMPS < 1 )); then
+  echo "FAIL: expected MOP stomp during smoke (stomps=$STOMPS)" >&2
+  exit 1
+fi
+if (( MASK < 1 )); then
+  echo "FAIL: expected Mask Mode during smoke (mask=$MASK)" >&2
+  exit 1
+fi
+if (( DIED < 1 )); then
+  echo "FAIL: expected death/results during smoke (died=$DIED)" >&2
+  exit 1
+fi
+echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED)"

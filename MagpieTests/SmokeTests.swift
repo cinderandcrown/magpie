@@ -36,15 +36,17 @@ final class SmokeTests: XCTestCase {
         XCTAssertGreaterThan(solids, 100)
     }
 
-    /// Regression: SmokeBrain can drive 45s of Neon Docks without trapping the sim.
+    /// Regression: SmokeBrain can drive 45s of the smoke demo rooftop without trapping the sim.
     func testSmokeBrainFortyFiveSecondSoak() throws {
-        let map = try NeonDocksLevel.load()
+        let map = try SmokeDemoLevel.load()
         var tuning = Tuning.default
-        tuning.maskModeAtCombo = 3
+        tuning.maskModeAtCombo = 1
+        tuning.comboGroundGrace = 4
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
         let steps = Int(45 * tuning.simHz)
         var started = false
+        var stomps = 0
         for _ in 0..<steps {
             let cue = brain.next(sim: sim)
             if cue.start {
@@ -56,12 +58,16 @@ final class SmokeTests: XCTestCase {
             }
             if case .playing = sim.state.phase {
                 sim.step(cue.input)
+                for e in sim.state.events where e.kind == .stomp {
+                    stomps += 1
+                    brain.noteStomp()
+                }
             }
         }
         XCTAssertTrue(started)
-        // Must have left title and made progress; death or win both OK for soak health.
         XCTAssertNotEqual(sim.state.phase, .title)
         XCTAssertGreaterThan(sim.state.tick, 100)
+        XCTAssertGreaterThan(stomps, 0, "smoke soak should land at least one stomp")
     }
 
     /// Regression for CI 43726848897: 2560×1440 masters must stay out of the smoke path.

@@ -278,7 +278,7 @@ final class GameCoreTests: XCTestCase {
         var sim = Sim(map: map, tuning: .default, seed: 1)
         var brain = SmokeBrain()
         var started = false
-        for _ in 0..<120 {
+        for _ in 0..<200 {
             let cue = brain.next(sim: sim)
             if cue.start {
                 started = true
@@ -307,6 +307,53 @@ final class GameCoreTests: XCTestCase {
             _ = sim.state.stateHash
         }
         XCTAssertNotEqual(sim.state.phase, .title)
+    }
+
+    /// Smoke demo must actually hit stomp → Mask Mode → death within a minute (CI moment screenshots).
+    func testSmokeBrainHitsStompMaskAndDeath() throws {
+        let map = try SmokeDemoLevel.load()
+        var tuning = Tuning.default
+        tuning.maskModeAtCombo = 1
+        tuning.comboGroundGrace = 4
+        var sim = Sim(map: map, tuning: tuning, seed: 7)
+        var brain = SmokeBrain()
+        var sawStomp = false
+        var sawMask = false
+        var sawDeath = false
+        var sawRetry = false
+        for _ in 0..<Int(50 * tuning.simHz) {
+            let cue = brain.next(sim: sim)
+            if cue.start { sim.startRun() }
+            if cue.retry {
+                sawRetry = true
+                sim.retry()
+            }
+            if case .playing = sim.state.phase {
+                sim.step(cue.input)
+                for e in sim.state.events {
+                    switch e.kind {
+                    case .stomp: sawStomp = true; brain.noteStomp()
+                    case .maskOn: sawMask = true
+                    case .fail: sawDeath = true
+                    default: break
+                    }
+                }
+            } else if case .failed = sim.state.phase {
+                sawDeath = true
+            }
+        }
+        XCTAssertTrue(sawStomp, "expected at least one MOP stomp")
+        XCTAssertTrue(sawMask, "expected Mask Mode")
+        XCTAssertTrue(sawDeath, "expected a death for results screenshot")
+        XCTAssertTrue(sawRetry || brain.diedOnce, "expected retry after death")
+    }
+
+    func testSmokeDemoLevelLoads() throws {
+        let map = try SmokeDemoLevel.load()
+        XCTAssertNotNil(map.findFirst(.start))
+        XCTAssertNotNil(map.findFirst(.exit))
+        XCTAssertGreaterThanOrEqual(map.findAll(.mopSpawn).count, 3)
+        XCTAssertFalse(map.findAll(.water).isEmpty)
     }
 
     func testRespondsWithinTwoFrames() throws {
