@@ -177,14 +177,17 @@ public final class HeistScene: SKScene {
 
     private func buildTiles() {
         let tile = CGFloat(tuning.tileSize)
-        var tileIdx = 1
+        // Preload the 27 tile textures once; never hit disk per cell.
+        let tileTextures: [SKTexture] = (1...27).compactMap { ArtCatalog.tileTexture(index: $0) }
+        var tileIdx = 0
         for y in 0..<sim.map.height {
             for x in 0..<sim.map.width {
                 let kind = sim.map.tile(atX: x, y: y)
                 let pos = cg(sim.map.worldCenter(ofX: x, y: y, tileSize: tuning.tileSize))
                 switch kind {
                 case .ground, .wall, .latch:
-                    if let tex = ArtCatalog.tileTexture(index: ((tileIdx - 1) % 27) + 1) {
+                    if !tileTextures.isEmpty {
+                        let tex = tileTextures[tileIdx % tileTextures.count]
                         let n = SKSpriteNode(texture: tex, size: CGSize(width: tile + 1, height: tile + 1))
                         n.position = pos
                         n.zPosition = 2

@@ -100,13 +100,18 @@ public enum ArtCatalog {
         return n
     }
 
+    private static var tileCache: [Int: SKTexture] = [:]
+
     public static func tileTexture(index: Int) -> SKTexture? {
+        if let cached = tileCache[index] { return cached }
         let name = String(format: "tile_%02d", index)
         for root in ["Generated/sprites/tiles", "Assets/Generated/sprites/tiles"] {
             if let u = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: root),
                let data = try? Data(contentsOf: u),
                let img = UIImage(data: data) {
-                return SKTexture(image: img)
+                let tex = SKTexture(image: img)
+                tileCache[index] = tex
+                return tex
             }
         }
         return nil
