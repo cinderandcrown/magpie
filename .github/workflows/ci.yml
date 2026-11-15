@@ -75,8 +75,8 @@ jobs:
           xcrun --sdk iphonesimulator --show-sdk-version
           echo "ImageOS=${ImageOS:-unknown} RUNNER_NAME=${RUNNER_NAME:-unknown}"
 
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install XcodeGen + ffmpeg
+        run: brew install xcodegen ffmpeg
 
       - name: Generate Xcode project
         run: xcodegen generate

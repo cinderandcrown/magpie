@@ -275,6 +275,27 @@ print(f"OK FPS {fps:.1f} >= {need:.0f}")
 PY
 
 # simctl recordVideo is video-only — mux level music + hero SFX from the smoke audio timeline.
+ensure_ffmpeg() {
+  if command -v ffmpeg >/dev/null 2>&1 && command -v ffprobe >/dev/null 2>&1; then
+    return 0
+  fi
+  # Common Homebrew locations on GHA macOS runners.
+  for p in /opt/homebrew/bin /usr/local/bin; do
+    if [[ -x "$p/ffmpeg" && -x "$p/ffprobe" ]]; then
+      export PATH="$p:$PATH"
+      return 0
+    fi
+  done
+  if command -v brew >/dev/null 2>&1; then
+    echo "Installing ffmpeg for smoke audio mux…" >&2
+    brew install ffmpeg
+    return 0
+  fi
+  echo "FAIL: ffmpeg/ffprobe not available for smoke audio mux" >&2
+  return 1
+}
+ensure_ffmpeg
+
 AUDIO_DIR="Assets/Generated/audio"
 EVENTS_SRC="$(data_container)/Documents/smoke_audio_events.txt"
 EVENTS_COPY="$OUT_DIR/smoke_audio_events.txt"
@@ -285,11 +306,15 @@ else
   : > "$EVENTS_COPY"
 fi
 python3 - "$VIDEO_OUT" "$AUDIO_DIR" "$EVENTS_COPY" <<'PY'
-import os, subprocess, sys, tempfile
+import os, shutil, subprocess, sys, tempfile
 
 video, audio_dir, events_path = sys.argv[1:4]
+ffmpeg = shutil.which("ffmpeg")
+ffprobe = shutil.which("ffprobe")
+if not ffmpeg or not ffprobe:
+    raise SystemExit("FAIL: ffmpeg/ffprobe not on PATH")
 probe = subprocess.check_output(
-    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+    [ffprobe, "-v", "error", "-show_entries", "format=duration",
      "-of", "default=noprint_wrappers=1:nokey=1", video],
     text=True,
 ).strip()
@@ -364,13 +389,14 @@ cmd = [
     "-shortest", "-movflags", "+faststart",
     muxed,
 ]
+cmd[0] = ffmpeg
 print("mux audio:", " ".join(cmd[:8]), "…", f"sfx={len(events)} dur={dur:.1f}s")
 subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 os.replace(muxed, video)
 
 # Assert an audible audio stream exists.
 streams = subprocess.check_output(
-    ["ffprobe", "-v", "error", "-select_streams", "a",
+    [ffprobe, "-v", "error", "-select_streams", "a",
      "-show_entries", "stream=codec_type", "-of", "csv=p=0", video],
     text=True,
 ).strip()
@@ -380,7 +406,7 @@ if "audio" not in streams:
 # Spot-check energy over the first 40s.
 wav = tempfile.mktemp(suffix=".wav")
 subprocess.check_call(
-    ["ffmpeg", "-y", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-t", "40", wav],
+    [ffmpeg, "-y", "-i", video, "-vn", "-ac", "1", "-ar", "16000", "-t", "40", wav],
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
 )
 import wave, struct
