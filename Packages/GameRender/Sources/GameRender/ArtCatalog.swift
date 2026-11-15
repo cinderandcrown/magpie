@@ -22,8 +22,11 @@ public enum ArtCatalog {
     private static var spriteAtlas: SKTextureAtlas?
     private static var tileAtlas: SKTextureAtlas?
     private static var didWarm = false
+    private static var perspectiveGridTex: SKTexture?
+    private static var trailSpeckTex: SKTexture?
 
     /// Warm atlases once — batches GPU uploads for raccoon / MOP / shiny / tiles.
+    /// Platform tiles get a baked neon-grid + edge pass (no runtime shaders / SKEffectNode).
     public static func warmAtlases() {
         guard !didWarm else { return }
         didWarm = true
@@ -42,12 +45,16 @@ public enum ArtCatalog {
         var tileDict: [String: UIImage] = [:]
         for i in 1...27 {
             if let img = loadTileImage(index: i) {
-                tileDict[String(format: "tile_%02d", i)] = img
+                // Prop tiles (18+) get edge accents only; floor/wall slabs get full grid.
+                let baked = i <= 17 ? bakeNeonGrid(onto: img, style: .platform) : bakeNeonGrid(onto: img, style: .prop)
+                tileDict[String(format: "tile_%02d", i)] = baked
             }
         }
         if !tileDict.isEmpty {
             tileAtlas = SKTextureAtlas(dictionary: tileDict)
         }
+        _ = motionTrailTexture()
+        _ = perspectiveGridTexture()
     }
 
     public static func texture(_ key: AssetKey) -> SKTexture? {
@@ -102,16 +109,14 @@ public enum ArtCatalog {
     }
 
     public static func makeLogoNode(lite: Bool = false) -> SKNode {
-        // Prefer ImageIO-downsampled @1024 wordmark — never upload the 2048 master at scale 1.
+        // Title art is path-swappable — drop a PNG at any TitleArt.logoCandidates path.
         // Callers MUST `fitTitleLogo` before pulse actions (scale(to:) is absolute).
+        let maxPx: CGFloat = lite ? 768 : 1024
         let tex: SKTexture? = {
-            if lite {
-                return downsampledTexture(relative: "ui/logo_trash_panda@1024", maxPixel: 768)
-                    ?? downsampledTexture(relative: "ui/logo_trash_panda", maxPixel: 768)
+            for rel in TitleArt.logoCandidates {
+                if let t = downsampledTexture(relative: rel, maxPixel: maxPx) { return t }
             }
-            return downsampledTexture(relative: "ui/logo_trash_panda@1024", maxPixel: 1024)
-                ?? downsampledTexture(relative: "ui/logo_trash_panda", maxPixel: 1024)
-                ?? texture(.logo)
+            return texture(.logo)
         }()
         if let tex {
             let s = SKSpriteNode(texture: tex)
@@ -119,12 +124,55 @@ public enum ArtCatalog {
             s.setScale(1)
             return s
         }
+        // Fallback label uses the working title string (still not ASC / bundle rename).
         let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        t.text = "TRASH PANDA"
-        t.fontSize = 42
+        t.text = TitleArt.fallbackWordmark
+        t.fontSize = 36
         t.fontColor = neonCyan
         t.name = "logo"
+        t.numberOfLines = 2
+        t.preferredMaxLayoutWidth = 360
         return t
+    }
+
+    /// Far-parallax perspective grid horizon (baked texture, additive, one node).
+    public static func makePerspectiveGridHorizon(width: CGFloat, height: CGFloat) -> SKSpriteNode {
+        let tex = perspectiveGridTexture()
+        let n = SKSpriteNode(texture: tex, size: CGSize(width: width, height: height))
+        n.name = "gridHorizon"
+        n.blendMode = .add
+        n.alpha = 0.42
+        n.zPosition = -28
+        return n
+    }
+
+    public static func motionTrailTexture() -> SKTexture {
+        if let trailSpeckTex { return trailSpeckTex }
+        let size = CGSize(width: 16, height: 28)
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 2
+        let img = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            let cg = ctx.cgContext
+            let colors = [
+                UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.0).cgColor,
+                UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.85).cgColor,
+                UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.55).cgColor,
+                UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.0).cgColor,
+            ] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.35, 0.7, 1]) {
+                cg.drawLinearGradient(
+                    gradient,
+                    start: CGPoint(x: size.width * 0.5, y: 0),
+                    end: CGPoint(x: size.width * 0.5, y: size.height),
+                    options: []
+                )
+            }
+        }
+        let tex = SKTexture(image: img)
+        tex.filteringMode = .linear
+        trailSpeckTex = tex
+        return tex
     }
 
     /// Scale the title wordmark to `fraction` of scene width (default 85%). Stores `baseScale` for pulse actions.
@@ -249,6 +297,113 @@ public enum ArtCatalog {
 
     public static var expectedNodesPerSolidTile: Int { 1 }
 
+    // MARK: - Neon grid bake (Grid-inspired, original magenta/teal)
+
+    private enum NeonBakeStyle {
+        case platform
+        case prop
+    }
+
+    /// Composite thin glowing grid + crisp neon edges onto a tile PNG (CPU once at warm).
+    private static func bakeNeonGrid(onto image: UIImage, style: NeonBakeStyle) -> UIImage {
+        let size = image.size
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            image.draw(in: CGRect(origin: .zero, size: size))
+            let cg = ctx.cgContext
+            let w = size.width
+            let h = size.height
+            let line = max(1.0 / image.scale, 0.75)
+
+            if style == .platform {
+                // Thin grid over dark floor/wall slabs.
+                cg.setStrokeColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.32).cgColor)
+                cg.setLineWidth(line)
+                let step = max(5, w / 4)
+                var x: CGFloat = step
+                while x < w - 1 {
+                    cg.move(to: CGPoint(x: x, y: 2))
+                    cg.addLine(to: CGPoint(x: x, y: h - 2))
+                    x += step
+                }
+                var y: CGFloat = step
+                while y < h - 1 {
+                    cg.move(to: CGPoint(x: 2, y: y))
+                    cg.addLine(to: CGPoint(x: w - 2, y: y))
+                    y += step
+                }
+                cg.strokePath()
+
+                // Crisp cyan top edge + magenta bottom lip.
+                cg.setStrokeColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.9).cgColor)
+                cg.setLineWidth(line * 2.2)
+                cg.move(to: CGPoint(x: 0, y: 1.5))
+                cg.addLine(to: CGPoint(x: w, y: 1.5))
+                cg.strokePath()
+                cg.setStrokeColor(UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.65).cgColor)
+                cg.setLineWidth(line * 1.6)
+                cg.move(to: CGPoint(x: 0, y: h - 1.5))
+                cg.addLine(to: CGPoint(x: w, y: h - 1.5))
+                cg.strokePath()
+            } else {
+                // Props: neon rim only (no dense grid).
+                cg.setStrokeColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.55).cgColor)
+                cg.setLineWidth(line * 1.8)
+                cg.stroke(CGRect(x: 1, y: 1, width: w - 2, height: h - 2))
+                cg.setStrokeColor(UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.35).cgColor)
+                cg.setLineWidth(line)
+                cg.stroke(CGRect(x: 3, y: 3, width: w - 6, height: h - 6))
+            }
+        }
+    }
+
+    private static func perspectiveGridTexture() -> SKTexture {
+        if let perspectiveGridTex { return perspectiveGridTex }
+        let size = CGSize(width: 512, height: 280)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2
+        format.opaque = false
+        let img = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            let cg = ctx.cgContext
+            let w = size.width
+            let h = size.height
+            let vanishing = CGPoint(x: w * 0.5, y: h * 0.18)
+            // Horizon bar
+            cg.setStrokeColor(UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.35).cgColor)
+            cg.setLineWidth(1.2)
+            cg.move(to: CGPoint(x: 0, y: vanishing.y))
+            cg.addLine(to: CGPoint(x: w, y: vanishing.y))
+            cg.strokePath()
+            // Perspective spokes (floor grid vanishing into the skyline — not a Tron copy).
+            cg.setStrokeColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.28).cgColor)
+            cg.setLineWidth(1)
+            let spokes = 11
+            for i in 0..<spokes {
+                let t = CGFloat(i) / CGFloat(spokes - 1)
+                let x = t * w
+                cg.move(to: vanishing)
+                cg.addLine(to: CGPoint(x: x, y: h))
+            }
+            cg.strokePath()
+            // Horizontal depth rings
+            cg.setStrokeColor(UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.22).cgColor)
+            for i in 1...7 {
+                let t = CGFloat(i) / 8.0
+                let y = vanishing.y + (h - vanishing.y) * (t * t)
+                let inset = (1 - t) * w * 0.42
+                cg.move(to: CGPoint(x: inset, y: y))
+                cg.addLine(to: CGPoint(x: w - inset, y: y))
+            }
+            cg.strokePath()
+        }
+        let tex = SKTexture(image: img)
+        tex.filteringMode = .linear
+        perspectiveGridTex = tex
+        return tex
+    }
+
     // MARK: - Loaders
 
     private static func loadTileImage(index: Int) -> UIImage? {
@@ -280,6 +435,23 @@ public enum ArtCatalog {
     }
 }
 
+/// Working title art hooks — swap PNGs / strings without touching ASC or bundle IDs.
+public enum TitleArt {
+    /// Prefer the first existing file. Drop `ui/logo_title(@1024).png` when legal clears the new name.
+    public static let logoCandidates: [String] = [
+        "ui/logo_title@1024",
+        "ui/logo_title",
+        "ui/logo_masked_bandit@1024",
+        "ui/logo_masked_bandit",
+        "ui/logo_trash_panda@1024",
+        "ui/logo_trash_panda",
+    ]
+    /// Likely new title (not final) — used only for label fallback until art ships.
+    public static let provisionalDisplayName = "The Masked Bandit: Neon City"
+    public static let fallbackWordmark = "THE MASKED\nBANDIT"
+    public static let workingSubtitle = "Neon City · Free the crew"
+}
+
 /// Animated raccoon using Fire Fox frames + procedural bob for a readable run.
 @MainActor
 public final class BanditVisual: SKNode {
@@ -296,6 +468,11 @@ public final class BanditVisual: SKNode {
     private var bobPhase: CGFloat = 0
     private var runIndex: Int = 0
     private var runAcc: CGFloat = 0
+    /// Fixed pool — recycle trail sprites (jetsam lesson: no per-frame alloc storms).
+    private var trailPool: [SKSpriteNode] = []
+    private var trailCursor: Int = 0
+    private var trailAcc: CGFloat = 0
+    private let trailPoolSize = 18
 
     public override init() {
         ArtCatalog.warmAtlases()
@@ -316,7 +493,7 @@ public final class BanditVisual: SKNode {
         shadow.strokeColor = .clear
         shadow.zPosition = -1
 
-        // Soft radial bloom behind the raccoon during Mask Mode (no SKEffectNode / no hard rect).
+        // Soft radial bloom behind the raccoon during Mask Mode (baked sprite tint, no SKEffectNode).
         let glowTex = maskTex ?? idleTex
         maskGlow = SKSpriteNode(texture: glowTex, size: CGSize(width: 110, height: 110))
         maskGlow.color = ArtCatalog.neonCyan
@@ -331,6 +508,18 @@ public final class BanditVisual: SKNode {
         addChild(maskGlow)
         addChild(sprite)
         name = "bandit"
+
+        let trailTex = ArtCatalog.motionTrailTexture()
+        for i in 0..<trailPoolSize {
+            let speck = SKSpriteNode(texture: trailTex, size: CGSize(width: 12, height: 22))
+            speck.name = "trail_\(i)"
+            speck.blendMode = .add
+            speck.alpha = 0
+            speck.isHidden = true
+            speck.zPosition = -0.2
+            trailPool.append(speck)
+            addChild(speck)
+        }
     }
 
     @available(*, unavailable)
@@ -340,7 +529,7 @@ public final class BanditVisual: SKNode {
         sprite.xScale = facing >= 0 ? 1 : -1
     }
 
-    public func show(anim: BanditAnim, maskMode: Bool, dt: CGFloat) {
+    public func show(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool = false) {
         sprite.removeAction(forKey: "run")
         switch anim {
         case .run:
@@ -383,7 +572,6 @@ public final class BanditVisual: SKNode {
             sprite.xScale = face
         }
         if maskMode {
-            // Prefer the baked mask-mode sprite; keep a soft additive bloom behind it.
             if let maskTex { sprite.texture = maskTex }
             sprite.color = ArtCatalog.neonCyan
             sprite.colorBlendFactor = 0.22
@@ -397,22 +585,50 @@ public final class BanditVisual: SKNode {
             maskGlow.alpha = 0
             maskGlow.setScale(1)
         }
+        tickMotionTrail(anim: anim, maskMode: maskMode, dt: dt, smokeLite: smokeLite)
     }
 
-    /// Spawn a short additive speed trail while Mask Mode is active.
+    /// Short light trail on run/dash; denser + brighter in Mask Mode. Pooled sprites only.
+    private func tickMotionTrail(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool) {
+        let moving = maskMode || anim == .run || anim == .pounce
+        guard moving else { return }
+        trailAcc += dt
+        let interval: CGFloat = {
+            if maskMode { return smokeLite ? 0.07 : 0.045 }
+            return smokeLite ? 0.11 : 0.075
+        }()
+        guard trailAcc >= interval else { return }
+        trailAcc = 0
+        emitPooledTrail(maskMode: maskMode, dash: anim == .pounce)
+    }
+
+    /// Public hook for Mask Mode burst cadence from the scene (still uses the pool).
     public func emitMaskTrail() {
-        let speck = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.55), size: CGSize(width: 10, height: 18))
-        speck.position = CGPoint(x: sprite.xScale >= 0 ? -18 : 18, y: 4)
-        speck.zPosition = -0.2
-        speck.blendMode = .add
-        addChild(speck)
+        emitPooledTrail(maskMode: true, dash: false)
+    }
+
+    private func emitPooledTrail(maskMode: Bool, dash: Bool) {
+        guard !trailPool.isEmpty else { return }
+        let speck = trailPool[trailCursor % trailPool.count]
+        trailCursor += 1
+        speck.removeAllActions()
+        let face: CGFloat = sprite.xScale >= 0 ? 1 : -1
+        speck.position = CGPoint(x: -face * (maskMode ? 22 : 16), y: dash ? 2 : 4)
+        speck.zRotation = 0
+        speck.setScale(maskMode ? 1.35 : (dash ? 1.15 : 0.85))
+        speck.color = maskMode ? ArtCatalog.neonCyan : ArtCatalog.neonPink
+        speck.colorBlendFactor = 0.65
+        speck.alpha = maskMode ? 0.75 : 0.42
+        speck.isHidden = false
+        let drift = -face * (maskMode ? 36 : 22)
+        let life: TimeInterval = maskMode ? 0.28 : 0.18
         speck.run(SKAction.sequence([
             SKAction.group([
-                SKAction.fadeOut(withDuration: 0.22),
-                SKAction.scaleX(to: 0.2, y: 1.4, duration: 0.22),
-                SKAction.moveBy(x: sprite.xScale >= 0 ? -24 : 24, y: 0, duration: 0.22),
+                SKAction.fadeOut(withDuration: life),
+                SKAction.scaleX(to: 0.25, y: maskMode ? 1.6 : 1.2, duration: life),
+                SKAction.moveBy(x: drift, y: 0, duration: life),
             ]),
-            SKAction.removeFromParent(),
+            SKAction.run { speck.isHidden = true; speck.alpha = 0 },
         ]))
     }
 }

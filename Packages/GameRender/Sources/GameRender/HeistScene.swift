@@ -27,7 +27,6 @@ public final class HeistScene: SKScene {
     private let overlay = SKNode()
     private let playHUD = SKNode()
     private let maskVignette = SKNode()
-    private var maskTrailAcc: CGFloat = 0
     private var lastMaskMode = false
 
     private var moveX: Double = 0
@@ -225,6 +224,11 @@ public final class HeistScene: SKScene {
         if let far = ArtCatalog.background(.farSkyline, height: h, maxPixel: maxPx) {
             tileLayer(far, into: parallaxFar, y: 48, z: -30, brighten: false)
         }
+        // Subtle perspective grid horizon behind the skyline (one baked additive plate).
+        let gridW = max(mapW + size.width, 1400)
+        let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.55)
+        grid.position = CGPoint(x: gridW * 0.28, y: 20)
+        parallaxFar.addChild(grid)
         if let mid = ArtCatalog.background(.midBuildings, height: h * 0.92, maxPixel: maxPx) {
             tileLayer(mid, into: parallaxMid, y: 0, z: -20, brighten: true)
         }
@@ -310,18 +314,18 @@ public final class HeistScene: SKScene {
                     }
                     let span = CGFloat(drop) * tile
                     let pipe = SKShapeNode(rectOf: CGSize(width: tile * 0.16, height: span - 4), cornerRadius: 2)
-                    pipe.fillColor = SKColor(red: 0.28, green: 0.32, blue: 0.42, alpha: 0.95)
-                    pipe.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.4)
-                    pipe.lineWidth = 1
+                    pipe.fillColor = SKColor(red: 0.12, green: 0.1, blue: 0.22, alpha: 0.95)
+                    pipe.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.7)
+                    pipe.lineWidth = 1.4
                     pipe.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
                     pipe.zPosition = 1.4
                     world.addChild(pipe)
                     // Cross-brace every other column so ledges read as scaffolding, not free-floating tiles.
                     if x % 2 == 0, drop >= 2 {
                         let brace = SKShapeNode(rectOf: CGSize(width: tile * 0.95, height: 3), cornerRadius: 1)
-                        brace.fillColor = SKColor(red: 0.4, green: 0.35, blue: 0.5, alpha: 0.85)
-                        brace.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.25)
-                        brace.lineWidth = 0.5
+                        brace.fillColor = SKColor(red: 0.18, green: 0.12, blue: 0.28, alpha: 0.9)
+                        brace.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.55)
+                        brace.lineWidth = 1
                         brace.position = CGPoint(x: pos.x + tile * 0.35, y: pos.y - tile * 0.55)
                         brace.zPosition = 1.3
                         world.addChild(brace)
@@ -493,7 +497,8 @@ public final class HeistScene: SKScene {
 
         let sub = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
         sub.name = "titleSub"
-        sub.text = "Neon Docks · Free the crew"
+        // Swappable with TitleArt — no ASC / CFBundleDisplayName rename yet.
+        sub.text = TitleArt.workingSubtitle
         sub.fontSize = 15
         sub.fontColor = ArtCatalog.neonPink
         titleRoot.addChild(sub)
@@ -1147,7 +1152,7 @@ public final class HeistScene: SKScene {
         let b = sim.state.bandit
         bandit.position = cg(b.position)
         bandit.setFacing(b.facing)
-        bandit.show(anim: b.anim, maskMode: b.maskMode, dt: dt)
+        bandit.show(anim: b.anim, maskMode: b.maskMode, dt: dt, smokeLite: smokeEnabled)
         bandit.alpha = b.invuln > 0 && Int(b.invuln * 20) % 2 == 0 ? 0.4 : 1
 
         for s in sim.state.shinies { shinyNodes[s.id]?.isHidden = !s.alive }
@@ -1212,16 +1217,10 @@ public final class HeistScene: SKScene {
         parallaxMid.position = CGPoint(x: cameraFocus.x * 0.72, y: cameraFocus.y * 0.92)
         parallaxNear.position = CGPoint(x: cameraFocus.x * 0.55, y: cameraFocus.y * 0.88)
 
-        // Mask Mode vignette + speed trail.
+        // Mask Mode vignette (motion trail is pooled inside BanditVisual.show).
         if b.maskMode {
             maskVignette.isHidden = false
             maskVignette.alpha = min(1, maskVignette.alpha + dt * 4)
-            maskTrailAcc += dt
-            let trailEvery: CGFloat = smokeEnabled ? 0.08 : 0.05
-            if maskTrailAcc >= trailEvery {
-                maskTrailAcc = 0
-                bandit.emitMaskTrail()
-            }
         } else if lastMaskMode {
             maskVignette.run(SKAction.sequence([
                 SKAction.fadeOut(withDuration: 0.25),
