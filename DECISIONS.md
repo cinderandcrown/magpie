@@ -84,3 +84,11 @@ Every choice that changes the plan, with the reason. Newest first.
 | `ITSAppUsesNonExemptEncryption` **not** written into Info.plist yet | Proposed `false` for Nicholas’s confirmation (export-compliance question). Not treated as approved. |
 | Linux GameCore job on **ubuntu-24.04** (not `ubuntu-latest`) | Swift 6.2 RELEASE tarball is built for Ubuntu 24.04; `ubuntu-latest` is 26.04 and failed with missing `libxml2.so.2`. |
 | Private content repo / deploy key deferred | Not needed until paid assets or district maps land; documented in OWNER_SETUP.md. |
+
+## 2026-11-15 — Mission 1 generated assets packaging
+
+| Decision | Reason |
+| --- | --- |
+| Ship Fire Fox pack under `Assets/Generated/` and **rsync** into `Magpie.app/Generated` via XcodeGen `postCompileScripts` | Adding the tree as an Xcode resource group flattens basenames (`raccoon/idle.png` vs `mop/idle.png`) and fails the build; a folder-ref of a symlink also failed to surface art in smoke. |
+| Resolve assets via `Bundle.main.resourceURL/.../Generated/...` in `AssetManifest` | More reliable than `url(forResource:subdirectory:)` alone once the tree is copied as a nested folder. |
+| Prefer `AVAudioPlayer` for SFX + looped music (no `AVAudioEngine` graph teardown in completion handlers) | Engine disconnect from a player completion queue crashed the test host (`dispatch_assert_queue_fail`). |
