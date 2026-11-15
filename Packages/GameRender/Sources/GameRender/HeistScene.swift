@@ -75,7 +75,6 @@ public final class HeistScene: SKScene {
     private var maskGradePulse: CGFloat = 0
     private var lastAwardedMedals = 0
     private var retentionMode: String? = nil // "map" | "daily"
-    private var debugLabelScanAcc: TimeInterval = 0
     #if DEBUG
     private var tuningMenu: DebugTuningMenu?
     private var debugToggle: SKLabelNode?
@@ -1773,12 +1772,8 @@ public final class HeistScene: SKScene {
         smokeStatus.fpsAvg = fpsCount > 0 ? fpsSum / Double(fpsCount) : 0
         smokeStatus.maskOn = sim.state.bandit.maskMode
         if sim.state.bandit.maskMode { smokeStatus.mask = true }
-        // Throttle ban-list scan — full tree walks every status tick tank sim FPS on CI.
-        debugLabelScanAcc += 1
-        if debugLabelScanAcc >= 4 || smokeStatus.debugLabels < 0 {
-            debugLabelScanAcc = 0
-            smokeStatus.debugLabels = countBannedDebugLabels()
-        }
+        // HUD/overlay only — cheap enough to run every status tick.
+        smokeStatus.debugLabels = countBannedDebugLabels()
         smokeStatus.combo = max(smokeStatus.combo, sim.state.bestCombo, sim.state.bandit.combo)
         if case .won = sim.state.phase {
             smokeStatus.medals = max(smokeStatus.medals, lastAwardedMedals)
