@@ -45,7 +45,7 @@ public final class HeistScene: SKScene {
     private var fpsAcc: TimeInterval = 0
     private var displayedFPS = 0
     private var hitStop: TimeInterval = 0
-    private var camera = CGPoint.zero
+    private var cameraFocus = CGPoint.zero
     private var runAnimT: CGFloat = 0
     private var hapticLight = UIImpactFeedbackGenerator(style: .light)
     private var hapticMed = UIImpactFeedbackGenerator(style: .medium)
@@ -630,11 +630,11 @@ public final class HeistScene: SKScene {
         let lead = CGFloat(b.facing * tuning.cameraLeadTiles * tuning.tileSize)
         let target = CGPoint(x: CGFloat(b.position.x) + lead, y: CGFloat(b.position.y) + 40)
         let s = CGFloat(tuning.cameraSmooth)
-        camera.x += (target.x - camera.x) * s
-        camera.y += (target.y - camera.y) * s
-        world.position = CGPoint(x: -camera.x, y: -camera.y)
-        parallaxFar.position = CGPoint(x: -camera.x * 0.2, y: -camera.y * 0.05)
-        parallaxMid.position = CGPoint(x: -camera.x * 0.45, y: -camera.y * 0.1)
+        cameraFocus.x += (target.x - cameraFocus.x) * s
+        cameraFocus.y += (target.y - cameraFocus.y) * s
+        world.position = CGPoint(x: -cameraFocus.x, y: -cameraFocus.y)
+        parallaxFar.position = CGPoint(x: -cameraFocus.x * 0.2, y: -cameraFocus.y * 0.05)
+        parallaxMid.position = CGPoint(x: -cameraFocus.x * 0.45, y: -cameraFocus.y * 0.1)
     }
 
     private func animateBandit(_ dt: TimeInterval) {
