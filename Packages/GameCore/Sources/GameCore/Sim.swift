@@ -182,10 +182,17 @@ public struct Sim: Equatable, Sendable {
             state.events.append(SimEvent(kind: .dust, position: bandit.position))
         }
 
-        // Variable jump: release early → stronger gravity
-        var g = tuning.gravity * tuning.tileSize / 2.2
-        if bandit.velocity.y > 0 && !input.jumpHeld {
-            g = tuning.jumpCutGravity * tuning.tileSize / 2.2
+        // Variable jump + snappy fall: hold softens ascent; release cuts; falling uses fallGravity.
+        let scale = tuning.tileSize / 2.2
+        var g = tuning.gravity * scale
+        if bandit.velocity.y > 0 {
+            if input.jumpHeld {
+                g = tuning.gravity * scale * (1.0 - tuning.variableJumpHoldBoost * 0.4)
+            } else {
+                g = tuning.jumpCutGravity * scale
+            }
+        } else if bandit.velocity.y < 0 {
+            g = tuning.fallGravity * scale
         }
 
         // Pounce (forward boost) / Belly Flop (fast fall) while airborne

@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var scene: HeistScene = {
         let smoke = ProcessInfo.processInfo.arguments.contains("-SmokeAutoplay")
         let s = HeistScene(size: CGSize(width: 390, height: 844), smokeAutoplay: smoke)
+        // resizeFill = edge-to-edge on every iPhone; HUD uses safe-area insets.
         s.scaleMode = .resizeFill
         return s
     }()
@@ -16,8 +17,12 @@ struct ContentView: View {
     var body: some View {
         GeometryReader { geo in
             SpriteView(scene: sized(scene, to: geo.size))
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
                 .ignoresSafeArea()
         }
+        .background(Color(red: 0.06, green: 0.04, blue: 0.16))
+        .ignoresSafeArea()
         .statusBarHidden()
     }
 
@@ -25,6 +30,7 @@ struct ContentView: View {
         if scene.size != size {
             scene.size = size
         }
+        scene.scaleMode = .resizeFill
         return scene
     }
 }

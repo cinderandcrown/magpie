@@ -422,6 +422,40 @@ if rms < 40:
     raise SystemExit(f"FAIL: muxed audio too quiet (rms={rms:.1f})")
 PY
 
+# Keep the continuous gameplay video under ~150 MB; always emit a 540p review copy.
+python3 - "$VIDEO_OUT" "$OUT_DIR/smoke-gameplay-540p.mp4" <<'PY'
+import os, shutil, subprocess, sys
+video, out540 = sys.argv[1:3]
+ffmpeg = shutil.which("ffmpeg")
+if not ffmpeg:
+    raise SystemExit("FAIL: ffmpeg missing for size gate")
+# 540p copy for lightweight review (same continuous run).
+subprocess.check_call(
+    [ffmpeg, "-y", "-i", video,
+     "-vf", "scale=-2:540", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+     "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out540],
+    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+)
+size = os.path.getsize(video)
+limit = 150 * 1024 * 1024
+print(f"smoke-gameplay.mp4 size={size/1024/1024:.1f} MB")
+if size > limit:
+    # Re-encode main artifact tighter while keeping one continuous take.
+    tmp = video + ".compact.mp4"
+    subprocess.check_call(
+        [ffmpeg, "-y", "-i", video,
+         "-vf", "scale=-2:960", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
+         "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", tmp],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    os.replace(tmp, video)
+    size = os.path.getsize(video)
+    print(f"compacted to {size/1024/1024:.1f} MB")
+if size > limit:
+    raise SystemExit(f"FAIL: smoke-gameplay.mp4 still {size/1024/1024:.1f} MB > 150 MB")
+print(f"OK video size {size/1024/1024:.1f} MB + 540p copy")
+PY
+
 # Palette gate: midrun must contain bright magenta + teal neon (not dim gray placeholders).
 # Homebrew Python is PEP 668 externally-managed — prefer a throwaway venv for Pillow.
 PALETTE_PY=""

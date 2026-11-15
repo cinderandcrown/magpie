@@ -533,6 +533,7 @@ public final class BanditVisual: SKNode {
         sprite.removeAction(forKey: "run")
         switch anim {
         case .run:
+            sprite.zRotation = 0
             if runTextures.count >= 2 {
                 runAcc += dt
                 if runAcc >= 0.09 {
@@ -549,14 +550,22 @@ public final class BanditVisual: SKNode {
             sprite.yScale = squash
             sprite.xScale = (sprite.xScale >= 0 ? 1 : -1) * (2 - squash)
         case .jump:
+            sprite.zRotation = 0
             sprite.texture = jumpTex ?? idleTex
             sprite.position.y = 2
-            sprite.yScale = 1.05
+            sprite.yScale = 1.08
+            sprite.xScale = (sprite.xScale >= 0 ? 1 : -1) * 0.92
         case .fall:
             sprite.texture = fallTex ?? idleTex
             sprite.position.y = 0
-            sprite.yScale = 1
+            // Readable fall pose: slight stretch + lean (not a rigid drop).
+            bobPhase += dt * 10
+            let face: CGFloat = sprite.xScale >= 0 ? 1 : -1
+            sprite.yScale = 1.12 + sin(bobPhase) * 0.03
+            sprite.xScale = face * 0.88
+            sprite.zRotation = face * -0.12
         case .pounce:
+            sprite.zRotation = 0
             sprite.texture = (flopTex ?? pounceTex) ?? idleTex
             sprite.position.y = 0
             sprite.yScale = 0.9
@@ -564,7 +573,10 @@ public final class BanditVisual: SKNode {
         case .wallSlide:
             sprite.texture = fallTex ?? idleTex
             sprite.position.y = 0
+            let face: CGFloat = sprite.xScale >= 0 ? 1 : -1
+            sprite.zRotation = face * 0.08
         case .idle:
+            sprite.zRotation = 0
             sprite.texture = (maskMode ? maskTex : nil) ?? idleTex
             sprite.position.y = 0
             sprite.yScale = 1
