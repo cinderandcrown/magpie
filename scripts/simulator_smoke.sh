@@ -99,17 +99,38 @@ xcrun simctl bootstatus "$DEVICE" -b || xcrun simctl boot "$DEVICE" || true
 xcrun simctl bootstatus "$DEVICE" -b
 xcrun simctl install "$DEVICE" "$APP_PATH"
 xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" 2>/dev/null || true
+# Drop any stale status from a prior install so we never race a leftover RESULTS line.
+OLD_DATA="$(data_container)"
+if [[ -n "$OLD_DATA" && -f "$OLD_DATA/Documents/smoke_status.txt" ]]; then
+  rm -f "$OLD_DATA/Documents/smoke_status.txt"
+fi
 xcrun simctl launch "$DEVICE" "$BUNDLE_ID" -SmokeAutoplay
 
-for _ in $(seq 1 40); do
-  if [[ -n "$(read_status)" ]]; then break; fi
-  sleep 0.25
+TITLE_SHOT=0
+for _ in $(seq 1 80); do
+  status="$(read_status)"
+  if [[ -n "$status" ]]; then
+    require_app "launch"
+    # Snap title the instant it appears — do not wait for a later poll after autoplay advances.
+    if [[ "$TITLE_SHOT" -eq 0 && "$status" == *"phase=title"* ]]; then
+      shot "$OUT_DIR/01-title.png"
+      TITLE_SHOT=1
+      echo "ready@title: $status"
+      break
+    fi
+    if [[ "$status" == *"phase=title"* ]]; then
+      break
+    fi
+  fi
+  sleep 0.2
 done
 require_app "launch"
 
-# 01 — title while still on title
-wait_status "title" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "phase=title" in s else 1)' 20
-shot "$OUT_DIR/01-title.png"
+# 01 — title while still on title (already snapped above when possible)
+if [[ "$TITLE_SHOT" -eq 0 ]]; then
+  wait_status "title" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "phase=title" in s else 1)' 25
+  shot "$OUT_DIR/01-title.png"
+fi
 
 VIDEO_OUT="$OUT_DIR/smoke-gameplay.mp4"
 set +e
@@ -122,8 +143,8 @@ if ! kill -0 "$REC_PID" 2>/dev/null; then
 fi
 set -e
 
-# 02 — midrun: running/jumping before the first stomp (SmokeBrain delays MOP hunt ~4.2s)
-wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); d=re.search(r"died=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0) and (not d or int(d.group(1))==0)) else 1)' 40
+# 02 — midrun: running/jumping before the first stomp (SmokeBrain delays MOP hunt ~6s)
+wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); d=re.search(r"died=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=3.0 and (not st or int(st.group(1))==0) and (not d or int(d.group(1))==0)) else 1)' 50
 shot "$OUT_DIR/02-midrun.png"
 
 # 03 — real MOP stomp (after the run showcase)

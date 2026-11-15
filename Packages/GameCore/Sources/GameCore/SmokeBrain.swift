@@ -37,7 +37,8 @@ public struct SmokeBrain: Equatable, Sendable {
         switch sim.state.phase {
         case .title:
             titleFrames += 1
-            if titleFrames >= 180 {
+            // ~10s at 60Hz — CI smoke script must catch 01-title before autoplay advances.
+            if titleFrames >= 600 {
                 start = true
                 act = .play
             }
@@ -46,7 +47,8 @@ public struct SmokeBrain: Equatable, Sendable {
         case .failed:
             if !diedOnce { diedOnce = true }
             failWait += 1
-            if failWait >= 100 {
+            // Hold death overlay ~3s so 05-death-retry can capture SPLASHED.
+            if failWait >= 180 {
                 retry = true
                 failWait = 0
                 act = .finishPush
@@ -151,7 +153,7 @@ public struct SmokeBrain: Equatable, Sendable {
         }
 
         // Beat 1 — run / jump / wall-slide for midrun screenshots before hunting MOPs.
-        if !sawMask, sim.state.elapsed < 4.2 {
+        if !sawMask, sim.state.elapsed < 6.0 {
             return showcaseRunInput(sim: sim, tx: tx, ty: ty)
         }
 
@@ -205,9 +207,19 @@ public struct SmokeBrain: Equatable, Sendable {
 
     private func showcaseRunInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
         let b = sim.state.bandit
+        let tile = sim.tuning.tileSize
         var moveX = 1.0
         var jumpPressed = false
         var jumpHeld = false
+        // Stay left of the MOP pack so midrun never accidentally stomps before the hunt beat.
+        if let mop = nearestMop(sim: sim) {
+            let dx = mop.position.x - b.position.x
+            if dx < tile * 2.5 {
+                moveX = -0.35
+                jumpPressed = false
+                return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false)
+            }
+        }
         // Periodic hops + wall-slide taps so 02-midrun reads as Celeste-feel movement.
         if b.onGround, tick % 42 < 4 {
             jumpPressed = true

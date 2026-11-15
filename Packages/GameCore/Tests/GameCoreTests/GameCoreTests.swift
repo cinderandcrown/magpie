@@ -278,7 +278,7 @@ final class GameCoreTests: XCTestCase {
         var sim = Sim(map: map, tuning: .default, seed: 1)
         var brain = SmokeBrain()
         var started = false
-        for _ in 0..<200 {
+        for _ in 0..<650 {
             let cue = brain.next(sim: sim)
             if cue.start {
                 started = true
