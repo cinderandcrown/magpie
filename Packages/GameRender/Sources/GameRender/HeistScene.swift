@@ -103,9 +103,11 @@ public final class HeistScene: SKScene {
             sim = Sim(map: try! TileMap.parse("###\n#@#\n###"), tuning: tuning)
         }
 
-        // Publish phase=title BEFORE atlas/parallax warm so CI can snap 01-title while art loads.
+        // Publish phase=title BEFORE atlas/parallax warm so CI can attach during art load.
+        // boot=loading until title chrome is actually on screen (see write after setupTitle).
         if smokeEnabled {
             smokeStatus.phase = "title"
+            smokeStatus.boot = "loading"
             smokeStatus.write()
         }
 
@@ -164,7 +166,10 @@ public final class HeistScene: SKScene {
         layoutUI()
         sync(dt: 0)
         updateHUDVisibility()
-        if smokeEnabled { writeSmokeStatus() }
+        if smokeEnabled {
+            smokeStatus.boot = "ready"
+            writeSmokeStatus()
+        }
     }
 
     public override func didChangeSize(_ oldSize: CGSize) {

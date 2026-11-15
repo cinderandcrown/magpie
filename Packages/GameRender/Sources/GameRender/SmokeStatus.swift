@@ -5,6 +5,8 @@ import Foundation
 /// Written to the app Documents directory so `simulator_smoke.sh` can assert aliveness / FPS / milestones.
 public struct SmokeStatus: Equatable, Sendable {
     public var phase: String
+    /// `loading` while atlases warm; `ready` once title chrome is on screen.
+    public var boot: String
     public var fpsAvg: Double
     public var fpsSamples: Int
     public var stomps: Int
@@ -16,6 +18,7 @@ public struct SmokeStatus: Equatable, Sendable {
 
     public init(
         phase: String = "title",
+        boot: String = "loading",
         fpsAvg: Double = 0,
         fpsSamples: Int = 0,
         stomps: Int = 0,
@@ -26,6 +29,7 @@ public struct SmokeStatus: Equatable, Sendable {
         elapsed: Double = 0
     ) {
         self.phase = phase
+        self.boot = boot
         self.fpsAvg = fpsAvg
         self.fpsSamples = fpsSamples
         self.stomps = stomps
@@ -38,8 +42,8 @@ public struct SmokeStatus: Equatable, Sendable {
 
     public var line: String {
         String(
-            format: "phase=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d died=%d won=%d elapsed=%.1f",
-            phase, fpsAvg, fpsSamples, stomps, shinies, mask ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed
+            format: "phase=%@ boot=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d died=%d won=%d elapsed=%.1f",
+            phase, boot, fpsAvg, fpsSamples, stomps, shinies, mask ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed
         )
     }
 

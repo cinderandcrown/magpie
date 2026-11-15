@@ -113,23 +113,31 @@ launch_smoke() {
   xcrun simctl launch "$DEVICE" "$BUNDLE_ID" -SmokeAutoplay
 }
 
-# Capture 01-title while phase=title. App writes title BEFORE atlas warm so this
-# window stays open during art load. Relaunch once if we somehow attach late.
+# Capture 01-title when phase=title AND boot=ready (title chrome on screen).
+# Early boot=loading status lets us attach during atlas warm; snap only when ready.
+# Relaunch once if we somehow attach after autoplay already advanced.
 TITLE_SHOT=0
 for attempt in 1 2; do
   launch_smoke
-  for _ in $(seq 1 150); do
+  for _ in $(seq 1 900); do
     status="$(read_status)"
     if [[ -z "$status" ]]; then
       sleep 0.2
       continue
     fi
-    if [[ "$status" == *"phase=title"* ]]; then
+    if [[ "$status" == *"phase=title"* && "$status" == *"boot=ready"* ]]; then
       require_app "launch"
+      # One frame for SpriteKit to present title chrome after boot=ready.
+      sleep 0.35
       shot "$OUT_DIR/01-title.png"
       TITLE_SHOT=1
       echo "ready@title: $status"
       break 2
+    fi
+    if [[ "$status" == *"phase=title"* && "$status" == *"boot=loading"* ]]; then
+      # Still warming atlases — keep waiting.
+      sleep 0.25
+      continue
     fi
     # Attached after autoplay already advanced — relaunch for a clean title beat.
     echo "missed title (status=$status) — relaunch attempt=$attempt" >&2
@@ -137,7 +145,7 @@ for attempt in 1 2; do
   done
 done
 if [[ "$TITLE_SHOT" -eq 0 ]]; then
-  echo "FAIL: could not capture phase=title after relaunch" >&2
+  echo "FAIL: could not capture phase=title boot=ready after relaunch" >&2
   shot "$OUT_DIR/fail-title-timeout.png" || true
   read_status >&2 || true
   exit 1
