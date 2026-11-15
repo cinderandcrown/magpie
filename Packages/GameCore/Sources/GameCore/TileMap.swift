@@ -8,12 +8,14 @@ public enum Tile: UInt8, Equatable, Sendable {
     case wall = 2
     case water = 3
     case crate = 4
-    case ramp = 5
-    case latch = 6
+    case spike = 5
+    case checkpoint = 6
     case stash = 7
     case shinySpawn = 8
-    case dummySpawn = 9
+    case mopSpawn = 9
     case start = 10
+    case exit = 11
+    case latch = 12
 }
 
 public struct TileMap: Equatable, Sendable {
@@ -33,26 +35,14 @@ public struct TileMap: Equatable, Sendable {
         return tiles[y * width + x]
     }
 
-    public func tile(atWorld world: Vec2, tileSize: Double) -> Tile {
-        let x = Int(floor(world.x / tileSize))
-        let y = Int(floor(world.y / tileSize))
-        return tile(atX: x, y: y)
-    }
-
     public func worldCenter(ofX x: Int, y: Int, tileSize: Double) -> Vec2 {
         Vec2((Double(x) + 0.5) * tileSize, (Double(y) + 0.5) * tileSize)
     }
 
     public func isSolid(_ tile: Tile) -> Bool {
-        tile == .wall || tile == .crate
-    }
-
-    public func isWalkable(_ tile: Tile) -> Bool {
         switch tile {
-        case .ground, .ramp, .latch, .stash, .shinySpawn, .dummySpawn, .start:
-            return true
-        default:
-            return false
+        case .ground, .wall, .crate, .latch: return true
+        default: return false
         }
     }
 
@@ -75,18 +65,16 @@ public struct TileMap: Equatable, Sendable {
         return out
     }
 
-    /// Legend: `#` wall `.` ground `~` water `C` crate `/` ramp `L` latch `S` stash `*` shiny `D` dummy `@` start ` ` empty
+    /// Side-view legend (row 0 = bottom).
+    /// `#` wall/ground  `.` air  `=` solid platform  `~` water  `^` spike
+    /// `C` crate  `P` checkpoint  `S` stash  `*` shiny  `M` MOP  `@` start  `E` exit  `L` latch/pole
     public static func parse(_ ascii: String) throws -> TileMap {
         let rows = ascii.split(whereSeparator: \.isNewline).map(String.init).filter { !$0.isEmpty }
-        guard let width = rows.first?.count, width > 0 else {
-            throw MapError.empty
-        }
-        guard rows.allSatisfy({ $0.count == width }) else {
-            throw MapError.ragged
-        }
+        guard let width = rows.first?.count, width > 0 else { throw MapError.empty }
+        guard rows.allSatisfy({ $0.count == width }) else { throw MapError.ragged }
         var tiles: [Tile] = []
         tiles.reserveCapacity(width * rows.count)
-        for row in rows.reversed() { // row 0 is bottom (south)
+        for row in rows.reversed() {
             for ch in row {
                 tiles.append(try tile(from: ch))
             }
@@ -96,55 +84,49 @@ public struct TileMap: Equatable, Sendable {
 
     private static func tile(from ch: Character) throws -> Tile {
         switch ch {
-        case " ": return .empty
-        case ".": return .ground
-        case "#": return .wall
+        case ".", " ": return .empty
+        case "#", "=": return .ground
+        case "|": return .wall
         case "~": return .water
+        case "^": return .spike
         case "C": return .crate
-        case "/": return .ramp
-        case "L": return .latch
+        case "P": return .checkpoint
         case "S": return .stash
         case "*": return .shinySpawn
-        case "D": return .dummySpawn
+        case "M": return .mopSpawn
         case "@": return .start
+        case "E": return .exit
+        case "L": return .latch
         default: throw MapError.unknown(ch)
         }
     }
 
     public enum MapError: Error, Equatable {
-        case empty
-        case ragged
-        case unknown(Character)
+        case empty, ragged, unknown(Character)
     }
 }
 
-/// Neon alley test block (~40×24 playable tiles; compact for Mission 1 feel).
-public enum NeonAlleyMap {
+/// Neon Docks side-scroller — long enough for a ~2–3 minute first clear.
+public enum NeonDocksLevel {
     public static let ascii = """
-    ########################################
-    #......*.....#......*......#....*......#
-    #..D.........#...D.........#.....D.....#
-    #............#.............#...........#
-    #....####....#....####.....#....####...#
-    #............L............L............#
-    #..*.........#.....*.......#......*....#
-    #............#.............#...........#
-    #~~~~~.......#.......~~~~~.#.......~~~~#
-    #~~~~~...C...#...C...~~~~~.#...C...~~~~#
-    #............#.............#...........#
-    #..D....*....#..D....*.....#..D....*...#
-    #............#.............#...........#
-    #..../.......#...../.......#...../.....#
-    #............L............L............#
-    #.*..........#.*...........#.*.........#
-    #......D.....#......D......#......D....#
-    #............#.............#...........#
-    #....####....#....####.....#....####...#
-    #............#.............#...........#
-    #..*.........#.....*.......#......*....#
-    #......@.....S.............#...........#
-    #............#.............#...........#
-    ########################################
+    ################################################################################################
+    #..............................................................................................#
+    #..............................................................................................#
+    #....*...........*..............*.............*..............*............*.............*......#
+    #...........M...............M............M..............M.............M............M...........#
+    #....====......====....====.....====....====.....====.....====....====.....====....====....E...#
+    #..............................................................................====............#
+    #...*......*........*.......P.......*........*.......P.......*........*.......P....*....S......#
+    #.......M...............M...............M...............M...............M......................#
+    #..====....====..====......====..====......====..====......====..====......====..====..........#
+    #..............................................................................................#
+    #.*....*.....*.....*.....*.....*.....*.....*.....*.....*.....*.....*.....*.....*.....*.........#
+    #....M...........M...........M...........M...........M...........M...........M...........M.....#
+    #=======..=======..=======..=======..=======..=======..=======..=======..=======..=======......#
+    #................................................................~~~...........................#
+    #.@...*.....====....*....====....*....P....*....====....*....====....*....====....*............#
+    #=======........===============================================================........========#
+    ################################################################################################
     """
 
     public static func load() throws -> TileMap {

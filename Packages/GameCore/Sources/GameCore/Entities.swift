@@ -2,51 +2,52 @@
 
 import Foundation
 
-public enum BanditAirState: Equatable, Sendable {
-    case grounded
-    case pouncing
-    case bellyFlopping
-    case bouncing
-    case tailSwinging
-    case gliding
+public enum BanditAnim: Equatable, Sendable {
+    case idle, run, jump, fall, pounce, wallSlide
 }
 
 public struct BanditState: Equatable, Sendable {
     public var position: Vec2
-    public var height: Double
     public var velocity: Vec2
-    public var facing: Vec2
-    public var air: BanditAirState
-    public var airTimer: Double
-    public var coastTimer: Double
-    public var coyoteTimer: Double
-    public var pounceBuffer: Double
+    public var facing: Double // −1 or 1
+    public var onGround: Bool
+    public var onWallLeft: Bool
+    public var onWallRight: Bool
+    public var coyote: Double
+    public var jumpBuffer: Double
+    public var wallCling: Double
+    public var pouncing: Bool
+    public var flopping: Bool
     public var combo: Int
-    public var comboGroundTimer: Double
+    public var comboTimer: Double
     public var maskMode: Bool
     public var hearts: Int
+    public var invuln: Double
     public var carriedShinies: Int
     public var bankedShinies: Int
-
-    public var isAirborne: Bool { air != .grounded }
+    public var anim: BanditAnim
 
     public static func spawn(at position: Vec2, hearts: Int) -> BanditState {
         BanditState(
             position: position,
-            height: 0,
             velocity: .zero,
-            facing: Vec2(0, 1),
-            air: .grounded,
-            airTimer: 0,
-            coastTimer: 0,
-            coyoteTimer: 0,
-            pounceBuffer: 0,
+            facing: 1,
+            onGround: false,
+            onWallLeft: false,
+            onWallRight: false,
+            coyote: 0,
+            jumpBuffer: 0,
+            wallCling: 0,
+            pouncing: false,
+            flopping: false,
             combo: 0,
-            comboGroundTimer: 0,
+            comboTimer: 0,
             maskMode: false,
             hearts: hearts,
+            invuln: 0,
             carriedShinies: 0,
-            bankedShinies: 0
+            bankedShinies: 0,
+            anim: .idle
         )
     }
 }
@@ -57,20 +58,31 @@ public struct ShinyPickup: Equatable, Sendable, Identifiable {
     public var alive: Bool
 }
 
-public struct FlopDummy: Equatable, Sendable, Identifiable {
+public struct MopEnemy: Equatable, Sendable, Identifiable {
     public var id: Int
     public var position: Vec2
+    public var home: Vec2
+    public var patrolSpan: Double
+    public var phase: Double
     public var alive: Bool
-    public var respawnTimer: Double
+    public var respawn: Double
 }
 
-public enum RunOutcome: Equatable, Sendable {
+public struct Checkpoint: Equatable, Sendable, Identifiable {
+    public var id: Int
+    public var position: Vec2
+    public var activated: Bool
+}
+
+public enum RunPhase: Equatable, Sendable {
+    case title
     case playing
-    case won
+    case won(seconds: Double, shinies: Int, combo: Int)
     case failed(FailReason)
 }
 
 public enum FailReason: Equatable, Sendable {
     case fellInWater
+    case spiked
     case bagged
 }

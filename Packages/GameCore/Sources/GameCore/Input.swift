@@ -3,67 +3,54 @@
 import Foundation
 
 public enum ControlVariant: Equatable, Sendable {
-    /// Drag to move; tap to Pounce / air-tap Belly Flop; hold in air for Tail Swing.
+    /// Left stick zone + right face buttons (Jump / Pounce).
     case a
-    /// Same as A plus a fixed on-screen Pounce button (Gate 1 pick).
+    /// Same layout, alternate Jump button placement (Gate 1 pick).
     case b
 }
 
 public struct InputFrame: Equatable, Sendable {
-    /// Desired move direction in world space, length 0…1.
-    public var move: Vec2
-    /// True for one frame when a quick tap is recognized (or Pounce button in variant B).
+    /// Horizontal intent −1…1.
+    public var moveX: Double
+    public var jumpPressed: Bool
+    public var jumpHeld: Bool
     public var pouncePressed: Bool
-    /// Finger is held (for Tail Swing / glide while airborne).
-    public var hold: Bool
-    /// Air tap: Belly Flop.
-    public var bellyFlopPressed: Bool
 
-    public init(
-        move: Vec2 = .zero,
-        pouncePressed: Bool = false,
-        hold: Bool = false,
-        bellyFlopPressed: Bool = false
-    ) {
-        self.move = move
+    public init(moveX: Double = 0, jumpPressed: Bool = false, jumpHeld: Bool = false, pouncePressed: Bool = false) {
+        self.moveX = moveX
+        self.jumpPressed = jumpPressed
+        self.jumpHeld = jumpHeld
         self.pouncePressed = pouncePressed
-        self.hold = hold
-        self.bellyFlopPressed = bellyFlopPressed
     }
 
     public static let idle = InputFrame()
 }
 
-/// Converts raw touch samples into InputFrame using Tuning tap thresholds.
+/// Converts raw touch samples into taps using Tuning thresholds (shared with render).
 public struct TouchInterpreter: Equatable, Sendable {
     public var touchDown: Bool = false
     public var touchStartTime: Double = 0
     public var touchStartPos: Vec2 = .zero
     public var lastPos: Vec2 = .zero
-    public var wasAirborneAtDown: Bool = false
 
-    public mutating func begin(at time: Double, pos: Vec2, airborne: Bool) {
+    public init() {}
+
+    public mutating func begin(at time: Double, pos: Vec2) {
         touchDown = true
         touchStartTime = time
         touchStartPos = pos
         lastPos = pos
-        wasAirborneAtDown = airborne
     }
 
     public mutating func move(to pos: Vec2) {
         lastPos = pos
     }
 
-    public mutating func end(at time: Double, tuning: Tuning) -> (pounce: Bool, bellyFlop: Bool) {
-        guard touchDown else { return (false, false) }
+    public mutating func end(at time: Double, maxMs: Double, maxPoints: Double) -> Bool {
+        guard touchDown else { return false }
         touchDown = false
         let dtMs = (time - touchStartTime) * 1000
         let dist = lastPos.distance(to: touchStartPos)
-        let isTap = dtMs <= tuning.tapMaxMs && dist <= tuning.tapMaxPoints
-        if !isTap { return (false, false) }
-        if wasAirborneAtDown {
-            return (false, true)
-        }
-        return (true, false)
+        return dtMs <= maxMs && dist <= maxPoints
     }
 }

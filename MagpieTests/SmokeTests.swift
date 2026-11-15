@@ -11,9 +11,9 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(clock.now, 1)
     }
 
-    func testNeonAlleyMapLoads() throws {
-        let map = try NeonAlleyMap.load()
+    func testNeonDocksLoads() throws {
+        let map = try NeonDocksLevel.load()
         XCTAssertNotNil(map.findFirst(.start))
-        XCTAssertNotNil(map.findFirst(.stash))
+        XCTAssertNotNil(map.findFirst(.exit))
     }
 }

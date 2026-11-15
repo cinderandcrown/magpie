@@ -2,6 +2,15 @@
 
 Every choice that changes the plan, with the reason. Newest first.
 
+## 2026-11-15 — Mission 1 bar raised (side-view + asset manifest)
+
+| Decision | Reason |
+| --- | --- |
+| Mission 1 is a **side-view** neon platformer (not top-down) | Nicholas asked for Celeste / Meat Boy / Dadish feel (variable jump, coyote, buffer, wall slide/jump, juice). |
+| `AssetKey` / `AssetManifest` with named keys; placeholders until `assets/mission-1` merges | Fire Fox generating ElevenLabs audio + art under `Assets/Generated/`; swap without rewiring gameplay. |
+| Title screen says **Trash Panda**; win shows time/Shinies/combo; fail → instant retry | Nicholas: play a real game, not a prototype. |
+| Procedural/placeholder art + keyed WAV stubs until Fire Fox assets land | Keep CI green; merge `assets/mission-1` when ready. |
+
 ## 2026-11-15 — APPROVED M0; Mission 1 toy + home-screen name
 
 | Decision | Reason |

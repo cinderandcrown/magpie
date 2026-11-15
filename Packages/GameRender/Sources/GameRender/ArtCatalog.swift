@@ -4,31 +4,40 @@
 import SpriteKit
 import UIKit
 
-/// Drawn-in-code art. No Sly Cooper look: no cane, no top-hat, no blue/gold.
+/// Visuals keyed for Fire Fox swap. Prefers named textures; otherwise draws rich placeholders
+/// (not gray boxes — neon city characters with silhouette detail).
 public enum ArtCatalog {
-    public static let nightSky = SKColor(red: 0.05, green: 0.04, blue: 0.14, alpha: 1)
-    public static let asphalt = SKColor(red: 0.12, green: 0.11, blue: 0.18, alpha: 1)
-    public static let sidewalk = SKColor(red: 0.18, green: 0.17, blue: 0.26, alpha: 1)
+    public static let nightSky = SKColor(red: 0.04, green: 0.03, blue: 0.12, alpha: 1)
     public static let neonPink = SKColor(red: 1.0, green: 0.28, blue: 0.62, alpha: 1)
     public static let neonCyan = SKColor(red: 0.15, green: 0.92, blue: 0.95, alpha: 1)
     public static let neonLime = SKColor(red: 0.55, green: 0.98, blue: 0.35, alpha: 1)
     public static let neonOrange = SKColor(red: 1.0, green: 0.55, blue: 0.18, alpha: 1)
-    public static let water = SKColor(red: 0.08, green: 0.28, blue: 0.48, alpha: 1)
-    public static let wall = SKColor(red: 0.22, green: 0.16, blue: 0.32, alpha: 1)
-    public static let crate = SKColor(red: 0.55, green: 0.32, blue: 0.18, alpha: 1)
-    public static let raccoonFur = SKColor(red: 0.42, green: 0.34, blue: 0.30, alpha: 1)
-    public static let raccoonBelly = SKColor(red: 0.72, green: 0.66, blue: 0.58, alpha: 1)
-    public static let maskBlack = SKColor(red: 0.08, green: 0.07, blue: 0.09, alpha: 1)
-    public static let shinyGold = SKColor(red: 1.0, green: 0.86, blue: 0.25, alpha: 1)
-    public static let mopGray = SKColor(red: 0.55, green: 0.58, blue: 0.62, alpha: 1)
+    public static let asphalt = SKColor(red: 0.14, green: 0.12, blue: 0.22, alpha: 1)
+    public static let raccoonFur = SKColor(red: 0.45, green: 0.36, blue: 0.30, alpha: 1)
+    public static let raccoonBelly = SKColor(red: 0.78, green: 0.72, blue: 0.62, alpha: 1)
+    public static let maskBlack = SKColor(red: 0.06, green: 0.05, blue: 0.07, alpha: 1)
 
-    /// Scruffy masked raccoon — junk-gadget chaos, not gentleman thief.
-    public static func makeBanditNode() -> SKNode {
+    public static func texture(for key: AssetKey) -> SKTexture? {
+        let name = AssetManifest.shared.imageName(for: key)
+        if UIImage(named: name) != nil {
+            return SKTexture(imageNamed: name)
+        }
+        for ext in ["png", "jpg", "jpeg", "webp"] {
+            if let url = AssetManifest.shared.url(for: key, ext: ext),
+               let data = try? Data(contentsOf: url),
+               let img = UIImage(data: data) {
+                return SKTexture(image: img)
+            }
+        }
+        return nil
+    }
+
+    public static func makeBandit(anim: String = "idle") -> SKNode {
         let root = SKNode()
         root.name = "bandit"
 
-        let shadow = SKShapeNode(ellipseOf: CGSize(width: 28, height: 10))
-        shadow.fillColor = SKColor(white: 0, alpha: 0.35)
+        let shadow = SKShapeNode(ellipseOf: CGSize(width: 30, height: 10))
+        shadow.fillColor = SKColor(white: 0, alpha: 0.4)
         shadow.strokeColor = .clear
         shadow.zPosition = -1
         shadow.name = "shadow"
@@ -38,135 +47,162 @@ public enum ArtCatalog {
         body.name = "body"
         root.addChild(body)
 
-        let torso = SKShapeNode(rectOf: CGSize(width: 22, height: 26), cornerRadius: 8)
+        let keys: [AssetKey] = [.raccoonIdle0, .raccoonRun0, .raccoonJump0, .raccoonPounce0]
+        if let tex = keys.compactMap({ texture(for: $0) }).first {
+            let sprite = SKSpriteNode(texture: tex, size: CGSize(width: 48, height: 48))
+            sprite.name = "sprite"
+            body.addChild(sprite)
+            return root
+        }
+
+        // Detailed drawn raccoon (scruffy, magnet glove — not Sly)
+        let torso = SKShapeNode(path: roundedBody())
         torso.fillColor = raccoonFur
-        torso.strokeColor = SKColor(white: 0, alpha: 0.25)
-        torso.lineWidth = 1
+        torso.strokeColor = SKColor(white: 0, alpha: 0.3)
+        torso.lineWidth = 1.2
         body.addChild(torso)
 
-        let belly = SKShapeNode(ellipseOf: CGSize(width: 14, height: 16))
+        let belly = SKShapeNode(ellipseOf: CGSize(width: 14, height: 18))
         belly.fillColor = raccoonBelly
         belly.strokeColor = .clear
-        belly.position = CGPoint(x: 0, y: -2)
+        belly.position = CGPoint(x: 1, y: -2)
         body.addChild(belly)
 
-        let head = SKShapeNode(ellipseOf: CGSize(width: 24, height: 20))
+        let head = SKShapeNode(ellipseOf: CGSize(width: 26, height: 22))
         head.fillColor = raccoonFur
         head.strokeColor = SKColor(white: 0, alpha: 0.25)
         head.position = CGPoint(x: 0, y: 18)
         body.addChild(head)
 
-        let mask = SKShapeNode(rectOf: CGSize(width: 22, height: 8), cornerRadius: 3)
+        let mask = SKShapeNode(rectOf: CGSize(width: 24, height: 9), cornerRadius: 3)
         mask.fillColor = maskBlack
         mask.strokeColor = .clear
         mask.position = CGPoint(x: 0, y: 18)
         mask.name = "mask"
         body.addChild(mask)
 
-        let eyeL = SKShapeNode(circleOfRadius: 2.2)
-        eyeL.fillColor = .white
-        eyeL.strokeColor = .clear
-        eyeL.position = CGPoint(x: -5, y: 18)
-        body.addChild(eyeL)
-        let pupilL = SKShapeNode(circleOfRadius: 1.1)
-        pupilL.fillColor = neonLime
-        pupilL.strokeColor = .clear
-        pupilL.position = eyeL.position
-        body.addChild(pupilL)
-
-        let eyeR = SKShapeNode(circleOfRadius: 2.2)
-        eyeR.fillColor = .white
-        eyeR.strokeColor = .clear
-        eyeR.position = CGPoint(x: 5, y: 18)
-        body.addChild(eyeR)
-        let pupilR = SKShapeNode(circleOfRadius: 1.1)
-        pupilR.fillColor = neonLime
-        pupilR.strokeColor = .clear
-        pupilR.position = eyeR.position
-        body.addChild(pupilR)
-
-        // Ringed tail (scruffy, not sleek)
-        let tail = SKNode()
-        tail.name = "tail"
-        tail.position = CGPoint(x: -14, y: -6)
-        for i in 0..<5 {
-            let ring = SKShapeNode(circleOfRadius: 4.5 - Double(i) * 0.35)
-            ring.fillColor = i % 2 == 0 ? raccoonFur : maskBlack
-            ring.strokeColor = .clear
-            ring.position = CGPoint(x: -CGFloat(i) * 5, y: CGFloat(i) * 2)
-            tail.addChild(ring)
+        for dx in [-6.0, 6.0] {
+            let eye = SKShapeNode(circleOfRadius: 2.4)
+            eye.fillColor = .white
+            eye.strokeColor = .clear
+            eye.position = CGPoint(x: dx, y: 18)
+            body.addChild(eye)
+            let pupil = SKShapeNode(circleOfRadius: 1.2)
+            pupil.fillColor = neonLime
+            pupil.strokeColor = .clear
+            pupil.position = CGPoint(x: dx, y: 18)
+            body.addChild(pupil)
         }
-        body.addChild(tail)
 
-        // Ears
-        for dx in [-8.0, 8.0] {
-            let ear = SKShapeNode(ellipseOf: CGSize(width: 7, height: 10))
+        for dx in [-9.0, 9.0] {
+            let ear = SKShapeNode(ellipseOf: CGSize(width: 8, height: 11))
             ear.fillColor = raccoonFur
             ear.strokeColor = .clear
             ear.position = CGPoint(x: dx, y: 28)
             body.addChild(ear)
         }
 
-        // Tiny junk magnet glove (not a cane)
-        let glove = SKShapeNode(rectOf: CGSize(width: 8, height: 6), cornerRadius: 2)
+        let snout = SKShapeNode(ellipseOf: CGSize(width: 10, height: 7))
+        snout.fillColor = raccoonBelly
+        snout.strokeColor = .clear
+        snout.position = CGPoint(x: 8, y: 14)
+        body.addChild(snout)
+        let nose = SKShapeNode(circleOfRadius: 2)
+        nose.fillColor = maskBlack
+        nose.strokeColor = .clear
+        nose.position = CGPoint(x: 12, y: 14)
+        body.addChild(nose)
+
+        let tail = SKNode()
+        tail.name = "tail"
+        tail.position = CGPoint(x: -16, y: -4)
+        for i in 0..<6 {
+            let ring = SKShapeNode(circleOfRadius: 5 - CGFloat(i) * 0.4)
+            ring.fillColor = i % 2 == 0 ? raccoonFur : maskBlack
+            ring.strokeColor = .clear
+            ring.position = CGPoint(x: -CGFloat(i) * 5.5, y: CGFloat(i) * 2.2)
+            tail.addChild(ring)
+        }
+        body.addChild(tail)
+
+        let glove = SKShapeNode(rectOf: CGSize(width: 10, height: 8), cornerRadius: 2)
         glove.fillColor = neonCyan
-        glove.strokeColor = .clear
-        glove.position = CGPoint(x: 14, y: -4)
+        glove.strokeColor = .white
+        glove.lineWidth = 0.5
+        glove.position = CGPoint(x: 16, y: -6)
+        glove.glowWidth = 2
         glove.name = "glove"
         body.addChild(glove)
+
+        let legL = SKShapeNode(rectOf: CGSize(width: 6, height: 10), cornerRadius: 2)
+        legL.fillColor = raccoonFur
+        legL.strokeColor = .clear
+        legL.position = CGPoint(x: -5, y: -18)
+        legL.name = "legL"
+        body.addChild(legL)
+        let legR = SKShapeNode(rectOf: CGSize(width: 6, height: 10), cornerRadius: 2)
+        legR.fillColor = raccoonFur
+        legR.strokeColor = .clear
+        legR.position = CGPoint(x: 5, y: -18)
+        legR.name = "legR"
+        body.addChild(legR)
 
         return root
     }
 
-    public static func makeShinyNode() -> SKNode {
-        let n = SKShapeNode(circleOfRadius: 7)
-        n.fillColor = shinyGold
+    private static func roundedBody() -> CGPath {
+        CGPath(roundedRect: CGRect(x: -11, y: -14, width: 22, height: 28), cornerWidth: 8, cornerHeight: 8, transform: nil)
+    }
+
+    public static func makeMop() -> SKNode {
+        if let tex = texture(for: .mopIdle0) ?? texture(for: .mopPatrol0) {
+            let s = SKSpriteNode(texture: tex, size: CGSize(width: 40, height: 40))
+            s.name = "mop"
+            return s
+        }
+        let n = SKNode()
+        n.name = "mop"
+        let body = SKShapeNode(rectOf: CGSize(width: 26, height: 28), cornerRadius: 4)
+        body.fillColor = SKColor(red: 0.55, green: 0.58, blue: 0.62, alpha: 1)
+        body.strokeColor = neonCyan
+        body.lineWidth = 2
+        body.glowWidth = 1
+        n.addChild(body)
+        let eye = SKShapeNode(circleOfRadius: 5)
+        eye.fillColor = neonCyan
+        eye.strokeColor = .white
+        eye.lineWidth = 1
+        eye.glowWidth = 4
+        eye.position = CGPoint(x: 0, y: 4)
+        n.addChild(eye)
+        let brush = SKShapeNode(rectOf: CGSize(width: 30, height: 8), cornerRadius: 2)
+        brush.fillColor = neonPink
+        brush.strokeColor = .clear
+        brush.position = CGPoint(x: 0, y: -18)
+        n.addChild(brush)
+        let tread = SKShapeNode(rectOf: CGSize(width: 28, height: 6), cornerRadius: 2)
+        tread.fillColor = maskBlack
+        tread.strokeColor = .clear
+        tread.position = CGPoint(x: 0, y: -22)
+        n.addChild(tread)
+        return n
+    }
+
+    public static func makeShiny() -> SKNode {
+        if let tex = texture(for: .shiny0) {
+            return SKSpriteNode(texture: tex, size: CGSize(width: 22, height: 22))
+        }
+        let n = SKShapeNode(circleOfRadius: 8)
+        n.fillColor = SKColor(red: 1, green: 0.86, blue: 0.25, alpha: 1)
         n.strokeColor = neonOrange
         n.lineWidth = 2
-        n.glowWidth = 2
-        let spark = SKShapeNode(rectOf: CGSize(width: 3, height: 10), cornerRadius: 1)
+        n.glowWidth = 4
+        n.name = "shiny"
+        let spark = SKShapeNode(rectOf: CGSize(width: 3, height: 12), cornerRadius: 1)
         spark.fillColor = .white
         spark.strokeColor = .clear
         spark.zRotation = .pi / 5
         n.addChild(spark)
-        n.name = "shiny"
-        return n
-    }
-
-    public static func makeDummyNode() -> SKNode {
-        let n = SKNode()
-        let body = SKShapeNode(rectOf: CGSize(width: 20, height: 24), cornerRadius: 4)
-        body.fillColor = mopGray
-        body.strokeColor = neonCyan
-        body.lineWidth = 1.5
-        n.addChild(body)
-        let eye = SKShapeNode(circleOfRadius: 3)
-        eye.fillColor = neonPink
-        eye.strokeColor = .clear
-        eye.position = CGPoint(x: 0, y: 4)
-        n.addChild(eye)
-        let brush = SKShapeNode(rectOf: CGSize(width: 26, height: 6), cornerRadius: 2)
-        brush.fillColor = neonCyan
-        brush.strokeColor = .clear
-        brush.position = CGPoint(x: 0, y: -14)
-        n.addChild(brush)
-        n.name = "dummy"
-        return n
-    }
-
-    public static func makeStashNode() -> SKNode {
-        let n = SKShapeNode(ellipseOf: CGSize(width: 36, height: 18))
-        n.fillColor = SKColor(red: 0.15, green: 0.55, blue: 0.35, alpha: 0.85)
-        n.strokeColor = neonLime
-        n.lineWidth = 2
-        n.glowWidth = 3
-        let label = SKLabelNode(fontNamed: "AvenirNext-Bold")
-        label.text = "STASH"
-        label.fontSize = 9
-        label.fontColor = neonLime
-        label.verticalAlignmentMode = .center
-        n.addChild(label)
-        n.name = "stash"
         return n
     }
 }
