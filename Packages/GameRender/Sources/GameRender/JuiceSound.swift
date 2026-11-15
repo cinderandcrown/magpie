@@ -4,15 +4,15 @@
 import AVFoundation
 import Foundation
 
-/// Keyed SFX + music. Prefers Fire Fox files from `Assets/Generated/` via AssetManifest;
-/// falls back to procedural sine blips / drone loop.
+/// Plays Fire Fox audio from `Assets/Generated/audio/` by AssetKey.
 public final class JuiceSound: @unchecked Sendable {
     public static let shared = JuiceSound()
 
     private var engine: AVAudioEngine?
     private var musicPlayer: AVAudioPlayerNode?
+    private var maskLayerPlayer: AVAudioPlayerNode?
     private var ready = false
-    private var musicOn = false
+    private var players: [AVAudioPlayer] = []
 
     private init() {}
 
@@ -35,115 +35,130 @@ public final class JuiceSound: @unchecked Sendable {
 
     public func play(_ key: AssetKey) {
         prepare()
-        if let url = AssetManifest.shared.url(for: key, ext: "wav")
-            ?? AssetManifest.shared.url(for: key, ext: "m4a")
-            ?? AssetManifest.shared.url(for: key, ext: "mp3") {
-            playFile(url)
+        if let url = AssetManifest.audioURL(key) {
+            playOneShot(url)
             return
         }
-        // Procedural placeholders mapped to keys
-        let tone: (Double, Double, Float) = {
+        // Tiny procedural fallback
+        procedural(key)
+    }
+
+    public func playTitleSting() {
+        play(.musicTitleSting)
+    }
+
+    public func startLevelMusic() {
+        prepare()
+        stopMusic()
+        guard let url = AssetManifest.audioURL(.musicLevelLoop), let engine else {
+            proceduralDrone()
+            return
+        }
+        loopFile(url, into: &musicPlayer, engine: engine, volume: 0.55)
+    }
+
+    public func setMaskModeMusic(_ on: Bool) {
+        prepare()
+        guard let engine else { return }
+        if on {
+            guard maskLayerPlayer == nil,
+                  let url = AssetManifest.audioURL(.musicMaskLayer) else { return }
+            loopFile(url, into: &maskLayerPlayer, engine: engine, volume: 0.45)
+        } else {
+            maskLayerPlayer?.stop()
+            if let p = maskLayerPlayer { engine.detach(p) }
+            maskLayerPlayer = nil
+        }
+    }
+
+    public func stopMusic() {
+        musicPlayer?.stop()
+        maskLayerPlayer?.stop()
+        if let engine {
+            if let musicPlayer { engine.detach(musicPlayer) }
+            if let maskLayerPlayer { engine.detach(maskLayerPlayer) }
+        }
+        musicPlayer = nil
+        maskLayerPlayer = nil
+    }
+
+    private func playOneShot(_ url: URL) {
+        do {
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.prepareToPlay()
+            player.play()
+            players.append(player)
+            players = players.filter { $0.isPlaying || $0 === player }
+        } catch {
+            // ignore
+        }
+    }
+
+    private func loopFile(_ url: URL, into slot: inout AVAudioPlayerNode?, engine: AVAudioEngine, volume: Float) {
+        do {
+            let file = try AVAudioFile(forReading: url)
+            let player = AVAudioPlayerNode()
+            player.volume = volume
+            engine.attach(player)
+            engine.connect(player, to: engine.mainMixerNode, format: file.processingFormat)
+            let frames = AVAudioFrameCount(file.length)
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames) else { return }
+            try file.read(into: buffer)
+            player.scheduleBuffer(buffer, at: nil, options: [.loops], completionHandler: nil)
+            player.play()
+            slot = player
+        } catch {
+            // ignore
+        }
+    }
+
+    private func procedural(_ key: AssetKey) {
+        guard let engine else { return }
+        let (f, d, v): (Double, Double, Float) = {
             switch key {
-            case .sfxJump: return (520, 0.07, 0.28)
-            case .sfxLand: return (180, 0.05, 0.22)
-            case .sfxCollectShiny: return (920, 0.1, 0.24)
-            case .sfxPounce: return (360, 0.08, 0.3)
-            case .sfxHit: return (160, 0.09, 0.32)
-            case .sfxWin: return (660, 0.35, 0.3)
-            case .sfxFail: return (110, 0.3, 0.3)
-            case .sfxMaskMode: return (440, 0.25, 0.3)
+            case .sfxJump: return (520, 0.07, 0.25)
+            case .sfxLand: return (180, 0.05, 0.2)
+            case .sfxCollectShiny: return (920, 0.1, 0.22)
+            case .sfxPounce, .sfxBellyFlop: return (360, 0.08, 0.28)
+            case .sfxWin: return (660, 0.3, 0.28)
+            case .sfxFail: return (110, 0.25, 0.28)
             default: return (300, 0.05, 0.15)
             }
         }()
-        guard let engine else { return }
-        blip(engine: engine, frequency: tone.0, duration: tone.1, volume: tone.2)
+        blip(engine: engine, frequency: f, duration: d, volume: v)
     }
 
-    public func startMusic() {
-        prepare()
-        guard !musicOn, let engine else { return }
-        if let url = AssetManifest.shared.url(for: .musicHeistLoop, ext: "m4a")
-            ?? AssetManifest.shared.url(for: .musicHeistLoop, ext: "wav")
-            ?? AssetManifest.shared.url(for: .musicHeistLoop, ext: "mp3") {
-            playFile(url, loop: true)
-            musicOn = true
-            return
-        }
-        // Soft procedural drone loop
+    private func proceduralDrone() {
+        guard let engine else { return }
         let player = AVAudioPlayerNode()
         engine.attach(player)
-        let sampleRate = 22050.0
-        let seconds = 4.0
-        let frames = AVAudioFrameCount(sampleRate * seconds)
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+        let sr = 22050.0
+        let frames = AVAudioFrameCount(sr * 2)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 1),
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frames),
-              let data = buffer.floatChannelData?[0]
-        else { return }
+              let data = buffer.floatChannelData?[0] else { return }
         buffer.frameLength = frames
         for i in 0..<Int(frames) {
-            let t = Double(i) / sampleRate
-            let a = sin(2 * .pi * 110 * t) * 0.04
-            let b = sin(2 * .pi * 164.8 * t) * 0.03
-            let c = sin(2 * .pi * 220 * t) * 0.02
-            let pulse = 0.6 + 0.4 * sin(2 * .pi * 0.5 * t)
-            data[i] = Float((a + b + c) * pulse)
+            let t = Double(i) / sr
+            data[i] = Float(sin(2 * .pi * 110 * t) * 0.04 + sin(2 * .pi * 165 * t) * 0.03)
         }
         engine.connect(player, to: engine.mainMixerNode, format: format)
         player.scheduleBuffer(buffer, at: nil, options: [.loops], completionHandler: nil)
         player.play()
         musicPlayer = player
-        musicOn = true
-    }
-
-    public func stopMusic() {
-        musicPlayer?.stop()
-        if let musicPlayer, let engine {
-            engine.detach(musicPlayer)
-        }
-        musicPlayer = nil
-        musicOn = false
-    }
-
-    private func playFile(_ url: URL, loop: Bool = false) {
-        guard let engine else { return }
-        do {
-            let file = try AVAudioFile(forReading: url)
-            let player = AVAudioPlayerNode()
-            engine.attach(player)
-            engine.connect(player, to: engine.mainMixerNode, format: file.processingFormat)
-            let opts: AVAudioPlayerNodeBufferOptions = loop ? [.loops] : []
-            player.scheduleFile(file, at: nil, completionHandler: nil)
-            // scheduleFile doesn't take loops — use buffer for loop
-            if loop {
-                let frameCount = AVAudioFrameCount(file.length)
-                guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else { return }
-                try file.read(into: buffer)
-                player.scheduleBuffer(buffer, at: nil, options: [.loops], completionHandler: nil)
-                musicPlayer = player
-            }
-            _ = opts
-            player.play()
-            if !loop {
-                // detach later roughly after duration
-            }
-        } catch {
-            // fall through silent
-        }
     }
 
     private func blip(engine: AVAudioEngine, frequency: Double, duration: Double, volume: Float) {
-        let sampleRate = 22050.0
-        let frameCount = AVAudioFrameCount(sampleRate * duration)
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+        let sr = 22050.0
+        let frameCount = AVAudioFrameCount(sr * duration)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 1),
               let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
-              let data = buffer.floatChannelData?[0]
-        else { return }
+              let data = buffer.floatChannelData?[0] else { return }
         buffer.frameLength = frameCount
-        let twoPiF = 2.0 * Double.pi * frequency
         for i in 0..<Int(frameCount) {
-            let t = Double(i) / sampleRate
+            let t = Double(i) / sr
             let env = Float(max(0, 1 - t / duration))
-            data[i] = Float(sin(twoPiF * t)) * volume * env * env
+            data[i] = Float(sin(2 * .pi * frequency * t)) * volume * env * env
         }
         let player = AVAudioPlayerNode()
         engine.attach(player)

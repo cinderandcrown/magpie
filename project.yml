@@ -44,7 +44,8 @@ targets:
     resources:
       - path: Magpie/Assets.xcassets
       - path: Magpie/PrivacyInfo.xcprivacy
-      - path: Magpie/Resources
+      - path: Assets/Generated
+        type: folder
     settings:
       base:
         INFOPLIST_FILE: Magpie/Info.plist
