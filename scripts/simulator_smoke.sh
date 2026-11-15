@@ -200,14 +200,38 @@ write_flag "smoke_midrun_ok.txt"
 wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 120
 shot "$OUT_DIR/03-mop-stomp.png"
 
-# 04 — Mask Mode while still playing (app holds showcase until smoke_mask_ok.txt)
-wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("mask=1" in s and "phase=playing" in s) else 1)' 90
-sleep 0.45
-shot "$OUT_DIR/04-mask-mode.png"
+# 04 — Mask Mode while still playing (requires live maskOn=1, not sticky mask=).
+# Screenshot can take seconds; re-verify after the shot so 04 never captures SPLASHED.
+wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=1" in s and "phase=playing" in s) else 1)' 120
+MASK_SHOT_OK=0
+for _try in $(seq 1 50); do
+  status="$(read_status)"
+  if [[ "$status" != *"maskOn=1"* || "$status" != *"phase=playing"* ]]; then
+    sleep 0.3
+    continue
+  fi
+  sleep 0.35
+  shot "$OUT_DIR/04-mask-mode.png"
+  status="$(read_status)"
+  if [[ "$status" == *"maskOn=1"* && "$status" == *"phase=playing"* ]]; then
+    echo "ready@mask-shot: $status"
+    MASK_SHOT_OK=1
+    break
+  fi
+  echo "mask shot raced (status=$status) — retry $_try" >&2
+  rm -f "$OUT_DIR/04-mask-mode.png"
+  sleep 0.25
+done
+if [[ "$MASK_SHOT_OK" -ne 1 ]]; then
+  echo "FAIL: could not capture Mask Mode while phase=playing maskOn=1" >&2
+  shot "$OUT_DIR/fail-mask-timeout.png" || true
+  read_status >&2 || true
+  exit 1
+fi
 write_flag "smoke_mask_ok.txt"
 
 # 05 — death / retry overlay (app holds failed until smoke_death_ok.txt)
-wait_status "death" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("died=1" in s and "phase=failed" in s) else 1)' 90
+wait_status "death" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("died=1" in s and "phase=failed" in s) else 1)' 120
 sleep 0.35
 shot "$OUT_DIR/05-death-retry.png"
 write_flag "smoke_death_ok.txt"
@@ -327,4 +351,33 @@ if (( STOMPS < 1 || MASK < 1 || DIED < 1 || WON < 1 )); then
   echo "FAIL: milestones stomps=$STOMPS mask=$MASK died=$DIED won=$WON" >&2
   exit 1
 fi
+
+# 04 must be Mask Mode gameplay, not the death/results card — assert it differs from 05.
+"$PALETTE_PY" - "$OUT_DIR/04-mask-mode.png" "$OUT_DIR/05-death-retry.png" <<'PY'
+import sys
+from PIL import Image, ImageChops
+
+a = Image.open(sys.argv[1]).convert("RGB")
+b = Image.open(sys.argv[2]).convert("RGB")
+if a.size != b.size:
+    b = b.resize(a.size)
+# Center crop (ignore tiny HUD jitter)
+w, h = a.size
+box = (int(w * 0.12), int(h * 0.18), int(w * 0.88), int(h * 0.82))
+a, b = a.crop(box), b.crop(box)
+diff = ImageChops.difference(a, b)
+pixels = list(diff.getdata())
+n = max(1, len(pixels))
+avg = sum(sum(p) for p in pixels) / (n * 3 * 255.0)
+print(f"mask-vs-death diff={avg:.4f}")
+if avg < 0.035:
+    raise SystemExit("FAIL: 04-mask-mode too similar to 05-death-retry (Mask beat captured death card?)")
+# Death card is typically much darker / more UI plate — Mask should still have bright neon playfield.
+bright = sum(1 for r, g, b in a.getdata() if (r + g + b) / 3 > 55) / n
+print(f"mask-shot bright={bright:.3%}")
+if bright < 0.05:
+    raise SystemExit("FAIL: 04-mask-mode too dim (looks like dimmed death overlay)")
+print("OK 04 differs from 05")
+PY
+
 echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED won=$WON)"

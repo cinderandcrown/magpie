@@ -1,8 +1,15 @@
 // Copyright © 2026 Cinder and Crown LLC. All rights reserved.
 
 import GameCore
+import GameRender
 import Services
 import XCTest
+#if canImport(SpriteKit)
+import SpriteKit
+#endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 final class SmokeTests: XCTestCase {
     func testCoreAndServicesLink() {
@@ -86,5 +93,36 @@ final class SmokeTests: XCTestCase {
         // Three parallax layers at 1024² stay well under one 2560 master.
         XCTAssertLessThan(smokeBytesPerPlate * 3, rgbaBytesPerPlate)
         XCTAssertEqual(smokeMaxPixel, 1024)
+    }
+
+    /// Gate: title wordmark must fit inside the iPhone 16 Pro Max safe area at 85% width.
+    func testTitleLogoFitsSafeArea() {
+        #if canImport(SpriteKit) && canImport(UIKit)
+        let sceneSize = CGSize(width: 430, height: 932)
+        let topSafe: CGFloat = 59
+        let bottomSafe: CGFloat = 34
+        let logo = ArtCatalog.makeLogoNode(lite: false)
+        let base = ArtCatalog.fitTitleLogo(logo, sceneWidth: sceneSize.width, fraction: 0.85)
+        XCTAssertGreaterThan(base, 0)
+        XCTAssertLessThan(base, 1.01, "2048px logo must be scaled down for phone width")
+        let hh = sceneSize.height * 0.5
+        let safeTop = hh - topSafe
+        let safeBottom = -hh + bottomSafe
+        let safeH = safeTop - safeBottom
+        logo.position = CGPoint(x: 0, y: safeTop - safeH * 0.18)
+        let frame = logo.calculateAccumulatedFrame()
+        XCTAssertTrue(
+            ArtCatalog.logoFrameInsideSafeArea(
+                logoFrame: frame,
+                sceneSize: sceneSize,
+                topSafe: topSafe,
+                bottomSafe: bottomSafe
+            ),
+            "logo frame \(frame) must sit inside safe area"
+        )
+        XCTAssertLessThanOrEqual(frame.width, sceneSize.width * 0.9 + 1)
+        #else
+        XCTAssertTrue(true)
+        #endif
     }
 }

@@ -39,7 +39,7 @@ public final class JuiceSound: @unchecked Sendable {
         prepare()
         stopMusic()
         guard let url = AssetManifest.audioURL(.musicLevelLoop) else { return }
-        levelMusic = loopPlayer(url: url, volume: 0.55)
+        levelMusic = loopPlayer(url: url, volume: 0.42)
     }
 
     public func setMaskModeMusic(_ on: Bool) {
@@ -69,8 +69,10 @@ public final class JuiceSound: @unchecked Sendable {
             oneshots.append(player)
             oneshots.removeAll { !$0.isPlaying && $0 !== player }
             // Hard cap — prevents AVAudioPlayer pile-up under autoplay stomps/SFX spam.
-            if oneshots.count > 8 {
-                oneshots.removeFirst(oneshots.count - 8)
+            if oneshots.count > 5 {
+                let drop = oneshots.count - 5
+                for p in oneshots.prefix(drop) { p.stop() }
+                oneshots.removeFirst(drop)
             }
         } catch {
             // Missing/corrupt clip — ignore rather than crash the host.

@@ -164,8 +164,8 @@ public final class HeistScene: SKScene {
         #if DEBUG
         setupDebugTuning()
         #endif
-        // Defer AVAudioSession under -SmokeAutoplay — sync audio prep jetsams the sim
-        // mid-run. Real play still gets title sting + level/mask loops + SFX.
+        // Defer AVAudioSession until after atlases warm / title is up — early prepare jetsams
+        // the sim. Smoke still gets music+SFX once play starts so the gameplay video has audio.
         if !smokeEnabled {
             JuiceSound.shared.prepare()
             JuiceSound.shared.playTitleSting()
@@ -243,13 +243,11 @@ public final class HeistScene: SKScene {
         maskVignette.alpha = 0
         maskVignette.isHidden = true
         overlay.addChild(maskVignette)
-        // Soft edge tint — four edge strips, no full-screen opaque plate.
-        for edge in ["top", "bottom", "left", "right"] {
-            let strip = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.28), size: CGSize(width: 40, height: 40))
-            strip.name = edge
-            strip.blendMode = .add
-            maskVignette.addChild(strip)
-        }
+        // Soft full-bleed wash only — no left/right teal bands or letterbox bars.
+        let wash = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.12), size: CGSize(width: 40, height: 40))
+        wash.name = "wash"
+        wash.blendMode = .add
+        maskVignette.addChild(wash)
     }
 
     private func buildTiles() {
@@ -475,50 +473,29 @@ public final class HeistScene: SKScene {
         overlay.addChild(titleRoot)
         // Light wash — brighten the neon rooftop behind the logo (not a dim plate).
         let bg = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
-        bg.fillColor = SKColor(red: 0.04, green: 0.02, blue: 0.12, alpha: 0.28)
+        bg.fillColor = SKColor(red: 0.04, green: 0.02, blue: 0.12, alpha: 0.22)
         bg.strokeColor = .clear
         bg.name = "titleWash"
         titleRoot.addChild(bg)
 
-        let glow = SKShapeNode(circleOfRadius: 110)
-        glow.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.18)
-        glow.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.35)
+        let glow = SKShapeNode(circleOfRadius: 90)
+        glow.name = "titleGlow"
+        glow.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.16)
+        glow.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.3)
         glow.lineWidth = 2
-        glow.glowWidth = 8
-        glow.position = CGPoint(x: 0, y: 78)
+        glow.glowWidth = 6
         glow.zPosition = -1
         titleRoot.addChild(glow)
-        glow.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.group([
-                SKAction.fadeAlpha(to: 0.55, duration: 1.0),
-                SKAction.scale(to: 1.08, duration: 1.0),
-            ]),
-            SKAction.group([
-                SKAction.fadeAlpha(to: 1.0, duration: 1.0),
-                SKAction.scale(to: 1.0, duration: 1.0),
-            ]),
-        ])))
 
         let logo = ArtCatalog.makeLogoNode(lite: false)
         logo.name = "titleLogo"
-        logo.position = CGPoint(x: 0, y: 78)
         titleRoot.addChild(logo)
-        logo.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.group([
-                SKAction.fadeAlpha(to: 0.88, duration: 1.1),
-                SKAction.scale(to: 1.05, duration: 1.1),
-            ]),
-            SKAction.group([
-                SKAction.fadeAlpha(to: 1.0, duration: 1.1),
-                SKAction.scale(to: 1.0, duration: 1.1),
-            ]),
-        ])))
 
         let sub = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
+        sub.name = "titleSub"
         sub.text = "Neon Docks · Free the crew"
-        sub.fontSize = 16
+        sub.fontSize = 15
         sub.fontColor = ArtCatalog.neonPink
-        sub.position = CGPoint(x: 0, y: -6)
         titleRoot.addChild(sub)
 
         let play = SKLabelNode(fontNamed: "AvenirNext-Heavy")
@@ -526,28 +503,90 @@ public final class HeistScene: SKScene {
         play.text = "TAP TO START"
         play.fontSize = 22
         play.fontColor = .white
-        play.position = CGPoint(x: 0, y: -58)
         titleRoot.addChild(play)
         play.run(SKAction.repeatForever(SKAction.sequence([
             SKAction.group([
-                SKAction.fadeAlpha(to: 0.4, duration: 0.55),
-                SKAction.scale(to: 0.96, duration: 0.55),
+                SKAction.fadeAlpha(to: 0.35, duration: 0.5),
+                SKAction.scale(to: 0.94, duration: 0.5),
             ]),
             SKAction.group([
-                SKAction.fadeAlpha(to: 1, duration: 0.55),
-                SKAction.scale(to: 1.05, duration: 0.55),
+                SKAction.fadeAlpha(to: 1, duration: 0.5),
+                SKAction.scale(to: 1.08, duration: 0.5),
             ]),
         ])))
 
+        let hintPlate = SKShapeNode(rectOf: CGSize(width: 280, height: 56), cornerRadius: 10)
+        hintPlate.name = "hintPlate"
+        hintPlate.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.1, alpha: 0.82)
+        hintPlate.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
+        hintPlate.lineWidth = 1.5
+        titleRoot.addChild(hintPlate)
+
         let hint = SKLabelNode(fontNamed: "AvenirNext-Medium")
+        hint.name = "titleHint"
         hint.text = "Left stick · JUMP · POUNCE\nStomp MOPs for Mask Mode"
         hint.fontSize = 13
-        hint.fontColor = SKColor(white: 1, alpha: 0.92)
+        hint.fontColor = SKColor(white: 1, alpha: 0.95)
         hint.numberOfLines = 2
-        hint.preferredMaxLayoutWidth = 300
+        hint.preferredMaxLayoutWidth = 260
         hint.verticalAlignmentMode = .center
-        hint.position = CGPoint(x: 0, y: -108)
-        titleRoot.addChild(hint)
+        hintPlate.addChild(hint)
+
+        layoutTitleChrome()
+    }
+
+    /// Fit full TRASH PANDA wordmark to ~85% width in the top third; pulse from fitted baseScale.
+    private func layoutTitleChrome() {
+        guard size.width > 1, size.height > 1 else { return }
+        let topSafe = max(view?.safeAreaInsets.top ?? 54, 54)
+        let bottomSafe = max(view?.safeAreaInsets.bottom ?? 20, 20)
+        let hh = size.height * 0.5
+        guard let logo = titleRoot.childNode(withName: "titleLogo") else { return }
+        let base = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.85)
+        // Top third of the safe playfield.
+        let safeTop = hh - topSafe
+        let safeBottom = -hh + bottomSafe
+        let safeH = safeTop - safeBottom
+        let logoY = safeTop - safeH * 0.18
+        logo.position = CGPoint(x: 0, y: logoY)
+        logo.removeAction(forKey: "logoPulse")
+        logo.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.group([
+                SKAction.fadeAlpha(to: 0.88, duration: 1.0),
+                SKAction.scale(to: base * 1.04, duration: 1.0),
+            ]),
+            SKAction.group([
+                SKAction.fadeAlpha(to: 1.0, duration: 1.0),
+                SKAction.scale(to: base, duration: 1.0),
+            ]),
+        ])), withKey: "logoPulse")
+
+        if let glow = titleRoot.childNode(withName: "titleGlow") {
+            glow.position = logo.position
+            glow.setScale(max(1.0, size.width * 0.85 / 220))
+        }
+        titleRoot.childNode(withName: "titleSub")?.position = CGPoint(x: 0, y: logoY - 78)
+        titleRoot.childNode(withName: "tapToStart")?.position = CGPoint(x: 0, y: -12)
+        titleRoot.childNode(withName: "hintPlate")?.position = CGPoint(x: 0, y: -78)
+
+        // Runtime + unit-testable gate: logo frame must sit inside safe area.
+        let frame = logo.calculateAccumulatedFrame()
+        let ok = ArtCatalog.logoFrameInsideSafeArea(
+            logoFrame: frame,
+            sceneSize: size,
+            topSafe: topSafe,
+            bottomSafe: bottomSafe
+        )
+        if !ok {
+            // Nudge down/scale if anything still clips (defensive for odd sim sizes).
+            let base2 = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.78)
+            logo.position = CGPoint(x: 0, y: logoY - 24)
+            logo.removeAction(forKey: "logoPulse")
+            logo.run(SKAction.repeatForever(SKAction.sequence([
+                SKAction.scale(to: base2 * 1.03, duration: 1.0),
+                SKAction.scale(to: base2, duration: 1.0),
+            ])), withKey: "logoPulse")
+        }
     }
 
     private func setupOutcome() {
@@ -556,13 +595,13 @@ public final class HeistScene: SKScene {
         overlay.addChild(outcomeRoot)
 
         let wash = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
-        wash.fillColor = SKColor(red: 0.02, green: 0.02, blue: 0.08, alpha: 0.62)
+        wash.fillColor = SKColor(red: 0.02, green: 0.02, blue: 0.08, alpha: 0.58)
         wash.strokeColor = .clear
         wash.name = "outcomeWash"
         outcomeRoot.addChild(wash)
 
-        let card = SKShapeNode(rectOf: CGSize(width: 300, height: 360), cornerRadius: 16)
-        card.fillColor = SKColor(red: 0.08, green: 0.06, blue: 0.18, alpha: 0.94)
+        let card = SKShapeNode(rectOf: CGSize(width: 292, height: 318), cornerRadius: 14)
+        card.fillColor = SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 0.96)
         card.strokeColor = ArtCatalog.neonCyan
         card.lineWidth = 2.5
         card.glowWidth = 2
@@ -571,9 +610,9 @@ public final class HeistScene: SKScene {
 
         let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         title.name = "outcomeTitle"
-        title.fontSize = 30
+        title.fontSize = 28
         title.fontColor = ArtCatalog.neonLime
-        title.position = CGPoint(x: 0, y: 130)
+        title.position = CGPoint(x: 0, y: 118)
         card.addChild(title)
 
         let stars = SKNode()
@@ -583,41 +622,69 @@ public final class HeistScene: SKScene {
         for i in 0..<3 {
             let star = SKLabelNode(fontNamed: "AvenirNext-Heavy")
             star.text = "★"
-            star.fontSize = 34
+            star.fontSize = 30
             star.fontColor = ArtCatalog.neonOrange.withAlphaComponent(0.25)
-            star.position = CGPoint(x: CGFloat(i - 1) * 42, y: 0)
+            star.position = CGPoint(x: CGFloat(i - 1) * 40, y: 0)
             star.name = "star\(i)"
             stars.addChild(star)
         }
 
+        let shinyRow = SKNode()
+        shinyRow.name = "outcomeShinies"
+        shinyRow.position = CGPoint(x: 0, y: 36)
+        card.addChild(shinyRow)
+        let gear = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        gear.text = "⚙"
+        gear.fontSize = 22
+        gear.fontColor = ArtCatalog.neonOrange
+        gear.horizontalAlignmentMode = .right
+        gear.position = CGPoint(x: -8, y: 0)
+        gear.name = "gearIcon"
+        shinyRow.addChild(gear)
+        let shinyLabel = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        shinyLabel.name = "shinyCount"
+        shinyLabel.fontSize = 22
+        shinyLabel.fontColor = .white
+        shinyLabel.horizontalAlignmentMode = .left
+        shinyLabel.position = CGPoint(x: 4, y: 0)
+        shinyRow.addChild(shinyLabel)
+
+        let meta = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
+        meta.name = "outcomeMeta"
+        meta.fontSize = 15
+        meta.fontColor = SKColor(white: 0.92, alpha: 1)
+        meta.position = CGPoint(x: 0, y: 4)
+        card.addChild(meta)
+
+        // Keep legacy name for count-up path compatibility.
         let stats = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
         stats.name = "outcomeStats"
-        stats.fontSize = 16
-        stats.fontColor = .white
-        stats.numberOfLines = 3
-        stats.preferredMaxLayoutWidth = 260
-        stats.verticalAlignmentMode = .center
-        stats.position = CGPoint(x: 0, y: 10)
+        stats.isHidden = true
         card.addChild(stats)
 
-        let retry = makeOutcomeButton(title: "RETRY", color: ArtCatalog.neonPink, name: "retryBtn")
-        retry.position = CGPoint(x: -70, y: -120)
-        card.addChild(retry)
-        let next = makeOutcomeButton(title: "NEXT", color: ArtCatalog.neonLime, name: "nextBtn")
-        next.position = CGPoint(x: 70, y: -120)
+        let primary = makeOutcomeButton(title: "RETRY", color: ArtCatalog.neonLime, name: "retryBtn", wide: true)
+        primary.position = CGPoint(x: 0, y: -52)
+        card.addChild(primary)
+        let next = makeOutcomeButton(title: "NEXT", color: ArtCatalog.neonLime, name: "nextBtn", wide: true)
+        next.position = CGPoint(x: 0, y: -52)
+        next.isHidden = true
         card.addChild(next)
+        let home = makeOutcomeButton(title: "HOME", color: ArtCatalog.neonPink, name: "homeBtn", wide: false)
+        home.position = CGPoint(x: 0, y: -118)
+        card.addChild(home)
     }
 
-    private func makeOutcomeButton(title: String, color: SKColor, name: String) -> SKShapeNode {
-        let b = SKShapeNode(rectOf: CGSize(width: 120, height: 44), cornerRadius: 10)
-        b.fillColor = color.withAlphaComponent(0.28)
+    private func makeOutcomeButton(title: String, color: SKColor, name: String, wide: Bool = false) -> SKShapeNode {
+        let size = wide ? CGSize(width: 220, height: 48) : CGSize(width: 140, height: 40)
+        let b = SKShapeNode(rectOf: size, cornerRadius: wide ? 12 : 10)
+        b.fillColor = color.withAlphaComponent(wide ? 0.38 : 0.22)
         b.strokeColor = color
         b.lineWidth = 2
-        b.glowWidth = 1
+        b.glowWidth = wide ? 1.5 : 1
         b.name = name
-        let t = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         t.text = title
-        t.fontSize = 15
+        t.fontSize = wide ? 17 : 14
         t.fontColor = .white
         t.verticalAlignmentMode = .center
         t.name = name
@@ -673,21 +740,12 @@ public final class HeistScene: SKScene {
         tuningMenu?.position = .zero
         #endif
 
-        if let top = maskVignette.childNode(withName: "top") as? SKSpriteNode {
-            top.size = CGSize(width: size.width, height: 70)
-            top.position = CGPoint(x: 0, y: hh - 35)
+        if let wash = maskVignette.childNode(withName: "wash") as? SKSpriteNode {
+            wash.size = size
+            wash.position = .zero
         }
-        if let bottom = maskVignette.childNode(withName: "bottom") as? SKSpriteNode {
-            bottom.size = CGSize(width: size.width, height: 90)
-            bottom.position = CGPoint(x: 0, y: -hh + 45)
-        }
-        if let left = maskVignette.childNode(withName: "left") as? SKSpriteNode {
-            left.size = CGSize(width: 48, height: size.height)
-            left.position = CGPoint(x: -hw + 24, y: 0)
-        }
-        if let right = maskVignette.childNode(withName: "right") as? SKSpriteNode {
-            right.size = CGSize(width: 48, height: size.height)
-            right.position = CGPoint(x: hw - 24, y: 0)
+        if !titleRoot.isHidden {
+            layoutTitleChrome()
         }
         updateHUDVisibility()
     }
@@ -707,11 +765,11 @@ public final class HeistScene: SKScene {
     private func cg(_ v: Vec2) -> CGPoint { CGPoint(x: v.x, y: v.y) }
 
     private func beginPlay() {
-        if !smokeEnabled {
-            JuiceSound.shared.play(.sfxUITap)
-            JuiceSound.shared.startLevelMusic()
-            hapticMed.impactOccurred()
-        }
+        // Start audio here (not in didMove) so smoke video has a soundtrack without launch jetsam.
+        JuiceSound.shared.prepare()
+        JuiceSound.shared.play(.sfxUITap)
+        JuiceSound.shared.startLevelMusic()
+        if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
         titleRoot.isHidden = true
         layoutUI()
@@ -719,10 +777,9 @@ public final class HeistScene: SKScene {
     }
 
     private func doRetry() {
-        if !smokeEnabled {
-            JuiceSound.shared.play(.sfxUITap)
-            JuiceSound.shared.startLevelMusic()
-        }
+        JuiceSound.shared.prepare()
+        JuiceSound.shared.play(.sfxUITap)
+        JuiceSound.shared.startLevelMusic()
         sim.retry()
         hideOutcome()
         updateHUDVisibility()
@@ -749,16 +806,25 @@ public final class HeistScene: SKScene {
             }
             if !outcomeRoot.isHidden, let card = outcomeRoot.childNode(withName: "outcomeCard") {
                 let pCard = touch.location(in: card)
-                if let retry = card.childNode(withName: "retryBtn"), retry.contains(pCard) {
+                if let home = card.childNode(withName: "homeBtn"), home.contains(pCard) {
+                    hideOutcome()
+                    JuiceSound.shared.stopMusic()
+                    JuiceSound.shared.playTitleSting()
+                    sim = Sim(map: sim.map, tuning: tuning, seed: smokeEnabled ? 7 : 11)
+                    titleRoot.isHidden = false
+                    layoutTitleChrome()
+                    writeSmokeStatus()
+                    updateHUDVisibility()
+                    return
+                }
+                if let retry = card.childNode(withName: "retryBtn"), !retry.isHidden, retry.contains(pCard) {
                     doRetry()
                     return
                 }
                 if let next = card.childNode(withName: "nextBtn"), !next.isHidden, next.contains(pCard) {
-                    // Single-level demo: Next starts another run immediately.
                     doRetry()
                     return
                 }
-                // Fallback: tap the dimmed card area to retry after a fail.
                 if case .failed = sim.state.phase {
                     doRetry()
                 }
@@ -827,7 +893,7 @@ public final class HeistScene: SKScene {
     private func hideOutcome() {
         outcomeRoot.isHidden = true
         maskMusicOn = false
-        if !smokeEnabled { JuiceSound.shared.setMaskModeMusic(false) }
+        JuiceSound.shared.setMaskModeMusic(false)
         maskVignette.removeAllActions()
         maskVignette.alpha = 0
         maskVignette.isHidden = true
@@ -916,79 +982,72 @@ public final class HeistScene: SKScene {
         for e in events {
             switch e.kind {
             case .jump:
-                if !smokeEnabled {
-                    JuiceSound.shared.play(.sfxJump)
-                    hapticLight.impactOccurred()
-                }
+                JuiceSound.shared.play(.sfxJump)
+                if !smokeEnabled { hapticLight.impactOccurred() }
                 squash(0.85, 1.2)
             case .land:
-                if !smokeEnabled { JuiceSound.shared.play(.sfxLand) }
+                JuiceSound.shared.play(.sfxLand)
                 squash(1.25, 0.75)
                 dust(at: e.position)
             case .pounce:
-                if !smokeEnabled {
-                    JuiceSound.shared.play(.sfxPounce)
-                    hapticMed.impactOccurred()
-                }
+                JuiceSound.shared.play(.sfxPounce)
+                if !smokeEnabled { hapticMed.impactOccurred() }
                 shake(0.35)
             case .flop:
-                if !smokeEnabled { JuiceSound.shared.play(.sfxBellyFlop) }
+                JuiceSound.shared.play(.sfxBellyFlop)
                 squash(1.35, 0.6)
             case .stomp:
                 smoke.noteStomp()
                 smokeStatus.stomps += 1
-                if !smokeEnabled {
-                    JuiceSound.shared.play(.sfxMopHit)
-                    hapticHeavy.impactOccurred()
-                }
-                hitStop = smokeEnabled ? 0.015 : 0.04
-                shake(0.35)
+                JuiceSound.shared.play(.sfxMopHit)
+                if !smokeEnabled { hapticHeavy.impactOccurred() }
+                // Visible hit-stop on stomp (smoke + play) so gameplay video reads the juice.
+                hitStop = smokeEnabled ? 0.055 : 0.07
+                shake(0.45)
                 squash(1.35, 0.55)
                 dust(at: e.position)
                 pop("STOMP", at: e.position, ArtCatalog.neonPink)
             case .shiny:
-                if !smokeEnabled { JuiceSound.shared.play(.sfxCollectShiny) }
+                JuiceSound.shared.play(.sfxCollectShiny)
                 shinySparkle(at: e.position)
                 pop("✦", at: e.position, ArtCatalog.neonOrange)
             case .bank:
-                if !smokeEnabled { JuiceSound.shared.play(.sfxCollectShiny) }
+                JuiceSound.shared.play(.sfxCollectShiny)
                 pop("BANK", at: e.position, ArtCatalog.neonLime)
             case .maskOn:
                 smoke.sawMask = true
                 smokeStatus.mask = true
-                if !smokeEnabled {
-                    JuiceSound.shared.play(.sfxMaskModeOn)
-                    if !maskMusicOn {
-                        maskMusicOn = true
-                        JuiceSound.shared.setMaskModeMusic(true)
-                    }
-                    hapticHeavy.impactOccurred()
-                } else {
+                JuiceSound.shared.play(.sfxMaskModeOn)
+                if !maskMusicOn {
                     maskMusicOn = true
+                    JuiceSound.shared.setMaskModeMusic(true)
                 }
+                if !smokeEnabled { hapticHeavy.impactOccurred() }
                 flashMask()
             case .hurt:
-                if !smokeEnabled { JuiceSound.shared.play(.sfxPlayerHit) }
+                JuiceSound.shared.play(.sfxPlayerHit)
                 damageFlash()
                 shake(0.3)
             case .win:
                 smokeStatus.won = true
-                if !smokeEnabled {
-                    JuiceSound.shared.play(.sfxWin)
-                    JuiceSound.shared.setMaskModeMusic(false)
-                }
+                JuiceSound.shared.play(.sfxWin)
+                JuiceSound.shared.setMaskModeMusic(false)
                 showOutcome()
                 writeSmokeStatus()
             case .fail:
                 smokeStatus.died = true
-                if !smokeEnabled {
-                    JuiceSound.shared.play(.sfxFail)
-                    JuiceSound.shared.setMaskModeMusic(false)
+                JuiceSound.shared.play(.sfxFail)
+                JuiceSound.shared.setMaskModeMusic(false)
+                // Smoke: never overlay SPLASHED during the Mask beat capture window.
+                let maskOk = SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
+                if smokeEnabled, !maskOk {
+                    writeSmokeStatus()
+                } else {
+                    showOutcome()
+                    writeSmokeStatus()
                 }
-                showOutcome()
-                writeSmokeStatus()
             case .checkpoint:
-                if !smokeEnabled { JuiceSound.shared.play(.sfxCheckpoint) }
+                JuiceSound.shared.play(.sfxCheckpoint)
                 pop("CHECK", at: e.position, ArtCatalog.neonLime)
             case .dust:
                 dust(at: e.position)
@@ -996,9 +1055,10 @@ public final class HeistScene: SKScene {
                 shake(0.25)
             }
         }
+        smokeStatus.maskOn = sim.state.bandit.maskMode
         if !sim.state.bandit.maskMode, maskMusicOn {
             maskMusicOn = false
-            if !smokeEnabled { JuiceSound.shared.setMaskModeMusic(false) }
+            JuiceSound.shared.setMaskModeMusic(false)
         }
     }
 
@@ -1007,7 +1067,8 @@ public final class HeistScene: SKScene {
         layoutUI()
         guard let card = outcomeRoot.childNode(withName: "outcomeCard"),
               let title = card.childNode(withName: "outcomeTitle") as? SKLabelNode,
-              let stats = card.childNode(withName: "outcomeStats") as? SKLabelNode,
+              let shinyCount = card.childNode(withName: "outcomeShinies")?.childNode(withName: "shinyCount") as? SKLabelNode,
+              let meta = card.childNode(withName: "outcomeMeta") as? SKLabelNode,
               let starsNode = card.childNode(withName: "outcomeStars") else { return }
 
         let shinies = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
@@ -1016,26 +1077,26 @@ public final class HeistScene: SKScene {
         let seconds: Double
         let combo: Int
         switch sim.state.phase {
-        case .won(let s, let shinyCount, let c):
+        case .won(let s, let shinyTotal, let c):
             isWin = true
             seconds = s
             combo = c
             title.fontColor = ArtCatalog.neonLime
             title.text = "RESULTS"
-            stats.text = String(format: "%.1fs\n0 Shinies\nBest combo x%d", seconds, combo)
-            // Count-up Shinies
-            let finalShinies = shinyCount
-            stats.removeAction(forKey: "count")
-            if stats.userData == nil { stats.userData = NSMutableDictionary() }
-            stats.userData?["n"] = 0
-            stats.run(SKAction.repeat(SKAction.sequence([
-                SKAction.run { [weak stats] in
-                    guard let stats else { return }
-                    let n = min(finalShinies, ((stats.userData?["n"] as? Int) ?? 0) + 1)
-                    stats.userData?["n"] = n
-                    stats.text = String(format: "%.1fs\n%d Shinies\nBest combo x%d", seconds, n, combo)
+            shinyCount.text = "0"
+            meta.text = String(format: "⏱ %.1fs    ✦ combo x%d", seconds, combo)
+            let finalShinies = shinyTotal
+            shinyCount.removeAction(forKey: "count")
+            if shinyCount.userData == nil { shinyCount.userData = NSMutableDictionary() }
+            shinyCount.userData?["n"] = 0
+            shinyCount.run(SKAction.repeat(SKAction.sequence([
+                SKAction.run { [weak shinyCount] in
+                    guard let shinyCount else { return }
+                    let n = min(finalShinies, ((shinyCount.userData?["n"] as? Int) ?? 0) + 1)
+                    shinyCount.userData?["n"] = n
+                    shinyCount.text = "\(n)"
                 },
-                SKAction.wait(forDuration: 0.06),
+                SKAction.wait(forDuration: 0.05),
             ]), count: max(1, finalShinies)), withKey: "count")
         case .failed(let reason):
             isWin = false
@@ -1043,12 +1104,12 @@ public final class HeistScene: SKScene {
             combo = sim.state.bestCombo
             title.fontColor = ArtCatalog.neonPink
             title.text = reason == .fellInWater ? "SPLASHED" : (reason == .spiked ? "SPIKED" : "BAGGED")
-            stats.text = String(format: "%d Shinies · %.0fs\nBest combo x%d", shinies, seconds, combo)
+            shinyCount.text = "\(shinies)"
+            meta.text = String(format: "⏱ %.0fs    ✦ combo x%d", seconds, combo)
         default:
             return
         }
 
-        // Animate star fill.
         for i in 0..<3 {
             guard let star = starsNode.childNode(withName: "star\(i)") as? SKLabelNode else { continue }
             star.fontColor = ArtCatalog.neonOrange.withAlphaComponent(0.22)
@@ -1058,10 +1119,7 @@ public final class HeistScene: SKScene {
                 star.run(SKAction.sequence([
                     SKAction.wait(forDuration: 0.18 * Double(i)),
                     SKAction.group([
-                        SKAction.run { [weak self] in
-                            guard let self, !self.smokeEnabled else { return }
-                            JuiceSound.shared.play(.sfxUITap)
-                        },
+                        SKAction.run { JuiceSound.shared.play(.sfxUITap) },
                         SKAction.fadeAlpha(to: 1, duration: 0.12),
                         SKAction.scale(to: 1.2, duration: 0.12),
                     ]),
@@ -1070,9 +1128,8 @@ public final class HeistScene: SKScene {
                 ]))
             }
         }
-        if let next = card.childNode(withName: "nextBtn") {
-            next.isHidden = !isWin
-        }
+        card.childNode(withName: "retryBtn")?.isHidden = isWin
+        card.childNode(withName: "nextBtn")?.isHidden = !isWin
     }
 
     private func sync(dt: CGFloat) {
@@ -1107,8 +1164,18 @@ public final class HeistScene: SKScene {
         smokeStatus.shinies = shinyTotal
         hudCarried.text = "Shinies \(shinyTotal)"
         hudHearts.text = String(repeating: "♥", count: max(0, b.hearts))
-        hudCombo.text = b.combo > 1 ? (b.maskMode ? "MASK x\(b.combo)" : "COMBO x\(b.combo)") : ""
-        hudCombo.isHidden = b.combo <= 1
+        if b.maskMode {
+            hudCombo.text = b.combo > 1 ? "MASK ×2  COMBO x\(b.combo)" : "MASK ×2"
+            hudCombo.isHidden = false
+            hudCombo.fontColor = ArtCatalog.neonCyan
+        } else if b.combo > 1 {
+            hudCombo.text = "COMBO x\(b.combo)"
+            hudCombo.isHidden = false
+            hudCombo.fontColor = ArtCatalog.neonLime
+        } else {
+            hudCombo.text = ""
+            hudCombo.isHidden = true
+        }
         hudTime.text = String(format: "Time %.0fs", sim.state.elapsed)
 
         let lead = CGFloat(b.facing * tuning.cameraLeadTiles * tuning.tileSize)
@@ -1229,14 +1296,15 @@ public final class HeistScene: SKScene {
     }
 
     private func shake(_ amount: CGFloat) {
-        if smokeEnabled { return }
-        // Shake world only (not stage) so camera sync isn't fighting a stage offset.
-        let a = amount * 5
+        // Keep shake visible in smoke video (slightly softer to avoid fighting the camera).
+        let a = amount * (smokeEnabled ? 3.5 : 5)
+        world.removeAction(forKey: "shake")
         world.run(SKAction.sequence([
-            SKAction.moveBy(x: a, y: 0, duration: 0.03),
-            SKAction.moveBy(x: -2 * a, y: 0, duration: 0.04),
-            SKAction.moveBy(x: a, y: 0, duration: 0.03),
-        ]))
+            SKAction.moveBy(x: a, y: a * 0.35, duration: 0.03),
+            SKAction.moveBy(x: -2 * a, y: -a * 0.7, duration: 0.04),
+            SKAction.moveBy(x: a, y: a * 0.35, duration: 0.03),
+            SKAction.run { [weak self] in self?.world.position = .zero },
+        ]), withKey: "shake")
     }
 
     private func writeSmokeStatus() {
@@ -1252,6 +1320,8 @@ public final class HeistScene: SKScene {
         smokeStatus.elapsed = sim.state.elapsed
         smokeStatus.fpsSamples = fpsCount
         smokeStatus.fpsAvg = fpsCount > 0 ? fpsSum / Double(fpsCount) : 0
+        smokeStatus.maskOn = sim.state.bandit.maskMode
+        if sim.state.bandit.maskMode { smokeStatus.mask = true }
         smokeStatus.write()
     }
 

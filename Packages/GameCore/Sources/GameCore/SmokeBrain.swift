@@ -153,18 +153,15 @@ public struct SmokeBrain: Equatable, Sendable {
         }
 
         if act == .showcaseMask {
-            // Drift right for Mask Mode visibility, but stop short of the spike trap so seekDeath can walk in.
-            var moveX = 0.55
-            var jumpPressed = false
-            var jumpHeld = false
-            if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
-                moveX = 0
+            // Hold still for the Mask Mode screenshot — keep the raccoon on deck with LED glow
+            // visible. Hard-stop well before the canal so 04 never races into SPLASHED.
+            var moveX: Double = 0.12
+            if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 6) {
+                moveX = -0.35
             } else if b.onWallLeft || b.onWallRight, !b.onGround {
-                jumpPressed = tick % 30 == 0
-                jumpHeld = true
-                moveX = b.onWallRight ? -0.4 : 0.6
+                moveX = b.onWallRight ? -0.5 : 0.4
             }
-            return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld)
+            return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false)
         }
 
         if act == .finishPush {

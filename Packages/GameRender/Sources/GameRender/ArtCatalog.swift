@@ -102,22 +102,21 @@ public enum ArtCatalog {
     }
 
     public static func makeLogoNode(lite: Bool = false) -> SKNode {
-        // Prefer @1024 wordmark when present; skip 2048 master during smoke lite boot.
-        if !lite, let tex = texture(.logo) {
+        // Prefer ImageIO-downsampled @1024 wordmark — never upload the 2048 master at scale 1.
+        // Callers MUST `fitTitleLogo` before pulse actions (scale(to:) is absolute).
+        let tex: SKTexture? = {
+            if lite {
+                return downsampledTexture(relative: "ui/logo_trash_panda@1024", maxPixel: 768)
+                    ?? downsampledTexture(relative: "ui/logo_trash_panda", maxPixel: 768)
+            }
+            return downsampledTexture(relative: "ui/logo_trash_panda@1024", maxPixel: 1024)
+                ?? downsampledTexture(relative: "ui/logo_trash_panda", maxPixel: 1024)
+                ?? texture(.logo)
+        }()
+        if let tex {
             let s = SKSpriteNode(texture: tex)
-            let maxW: CGFloat = 300
-            let scale = min(1, maxW / max(s.size.width, 1))
-            s.setScale(scale)
             s.name = "logo"
-            return s
-        }
-        if let tex = downsampledTexture(relative: "ui/logo_trash_panda@1024", maxPixel: 1024)
-            ?? downsampledTexture(relative: "ui/logo_trash_panda", maxPixel: 1024) {
-            let s = SKSpriteNode(texture: tex)
-            let maxW: CGFloat = 300
-            let scale = min(1, maxW / max(s.size.width, 1))
-            s.setScale(scale)
-            s.name = "logo"
+            s.setScale(1)
             return s
         }
         let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
@@ -126,6 +125,48 @@ public enum ArtCatalog {
         t.fontColor = neonCyan
         t.name = "logo"
         return t
+    }
+
+    /// Scale the title wordmark to `fraction` of scene width (default 85%). Stores `baseScale` for pulse actions.
+    @discardableResult
+    public static func fitTitleLogo(_ node: SKNode, sceneWidth: CGFloat, fraction: CGFloat = 0.85) -> CGFloat {
+        let target = max(120, sceneWidth * fraction)
+        if let sprite = node as? SKSpriteNode {
+            sprite.setScale(1)
+            let scale = target / max(sprite.size.width, 1)
+            sprite.setScale(scale)
+            if sprite.userData == nil { sprite.userData = NSMutableDictionary() }
+            sprite.userData?["baseScale"] = scale
+            return scale
+        }
+        if let label = node as? SKLabelNode {
+            label.setScale(1)
+            let width = max(label.frame.width, 1)
+            let scale = target / width
+            label.setScale(scale)
+            if label.userData == nil { label.userData = NSMutableDictionary() }
+            label.userData?["baseScale"] = scale
+            return scale
+        }
+        return 1
+    }
+
+    /// True when `frame` (scene space, anchor center) sits fully inside the safe playfield.
+    public static func logoFrameInsideSafeArea(
+        logoFrame: CGRect,
+        sceneSize: CGSize,
+        topSafe: CGFloat,
+        bottomSafe: CGFloat
+    ) -> Bool {
+        let hw = sceneSize.width * 0.5
+        let hh = sceneSize.height * 0.5
+        let safe = CGRect(
+            x: -hw + 4,
+            y: -hh + bottomSafe + 4,
+            width: sceneSize.width - 8,
+            height: sceneSize.height - topSafe - bottomSafe - 8
+        )
+        return safe.contains(logoFrame)
     }
 
     /// Backgrounds: ImageIO thumbnail decode to ≤ maxPixel (never upload 2560 masters).

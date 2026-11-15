@@ -11,7 +11,10 @@ public struct SmokeStatus: Equatable, Sendable {
     public var fpsSamples: Int
     public var stomps: Int
     public var shinies: Int
+    /// Sticky: Mask Mode has been entered at least once (milestone).
     public var mask: Bool
+    /// Live: bandit is currently in Mask Mode (for 04 capture handshake).
+    public var maskOn: Bool
     public var died: Bool
     public var won: Bool
     public var elapsed: Double
@@ -24,6 +27,7 @@ public struct SmokeStatus: Equatable, Sendable {
         stomps: Int = 0,
         shinies: Int = 0,
         mask: Bool = false,
+        maskOn: Bool = false,
         died: Bool = false,
         won: Bool = false,
         elapsed: Double = 0
@@ -35,6 +39,7 @@ public struct SmokeStatus: Equatable, Sendable {
         self.stomps = stomps
         self.shinies = shinies
         self.mask = mask
+        self.maskOn = maskOn
         self.died = died
         self.won = won
         self.elapsed = elapsed
@@ -42,8 +47,9 @@ public struct SmokeStatus: Equatable, Sendable {
 
     public var line: String {
         String(
-            format: "phase=%@ boot=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d died=%d won=%d elapsed=%.1f",
-            phase, boot, fpsAvg, fpsSamples, stomps, shinies, mask ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed
+            format: "phase=%@ boot=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f",
+            phase, boot, fpsAvg, fpsSamples, stomps, shinies,
+            mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed
         )
     }
 
