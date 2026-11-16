@@ -867,9 +867,31 @@ final class GameCoreTests: XCTestCase {
     func testNeonDocksReachable() throws {
         let map = try NeonDocksLevel.load()
         let report = ReachabilityValidator.validate(map: map)
-        XCTAssertTrue(report.ok, "unreachable: \(report.unreachable.prefix(20))")
+        XCTAssertTrue(
+            report.ok,
+            "unreachable=\(report.unreachable.prefix(20)) softlocks=\(report.softlocks.prefix(20))"
+        )
+        XCTAssertTrue(report.softlocks.isEmpty, "softlocks: \(report.softlocks.prefix(20))")
         XCTAssertNotNil(map.findFirst(.crewCage))
         XCTAssertFalse(map.findAll(.oneWay).isEmpty)
+    }
+
+    func testEnclosedOneWayReportsNoDescent() throws {
+        // Cage: one-way trapped between latch walls — no walk-off end.
+        let map = try TileMap.parse("""
+        ##########
+        #........#
+        #..L--L..#
+        #..L..L..#
+        #.@.....E#
+        #========#
+        ##########
+        """)
+        let report = ReachabilityValidator.validate(map: map)
+        XCTAssertTrue(
+            report.softlocks.contains { $0.hasPrefix("no-descent@") },
+            "expected no-descent, got softlocks=\(report.softlocks) unreachable=\(report.unreachable)"
+        )
     }
 
     func testOneWayJumpThroughAndDrop() throws {
@@ -899,7 +921,11 @@ final class GameCoreTests: XCTestCase {
         for id in DistrictID.allCases {
             let map = try DistrictLevels.load(id)
             let report = ReachabilityValidator.validate(map: map)
-            XCTAssertTrue(report.ok, "\(id.rawValue) unreachable: \(report.unreachable.prefix(24))")
+            XCTAssertTrue(
+                report.ok,
+                "\(id.rawValue) unreachable=\(report.unreachable.prefix(24)) softlocks=\(report.softlocks.prefix(24))"
+            )
+            XCTAssertTrue(report.softlocks.isEmpty, "\(id.rawValue) softlocks: \(report.softlocks.prefix(24))")
             XCTAssertNotNil(map.findFirst(.crewCage), "\(id.rawValue) missing crew cage")
             XCTAssertFalse(map.findAll(.oneWay).isEmpty, "\(id.rawValue) missing one-ways")
         }

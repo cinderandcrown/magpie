@@ -4,6 +4,6 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT/Packages/GameCore"
-echo "Reachability validator (JumpArc graph search)…"
-swift test --filter 'testAllDistrictsReachable|testNeonDocksReachable|testJumpArcSupportsExploration'
-echo "OK: all district platforms / shinies / crew / exits reachable within jump arc."
+echo "Reachability validator (JumpArc graph search + exit soft-lock / one-way descent)…"
+swift test --filter 'testAllDistrictsReachable|testNeonDocksReachable|testJumpArcSupportsExploration|testEnclosedOneWayReportsNoDescent'
+echo "OK: platforms reachable from spawn, every area can reach EXIT, one-ways have walk-off."

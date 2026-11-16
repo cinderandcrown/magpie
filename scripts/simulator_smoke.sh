@@ -17,7 +17,23 @@ WARN_FRAME_MS="${SMOKE_WARN_FRAME_MS:-500}"
 MAX_FRAME_MS="${SMOKE_MAX_FRAME_MS:-1000}"
 MIN_VIDEO_SECS="${SMOKE_MIN_VIDEO_SECS:-60}"
 
+# Harness force counters — forced paths unblock CI but never count as feature proof.
+FORCED_MASK=0
+FORCED_FAIL=0
+
 mkdir -p "$OUT_DIR"
+
+arm_force() {
+  local kind="$1"
+  local flag="$2"
+  case "$kind" in
+    mask) FORCED_MASK=$((FORCED_MASK + 1)) ;;
+    fail) FORCED_FAIL=$((FORCED_FAIL + 1)) ;;
+    *) echo "WARN: unknown force kind=$kind" >&2 ;;
+  esac
+  echo "WARN: smoke_force_${kind} armed (count mask=$FORCED_MASK fail=$FORCED_FAIL) — NOT proof" >&2
+  write_flag "$flag"
+}
 
 shot() {
   local out="$1"
@@ -279,8 +295,8 @@ while true; do
   fi
   now="$(date +%s)"
   if (( now - MASK_WAIT_START >= 50 )) && [[ "$MASK_FORCED" -eq 0 ]]; then
-    echo "WARN: mask soft-timeout — arming smoke_force_mask.txt (status=$status)" >&2
-    write_flag "smoke_force_mask.txt"
+    echo "WARN: mask soft-timeout (status=$status)" >&2
+    arm_force mask "smoke_force_mask.txt"
     MASK_FORCED=1
   fi
   if (( now - MASK_WAIT_START >= 90 )); then
@@ -335,8 +351,8 @@ while true; do
   fi
   now="$(date +%s)"
   if (( now - MASK2_WAIT_START >= 35 )) && [[ "$MASK2_FORCED" -eq 0 ]]; then
-    echo "WARN: mask-2 soft-timeout — arming smoke_force_mask.txt (status=$status)" >&2
-    write_flag "smoke_force_mask.txt"
+    echo "WARN: mask-2 soft-timeout (status=$status)" >&2
+    arm_force mask "smoke_force_mask.txt"
     MASK2_FORCED=1
   fi
   if (( now - MASK2_WAIT_START >= 55 )); then
@@ -385,8 +401,8 @@ while true; do
   fi
   now="$(date +%s)"
   if (( now - DEATH_WAIT_START >= 35 )) && [[ "$DEATH_FORCED" -eq 0 ]]; then
-    echo "WARN: death soft-timeout — arming smoke_force_fail.txt (status=$status)" >&2
-    write_flag "smoke_force_fail.txt"
+    echo "WARN: death soft-timeout (status=$status)" >&2
+    arm_force fail "smoke_force_fail.txt"
     DEATH_FORCED=1
   fi
   if (( now - DEATH_WAIT_START >= 90 )); then
@@ -1037,4 +1053,10 @@ if bright < 0.05:
 print("OK 04 differs from 05")
 PY
 
-echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED won=$WON medals=$MEDALS map=$MAP daily=$DAILY combo=$COMBO)"
+echo "SMOKE_FORCED forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL"
+if (( FORCED_MASK + FORCED_FAIL > 0 )); then
+  echo "WARN: smoke used $((FORCED_MASK + FORCED_FAIL)) forced harness fallback(s) (forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL) — NOT proof the feature works" >&2
+fi
+echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED won=$WON medals=$MEDALS map=$MAP daily=$DAILY combo=$COMBO forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL)"
+# Persist force counts for CI artifact / report.
+printf 'forced_mask=%s\nforced_fail=%s\n' "$FORCED_MASK" "$FORCED_FAIL" > "$OUT_DIR/smoke_forced.txt"
