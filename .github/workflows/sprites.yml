@@ -1,5 +1,7 @@
 # Optional workflow_dispatch (must live on default branch to appear in Actions UI).
-# Prefer the one-shot CI job gated by Assets/SPRITERRIFIC_REQUEST on the mission branch.
+# Prefer CI flags on the mission branch:
+#   Assets/SPRITERRIFIC_REQUEST  → anchor only (Fire Fox approves)
+#   Assets/SPRITERRIFIC_ANIMATE  → idle + run/jump/attack after approval
 # Secret: SPRITERRIFIC_API_KEY (never echoed).
 name: Spriterrific Raccoon Sprites
 
@@ -10,6 +12,11 @@ on:
         description: "If true, only print plan / balance (no spend)"
         type: boolean
         default: true
+      phase:
+        description: "anchor (stop for Fire Fox) or animate (after approval)"
+        type: choice
+        options: [anchor, animate]
+        default: anchor
       asset_ref:
         description: "Git ref that holds the raccoon reference image + scripts"
         type: string
@@ -40,10 +47,12 @@ jobs:
         env:
           SPRITERRIFIC_API_KEY: ${{ secrets.SPRITERRIFIC_API_KEY }}
           DRY_RUN: ${{ inputs.dry_run }}
+          PHASE: ${{ inputs.phase }}
         run: |
           set -euo pipefail
           test -n "${SPRITERRIFIC_API_KEY:-}" || { echo "SPRITERRIFIC_API_KEY secret is missing"; exit 1; }
           python3 scripts/spriterrific_raccoon.py \
+            --phase="$PHASE" \
             --ref Assets/Generated/sprites/raccoon/idle.png \
             --out spriterrific-runs \
             --dry-run="$DRY_RUN"
@@ -56,21 +65,29 @@ jobs:
           path: spriterrific-runs/
           if-no-files-found: warn
 
-      - name: Import + commit
+      - name: Commit outputs
         if: ${{ inputs.dry_run == false }}
         run: |
           set -euo pipefail
-          python3 scripts/import_spriterrific_raccoon.py \
-            --runs spriterrific-runs \
-            --dest Assets/Generated/sprites/raccoon
-          rm -f Assets/SPRITERRIFIC_REQUEST
+          if [ "${{ inputs.phase }}" = "animate" ]; then
+            python3 scripts/import_spriterrific_raccoon.py \
+              --runs spriterrific-runs \
+              --dest Assets/Generated/sprites/raccoon
+            rm -f Assets/SPRITERRIFIC_ANIMATE Assets/SPRITERRIFIC_ANCHOR_PENDING.json
+          else
+            rm -f Assets/SPRITERRIFIC_REQUEST
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Assets/Generated/sprites/raccoon Assets/LICENSES.md ASSETS_LICENSES.md spriterrific-runs || true
-          git add -u Assets/SPRITERRIFIC_REQUEST || true
+          git add spriterrific-runs Assets/SPRITERRIFIC_ANCHOR_PENDING.json Assets/Generated/sprites/raccoon Assets/LICENSES.md ASSETS_LICENSES.md || true
+          git add -u Assets/SPRITERRIFIC_REQUEST Assets/SPRITERRIFIC_ANIMATE Assets/SPRITERRIFIC_ANCHOR_PENDING.json || true
           if git diff --cached --quiet; then
             echo "No asset changes to commit"
           else
-            git commit -m "Import Spriterrific raccoon sheets (idle/run/jump/attack)"
+            if [ "${{ inputs.phase }}" = "anchor" ]; then
+              git commit -m "Spriterrific anchor pending Fire Fox approval"
+            else
+              git commit -m "Import Spriterrific raccoon sheets (idle/run/jump/attack)"
+            fi
             git push origin HEAD:${{ inputs.asset_ref }}
           fi
