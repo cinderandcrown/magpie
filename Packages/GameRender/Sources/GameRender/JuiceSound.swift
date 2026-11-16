@@ -76,6 +76,10 @@ public final class JuiceSound: @unchecked Sendable {
         appendSmokeLineLocked("anchor 0.000")
     }
 
+    private var smokeAutoplay: Bool {
+        ProcessInfo.processInfo.arguments.contains("-SmokeAutoplay")
+    }
+
     public func prepare() {
         guard !sessionReady else {
             _ = SFXManager.shared.preload()
@@ -103,6 +107,11 @@ public final class JuiceSound: @unchecked Sendable {
     /// Title / logo ident — juice `startup_jingle`, else legacy title sting.
     public func playTitleSting() {
         prepare()
+        // Smoke never needs the 5.5s jingle in-process (mux uses the events log / music bed).
+        if smokeAutoplay {
+            logSmoke("sfx startup_jingle")
+            return
+        }
         if SFXManager.shared.loadedCount > 0 {
             logSmoke("sfx startup_jingle")
             SFXManager.shared.playStartupJingle()
@@ -207,6 +216,12 @@ public final class JuiceSound: @unchecked Sendable {
 
     public func setMaskModeMusic(_ on: Bool) {
         prepare()
+        // Smoke: skip the extra mask music decode — keeps SpriteKit city textures resident
+        // for the Mask Mode screenshot (CI blowout gate).
+        if smokeAutoplay {
+            if on { logSmoke("music mask_mode_layer") } else if maskLayer != nil { logSmoke("music_mask_off") }
+            return
+        }
         if on {
             guard maskLayer == nil,
                   let url = AssetManifest.audioURL(.musicMaskLayer) else { return }

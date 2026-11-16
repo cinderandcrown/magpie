@@ -4,7 +4,8 @@
 import AVFoundation
 import Foundation
 
-/// Preloads every clip from `Assets/Audio/sfx/` (shipped as `Audio/sfx` in the app bundle).
+/// Resolves and warms every clip from `Assets/Audio/sfx/` (shipped as `Audio/sfx`).
+/// Keeps URLs only — no multi‑MB PCM buffers — so SpriteKit textures stay resident in smoke.
 /// SFX volume is independent of music; mute is owned by `JuiceSound`.
 public final class SFXManager: @unchecked Sendable {
     public static let shared = SFXManager()
@@ -17,8 +18,6 @@ public final class SFXManager: @unchecked Sendable {
     }
 
     private var metas: [String: ClipMeta] = [:]
-    /// Decoded PCM kept once per clip (no second AVAudioPlayer template copy).
-    private var clipData: [String: Data] = [:]
     private var loops: [String: AVAudioPlayer] = [:]
     private var oneshots: [AVAudioPlayer] = []
     private var preloaded = false
@@ -69,12 +68,13 @@ public final class SFXManager: @unchecked Sendable {
 
     // MARK: - Preload
 
-    /// Load manifest + buffer every WAV once so gameplay play() does not hit the bundle repeatedly.
+    /// Resolve every manifest entry and touch each file so the first play is warm.
+    /// Intentionally does not retain decoded PCM (keeps GPU textures alive under smoke).
     @discardableResult
     public func preload(bundle: Bundle = .main) -> Int {
         lock.lock()
         defer { lock.unlock() }
-        if preloaded { return clipData.count }
+        if preloaded { return metas.count }
         guard let root = resolveRoot(bundle: bundle) else { return 0 }
         let manURL = root.appendingPathComponent("sfx_manifest.json")
         guard let data = try? Data(contentsOf: manURL),
@@ -86,17 +86,24 @@ public final class SFXManager: @unchecked Sendable {
                   let file = entry["file"] as? String else { continue }
             let loop = (entry["loop"] as? Bool) ?? false
             let url = root.appendingPathComponent(file)
-            guard let bytes = try? Data(contentsOf: url), !bytes.isEmpty else { continue }
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue else {
+                continue
+            }
+            // Touch file page cache without retaining bytes.
+            if let h = try? FileHandle(forReadingFrom: url) {
+                _ = try? h.read(upToCount: 64)
+                try? h.close()
+            }
             metas[name] = ClipMeta(name: name, file: file, loop: loop, url: url)
-            clipData[name] = bytes
         }
         preloaded = true
-        return clipData.count
+        return metas.count
     }
 
     public var loadedCount: Int {
         lock.lock(); defer { lock.unlock() }
-        return clipData.count
+        return metas.count
     }
 
     public func isLoop(_ name: String) -> Bool {
@@ -111,11 +118,11 @@ public final class SFXManager: @unchecked Sendable {
         lock.lock()
         let mutedNow = muted
         let vol = volume
-        let data = clipData[name]
+        let url = metas[name]?.url
         lock.unlock()
-        guard !mutedNow, let data else { return }
+        guard !mutedNow, let url else { return }
         do {
-            let player = try AVAudioPlayer(data: data)
+            let player = try AVAudioPlayer(contentsOf: url)
             player.enableRate = true
             player.rate = max(0.5, min(2.0, rate))
             player.volume = max(0, min(1, vol * gain))
@@ -124,8 +131,8 @@ public final class SFXManager: @unchecked Sendable {
             lock.lock()
             oneshots.append(player)
             oneshots.removeAll { !$0.isPlaying && $0 !== player }
-            if oneshots.count > 6 {
-                let drop = oneshots.count - 6
+            if oneshots.count > 5 {
+                let drop = oneshots.count - 5
                 for p in oneshots.prefix(drop) { p.stop() }
                 oneshots.removeFirst(drop)
             }
@@ -144,9 +151,9 @@ public final class SFXManager: @unchecked Sendable {
             existing.volume = volume * gain
             return
         }
-        guard let data = clipData[name] else { return }
+        guard let url = metas[name]?.url else { return }
         do {
-            let player = try AVAudioPlayer(data: data)
+            let player = try AVAudioPlayer(contentsOf: url)
             player.numberOfLoops = -1
             player.volume = volume * gain
             player.prepareToPlay()
@@ -194,7 +201,6 @@ public final class SFXManager: @unchecked Sendable {
 
     // MARK: - Gameplay helpers
 
-    /// Coin/loot pickup with escalating pitch + combo_up tier stingers.
     public func playCollect(combo: Int, loot: Bool) {
         let base = loot ? "loot_pickup" : "coin_pickup"
         let steps = max(0, combo - 1)
@@ -216,7 +222,10 @@ public final class SFXManager: @unchecked Sendable {
     public func playLand() { play("land") }
     public func playStomp() {
         play("stomp_crunch")
-        play("mop_bot_break", gain: 0.9)
+        // Second layer is nice in-game; skip under smoke to cut decode spikes mid-Mask hunt.
+        if !ProcessInfo.processInfo.arguments.contains("-SmokeAutoplay") {
+            play("mop_bot_break", gain: 0.9)
+        }
     }
     public func playPounce() { play("pounce_whoosh") }
     public func playHurt() { play("raccoon_hurt") }

@@ -238,7 +238,8 @@ public final class HeistScene: SKScene {
     private func buildParallax() {
         let h = max(size.height / Self.worldZoom * 1.15, 620)
         // ImageIO-downsampled masters (≤1280px) — real neon city, safe GPU footprint.
-        let maxPx: CGFloat = smokeEnabled ? 1024 : 1280
+        // Smoke uses smaller plates so city textures stay resident beside juice SFX.
+        let maxPx: CGFloat = smokeEnabled ? 768 : 1280
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
 
         func tileLayer(_ node: SKSpriteNode, into parent: SKNode, y: CGFloat, z: CGFloat, brighten: Bool) {
@@ -249,9 +250,11 @@ public final class HeistScene: SKScene {
                 let plate = node.copy() as? SKSpriteNode ?? SKSpriteNode(texture: node.texture, size: node.size)
                 plate.position = CGPoint(x: CGFloat(i) * width * 0.92, y: y)
                 plate.zPosition = z
+                // Pin texture residency; never rely on a bright white tint as a purge fallback.
+                plate.texture?.preload()
                 if brighten {
-                    plate.color = SKColor(red: 1.2, green: 1.08, blue: 1.25, alpha: 1)
-                    plate.colorBlendFactor = 0.18
+                    plate.color = SKColor(red: 1.08, green: 1.02, blue: 1.1, alpha: 1)
+                    plate.colorBlendFactor = smokeEnabled ? 0.08 : 0.16
                 }
                 parent.addChild(plate)
             }
@@ -1964,24 +1967,12 @@ public final class HeistScene: SKScene {
     }
 
     private func applyMaskParallaxGrade(active: Bool, pulse: CGFloat) {
-        // Restore plate brighten only — never assign neonCyan to city plates (texture purge
-        // + cyan color reads as a solid wash and fails CI).
-        for layer in [parallaxFar, parallaxMid, parallaxNear] {
-            layer.enumerateChildNodes(withName: "//*") { node, _ in
-                guard let sprite = node as? SKSpriteNode, sprite.name != "gridHorizon" else { return }
-                if active {
-                    sprite.color = SKColor(white: 1.08, alpha: 1)
-                    sprite.colorBlendFactor = 0.1 * pulse
-                } else {
-                    sprite.color = SKColor(white: 1.12, alpha: 1)
-                    sprite.colorBlendFactor = 0.12
-                }
-            }
-        }
+        // Do not recolor city plates. Changing color/blendFactor + texture memory pressure
+        // turns mid/near plates into solid cyan or white washes (CI cyanWash/blowout gates).
+        // Mask grade is character glow + edge vignette only; grid alpha is a light cue.
+        _ = pulse
         if let grid = parallaxFar.childNode(withName: "//gridHorizon") as? SKSpriteNode {
             grid.alpha = active ? 0.55 : 0.42
-            grid.color = active ? ArtCatalog.neonPink : .white
-            grid.colorBlendFactor = active ? 0.1 : 0
         }
     }
 
