@@ -317,8 +317,7 @@ final class GameCoreTests: XCTestCase {
         XCTAssertNotEqual(sim.state.phase, .title)
     }
 
-    /// Smoke brain on real Neon Docks + ship tuning must hit stomp → Mask → death (CI moments).
-    /// Full exit clear is covered by the device smoke harness (longer wall-clock + route).
+    /// Smoke brain on real Neon Docks + ship tuning must hit stomp → Mask → death → EXIT.
     func testSmokeBrainHitsStompMaskAndDeath() throws {
         let map = try NeonDocksLevel.load()
         let tuning = Tuning.default
@@ -334,6 +333,7 @@ final class GameCoreTests: XCTestCase {
         var sawMask = false
         var sawDeath = false
         var sawRetry = false
+        var sawWin = false
         for _ in 0..<Int(180 * tuning.simHz) {
             let cue = brain.next(sim: sim)
             if cue.start { sim.startRun() }
@@ -348,17 +348,22 @@ final class GameCoreTests: XCTestCase {
                     case .stomp: sawStomp = true; brain.noteStomp()
                     case .maskOn: sawMask = true
                     case .fail: sawDeath = true
+                    case .win: sawWin = true
                     default: break
                     }
                 }
             } else if case .failed = sim.state.phase {
                 sawDeath = true
+            } else if case .won = sim.state.phase {
+                sawWin = true
             }
+            if sawWin { break }
         }
         XCTAssertTrue(sawStomp, "expected at least one MOP stomp")
         XCTAssertTrue(sawMask, "expected Mask Mode at ship combo threshold")
         XCTAssertTrue(sawDeath, "expected a death for results screenshot")
         XCTAssertTrue(sawRetry || brain.diedOnce, "expected retry after death")
+        XCTAssertTrue(sawWin, "expected EXIT clear after retry finishPush")
     }
 
     func testSmokeDemoLevelLoads() throws {

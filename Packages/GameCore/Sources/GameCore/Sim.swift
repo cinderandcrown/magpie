@@ -70,8 +70,8 @@ public struct Sim: Equatable, Sendable {
         var mops: [MopEnemy] = []
         for (i, c) in map.findAll(.mopSpawn).enumerated() {
             let p = map.worldStandOnDeckBelow(ofX: c.0, markerY: c.1, tileSize: tile)
-            // Stagger phase + tighter patrol so opening packs stay chain-stompable.
-            let span = tile * (i < 6 ? 1.2 : 2.2)
+            // Opening pack: tiny patrol so hop-stomps chain into Mask without side-bags.
+            let span = tile * (i < 6 ? 0.35 : 2.2)
             mops.append(MopEnemy(
                 id: i, position: p, home: p, patrolSpan: span, phase: Double(i) * 0.85,
                 alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1
@@ -217,20 +217,23 @@ public struct Sim: Equatable, Sendable {
             g = tuning.fallGravity * scale
         }
 
-        // Pounce (forward boost) / Belly Flop (fast fall) while airborne
-        if input.pouncePressed && !bandit.onGround {
-            if bandit.velocity.y >= 0 || !bandit.flopping {
-                bandit.pouncing = true
-                bandit.velocity.x += bandit.facing * tuning.pounceBoostX * tuning.tileSize / 2
-                bandit.velocity.y += tuning.pounceBoostY * tuning.tileSize / 3
-                state.events.append(SimEvent(kind: .pounce, position: bandit.position))
-                state.events.append(SimEvent(kind: .shake, position: bandit.position))
-            }
+        // Pounce (forward boost) / Belly Flop (fast fall) while airborne.
+        // Only arm once per aerial — re-pressing must not keep boosting or we soft-float.
+        if input.pouncePressed && !bandit.onGround && !bandit.pouncing && !bandit.flopping {
+            bandit.pouncing = true
+            bandit.velocity.x += bandit.facing * tuning.pounceBoostX * tuning.tileSize / 2
+            bandit.velocity.y += tuning.pounceBoostY * tuning.tileSize / 3
+            state.events.append(SimEvent(kind: .pounce, position: bandit.position))
+            state.events.append(SimEvent(kind: .shake, position: bandit.position))
             if bandit.velocity.y < 2 {
                 bandit.flopping = true
                 bandit.velocity.y = -tuning.bellyFlopFallBoost * tuning.tileSize / 2.5
                 state.events.append(SimEvent(kind: .flop, position: bandit.position))
             }
+        } else if input.pouncePressed && !bandit.onGround && bandit.pouncing && !bandit.flopping && bandit.velocity.y < 2 {
+            bandit.flopping = true
+            bandit.velocity.y = -tuning.bellyFlopFallBoost * tuning.tileSize / 2.5
+            state.events.append(SimEvent(kind: .flop, position: bandit.position))
         }
 
         // Wall slide
@@ -449,6 +452,8 @@ public struct Sim: Equatable, Sendable {
                 state.mops[i].animHold = 0.8
                 bandit.velocity.y = tuning.stompBounceVelocity * tuning.tileSize / 2.2
                 bandit.flopping = false
+                // I-frames through the bounce so chains don't side-bag the next MOP.
+                bandit.invuln = max(bandit.invuln, 0.55)
                 bandit.combo = min(tuning.comboCap, bandit.combo + 1)
                 bandit.comboTimer = tuning.comboGroundGrace
                 if bandit.combo >= tuning.maskModeAtCombo && !bandit.maskMode {
