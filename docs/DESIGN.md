@@ -16,7 +16,7 @@ What he returns to / loves — **steal the feeling, never the IP**. No copied na
 
 | Reference | What to take | What never to take |
 | --- | --- | --- |
-| **Clash of Clans** | Return loop: a home you upgrade with stolen loot; timers that finish while you’re away; a reason to check in daily; something to collect every visit. Free-friendly — no nag popups, no pay-to-win. | Village layout, building names, UI cards, troop fantasy, or Supercell branding. |
+| **Clash of Clans** | Return loop: a home you upgrade with stolen loot; timers that finish while you’re away; a reason to check in daily; something to collect every visit. Free-friendly — no nag popups; mild spend-to-speed OK (see Monetization). | Village layout, building names, UI cards, troop fantasy, or Supercell branding. |
 | **Star Trek Fleet Command** | Same return-loop pattern: base / roster progress that advances offline; daily goals; collectible progress each session. | Star Trek IP, ship/officer names, starbase UI, or STFC mode labels. |
 | **Call of Duty** | Badass *feel*: heavy punchy hits (hit-stop, screen shake, crisp SFX); a satisfying level-up / rank-up beat; cosmetics and finishers that feel earned in the pass. | Gun names, operator kits, HUD layout, killstreak labels, or CoD branding. |
 
@@ -45,7 +45,7 @@ Derived backlog (below) is gated until the **core slice passes review**. Do not 
 - **Daily login streak** with escalating cosmetics; one free “streak saver” per week if a day is missed.
 - **Weekly Bounties:** 3 challenges (e.g. stomp 50 MOPs in Mask Mode).
 - **Local push** only if opted in, ≤1/day (daily heist ready / streak at risk).
-- **Season pass** free + premium cosmetic tracks; gems earnable in play. No purchase popups at launch, mid-run, or after a loss.
+- **Season pass** free + premium tracks; gems earnable in play. Offers follow Monetization (no nag popups at launch, mid-run, or after a loss).
 
 ### Game Center
 
@@ -82,9 +82,29 @@ Smoke evidence for this increment: combos, medals on the results card, district 
 | Neon Docks / Arcade Row / Rooftops / Sewer Grid | Districts |
 | Bagged / Splashed / Spiked | Fail states |
 
+## Monetization (Nicholas)
+
+**Tone:** mild pay-to-win is OK — “just not crazy.” Paying may **speed progress** and give a **modest edge**, never lock the game behind a wallet.
+
+**Allowed (examples):**
+
+- Hideout / upgrade **timer skips**
+- Temporary **loot boosters** and similar convenience
+- Cosmetic / finisher purchases in the pass
+- Modest progress edge vs a free peer on the same skill
+
+**Hard limits:**
+
+- Everything paid must also be **earnable for free by playing** (no paid-only power).
+- **No paywall levels** or gated districts behind IAP.
+- **No crazy stat gap** — a skilled free player must still be able to win / clear content.
+- **No nagging:** no purchase popups at launch, mid-run, or after a loss; rewarded ads stay opt-in; Daily score ceiling stays purchase-neutral.
+
+Prices and catalog still need Nicholas approval before shipping (see open questions).
+
 ## Open questions
 
-1. Season pass pricing / gem economy numbers.  
+1. Season pass pricing / gem economy numbers (and how mild the paid edge is).  
 2. Which crew variants ship in district 1.  
 3. ASC listing name sync with **The Neon City Bandit** (bundle ID stays).
 
@@ -114,7 +134,7 @@ Smoke evidence for this increment: combos, medals on the results card, district 
 - Upgrades that **finish while you’re away** (offline progress timers).
 - **Daily heist goals** tied to the Hideout / Den visit.
 - **Something to collect every visit** (small, free, non-nagging).
-- **Free-friendly:** no nag purchase popups; no pay-to-win power.
+- **Monetization:** timer skips / loot boosters OK under Monetization (mild edge, all earnable free, no nag).
 
 ### Badass feel pass (from CoD feel) — Nicholas
 
@@ -122,7 +142,7 @@ Smoke evidence for this increment: combos, medals on the results card, district 
 
 - Heavier, punchier hits: tunable hit-stop, screen shake, crisp original SFX.
 - A satisfying **level-up / rank-up** moment (celebration juice, not a paywall).
-- **Badass cosmetics and finishers** in the (free + premium cosmetic) pass — earned in play, never P2W.
+- **Badass cosmetics and finishers** in the (free + premium) pass — earnable in play; paid track may speed cosmetics only within Monetization limits (no crazy power gap).
 
 ## Unchanged engineering pillars
 
