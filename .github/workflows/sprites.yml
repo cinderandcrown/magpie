@@ -1,0 +1,27 @@
+# Spriterrific credit spend is DISABLED in CI / Actions.
+# Fire Fox runs anchor + animate locally and hands sheets to the agent.
+# This workflow is retained only as a dry documentation stub so nobody
+# re-enables auto-spend by accident. It always no-ops.
+name: Spriterrific Raccoon Sprites (disabled)
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "Spend is disabled — Fire Fox runs locally"
+        type: string
+        default: "noop"
+
+permissions:
+  contents: read
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Spend disabled
+        run: |
+          echo "Spriterrific CI spend is disabled."
+          echo "Anchor job (Fire Fox): kh73s9m80tz14zdr7n3gp16d358jakpv"
+          echo "See Assets/SPRITERRIFIC_ANCHOR.md"
+          exit 0
