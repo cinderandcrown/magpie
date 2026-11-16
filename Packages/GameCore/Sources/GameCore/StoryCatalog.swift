@@ -28,6 +28,8 @@ public struct StoryCatalog: Equatable, Sendable, Codable {
     }
 
     public var premise: String
+    /// Short punchy line for title / intro — e.g. vigilante-of-trash tagline.
+    public var tagline: String
     public var introPanels: [IntroPanel]
     public var districts: [String: DistrictBeat]
     public var crew: [CrewMember]
@@ -36,6 +38,7 @@ public struct StoryCatalog: Equatable, Sendable, Codable {
 
     public static let empty = StoryCatalog(
         premise: "",
+        tagline: "",
         introPanels: [],
         districts: [:],
         crew: [],

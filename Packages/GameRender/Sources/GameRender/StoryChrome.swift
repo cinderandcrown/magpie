@@ -85,6 +85,20 @@ public enum StoryChrome {
         caption.name = "introCaption"
         frame.addChild(caption)
 
+        if panelIndex == 0, !story.tagline.isEmpty {
+            let tag = SKLabelNode(fontNamed: "AvenirNext-Bold")
+            tag.text = story.tagline
+            tag.fontSize = 12
+            tag.fontColor = ArtCatalog.neonOrange
+            tag.preferredMaxLayoutWidth = min(300, size.width * 0.78)
+            tag.numberOfLines = 2
+            tag.verticalAlignmentMode = .center
+            tag.horizontalAlignmentMode = .center
+            tag.position = CGPoint(x: 0, y: size.height * 0.38)
+            tag.name = "introTagline"
+            root.addChild(tag)
+        }
+
         let progress = SKLabelNode(fontNamed: "AvenirNext-Medium")
         progress.text = "\(panelIndex + 1) / \(max(1, story.introPanels.count))"
         progress.fontSize = 12

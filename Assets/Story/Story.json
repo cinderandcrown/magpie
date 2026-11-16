@@ -1,29 +1,30 @@
 {
-  "premise": "Neon City's mega-corp OmniClean rolled out MOP robots to 'sanitize' the streets. They're sweeping up every stray, and Bandit's raccoon crew got hauled off toward the MOP-9000's trash plant. Bandit steals back through each district to free the crew and shut the shine down.",
+  "premise": "Neon City hired OmniClean to scrub every alley spotless. Their polite MOP robots smile, sync up, and bag every stray that doesn't shine. Bandit — masked vigilante of the trash tides — steals back through each district to free the crew and put a dent in the MOP-9000's perfect city.",
+  "tagline": "One city's trash is one raccoon's cause.",
   "introPanels": [
     {
       "id": "party",
-      "caption": "Neon Docks after-hours: the crew was living large.",
+      "caption": "Neon Docks after-hours: strays living large in the alley glow.",
       "artHint": "raccoon crew partying in alley neon"
     },
     {
       "id": "raid",
-      "caption": "Then OmniClean's MOPs crashed the party.",
-      "artHint": "MOP robots swoop into alley"
+      "caption": "OmniClean's MOPs arrived smiling. In perfect sync. Creepy.",
+      "artHint": "synchronized MOP robots swoop into alley"
     },
     {
       "id": "bagged",
-      "caption": "One by one, the crew got bagged for 'sanitation.'",
+      "caption": "One polite 'excuse me' later, the crew was bagged for sanitation.",
       "artHint": "crew stuffed into MOP bags"
     },
     {
       "id": "escape",
-      "caption": "Bandit slipped the net. Barely.",
+      "caption": "Bandit slipped the sweep. The alleys still needed a hero.",
       "artHint": "Bandit escaping down wet alley"
     },
     {
       "id": "mask",
-      "caption": "Mask on. Time to clean up.",
+      "caption": "Mask on. Vigilante of the trash. Time to clean up.",
       "artHint": "Bandit puts on the mask"
     }
   ],
@@ -34,15 +35,15 @@
     },
     "arcade_row": {
       "title": "Arcade Row",
-      "flavor": "High scores, higher stakes. The lights never blink — the MOPs do."
+      "flavor": "High scores, higher stakes. The lights never blink — the MOPs do. Together."
     },
     "rooftops": {
       "title": "Rooftops",
-      "flavor": "Jump the skyline. Don't look down. Definitely don't look at the scrubbers."
+      "flavor": "Jump the skyline. Don't look down. Definitely don't look at the scrubbers marching in step."
     },
     "sewer_grid": {
       "title": "Sewer Grid",
-      "flavor": "OmniClean's dirty secret: the shine starts underground."
+      "flavor": "OmniClean's dirty secret: the shine starts underground — and so does the resistance."
     }
   },
   "crew": [
@@ -95,10 +96,10 @@
     }
   ],
   "paTaunts": [
-    "OmniClean PA: Spotless is progress. Vermin is... unfinished business.",
-    "OmniClean PA: Reminder — raccoons are not a recognized municipal asset.",
-    "OmniClean PA: Your shine rating just dropped. How unfortunate.",
-    "OmniClean PA: The MOP-9000 sends its regards. And a dustpan.",
-    "OmniClean PA: Resistance detected. Applying industrial-strength pep talk."
+    "OmniClean PA: Spotless is kindness. Strays are… a scheduling conflict.",
+    "OmniClean PA: Please remain orderly while we collect the irregulars.",
+    "OmniClean PA: Your shine rating just dropped. How unfortunate for you.",
+    "OmniClean PA: The MOP-9000 appreciates your cooperation. And your dustpan.",
+    "OmniClean PA: Resistance noted. Applying industrial-strength pep talk. Synchronize."
   ]
 }
