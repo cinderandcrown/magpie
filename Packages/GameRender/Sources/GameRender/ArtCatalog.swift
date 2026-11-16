@@ -432,28 +432,36 @@ public enum ArtCatalog {
     /// Bright neon signage strips for the mid parallax band (palette + skyline read).
     public static func neonSignageStrip(width: CGFloat, height: CGFloat) -> SKNode {
         let root = SKNode()
+        // Bias magenta + teal (palette gate); keep a couple lime/orange accents.
         let colors: [SKColor] = [
-            neonPink, neonCyan, neonLime, neonOrange,
-            SKColor(red: 1.0, green: 0.2, blue: 0.85, alpha: 1),
-            SKColor(red: 0.2, green: 0.95, blue: 1.0, alpha: 1),
+            neonPink,
+            neonCyan,
+            SKColor(red: 1.0, green: 0.15, blue: 0.78, alpha: 1),
+            neonCyan,
+            neonPink,
+            SKColor(red: 0.15, green: 0.95, blue: 1.0, alpha: 1),
+            neonLime,
+            neonPink,
         ]
-        var x: CGFloat = -width * 0.4
+        var x: CGFloat = -width * 0.42
         var i = 0
-        while x < width * 0.45 {
-            let w = CGFloat(28 + (i % 5) * 10)
-            let h = CGFloat(10 + (i % 3) * 6)
+        while x < width * 0.48 {
+            let w = CGFloat(36 + (i % 5) * 14)
+            let h = CGFloat(14 + (i % 3) * 8)
             let sign = SKSpriteNode(color: colors[i % colors.count], size: CGSize(width: w, height: h))
-            sign.position = CGPoint(x: x, y: CGFloat((i % 4) * 18) - 20)
-            sign.alpha = 0.92
+            sign.position = CGPoint(x: x, y: CGFloat((i % 4) * 22) - 12)
+            sign.alpha = 1.0
             sign.zPosition = 1
+            sign.blendMode = .add
             root.addChild(sign)
             // Soft glow twin behind the sign.
-            let glow = SKSpriteNode(color: colors[i % colors.count], size: CGSize(width: w * 1.35, height: h * 1.8))
+            let glow = SKSpriteNode(color: colors[i % colors.count], size: CGSize(width: w * 1.55, height: h * 2.2))
             glow.position = sign.position
-            glow.alpha = 0.35
+            glow.alpha = 0.55
+            glow.blendMode = .add
             glow.zPosition = 0
             root.addChild(glow)
-            x += w + CGFloat(18 + (i % 4) * 8)
+            x += w + CGFloat(14 + (i % 4) * 6)
             i += 1
         }
         root.zPosition = -19
@@ -945,17 +953,19 @@ public final class BanditVisual: SKNode {
             rimLight.texture = sprite.texture
             rimLight.position = CGPoint(x: facingSign * 2.5, y: 1.5)
         } else {
-            sprite.color = .white
-            sprite.colorBlendFactor = 0
-            tail.color = .white
-            tail.colorBlendFactor = 0
+            // Lift mid fur off the dark alley so the silhouette reads at a glance.
+            sprite.color = SKColor(red: 0.92, green: 0.96, blue: 1.0, alpha: 1)
+            sprite.colorBlendFactor = 0.18
+            tail.color = SKColor(red: 0.92, green: 0.96, blue: 1.0, alpha: 1)
+            tail.colorBlendFactor = 0.12
             maskGlow.isHidden = true
             maskGlow.alpha = 0
-            rimLight.alpha = 0.22
+            rimLight.alpha = 0.48
             rimLight.isHidden = false
             rimLight.texture = sprite.texture
             rimLight.color = ArtCatalog.neonCyan
-            rimLight.position = CGPoint(x: -facingSign * 2.0, y: 1.0)
+            rimLight.setScale(1.08)
+            rimLight.position = CGPoint(x: -facingSign * 3.0, y: 2.0)
         }
         updateMaskGlowToHead()
         tickMotionTrail(anim: anim, maskMode: maskMode, dt: dt, smokeLite: smokeLite)

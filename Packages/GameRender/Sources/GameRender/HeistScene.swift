@@ -248,14 +248,15 @@ public final class HeistScene: SKScene {
                 // Keep storefront neon readable for the midrun palette gate — do NOT
                 // wash toward muted purple-gray (that hid magenta/teal and dimmed the city).
                 if neonBoost {
-                    // Lift mid-tones so the alley isn't a grimy 22–33/255 wash.
-                    plate.color = SKColor(red: 1.0, green: 0.62, blue: 0.95, alpha: 1)
-                    plate.colorBlendFactor = 0.28
+                    // Lift mid-tones so the alley isn't a grimy 22–33/255 wash,
+                    // but keep sky darker than lit sprites (readability).
+                    plate.color = SKColor(red: 1.0, green: 0.55, blue: 0.92, alpha: 1)
+                    plate.colorBlendFactor = 0.22
                     plate.alpha = 1.0
                 } else {
-                    plate.color = SKColor(red: 0.62, green: 0.88, blue: 1.0, alpha: 1)
-                    plate.colorBlendFactor = 0.16
-                    plate.alpha = 0.98
+                    plate.color = SKColor(red: 0.55, green: 0.82, blue: 1.0, alpha: 1)
+                    plate.colorBlendFactor = 0.12
+                    plate.alpha = 0.95
                 }
                 parent.addChild(plate)
             }

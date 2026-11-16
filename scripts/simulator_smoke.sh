@@ -607,21 +607,33 @@ print(f"palette midrun magenta={mag/n:.3%} teal={teal/n:.3%} neon={neon/n:.3%}")
 if neon / n < 0.002:
     raise SystemExit("FAIL: midrun has no magenta/teal neon pixels (flat placeholders?)")
 
-# Readability: hero/robots should contrast against the local background.
-# Sample the playfield character band (lower-mid of the crop) vs a skyline strip.
+# Readability: sprites must pop against the local playfield — not mean(sky) vs mean(char),
+# which both sit in the same dark alley mid-tones after neon lift.
 cw, ch = crop.size
-char_band = crop.crop((int(cw*0.25), int(ch*0.55), int(cw*0.75), int(ch*0.92)))
-sky_band = crop.crop((int(cw*0.1), int(ch*0.05), int(cw*0.9), int(ch*0.35)))
-def mean_luma(im):
-    px = list(im.getdata())
-    return sum((r+g+b)/3 for r,g,b in px) / max(1, len(px))
-char_l = mean_luma(char_band)
-sky_l = mean_luma(sky_band)
-contrast = abs(char_l - sky_l)
-print(f"readability charLuma={char_l:.1f} skyLuma={sky_l:.1f} contrast={contrast:.1f}")
-if contrast < 8.0:
+char_band = crop.crop((int(cw * 0.15), int(ch * 0.45), int(cw * 0.85), int(ch * 0.95)))
+char_px = list(char_band.getdata())
+char_luma = sorted((r + g + b) / 3 for r, g, b in char_px)
+cn = max(1, len(char_luma))
+char_mean = sum(char_luma) / cn
+char_p50 = char_luma[cn // 2]
+char_p90 = char_luma[int(cn * 0.90)]
+char_p95 = char_luma[int(cn * 0.95)]
+# Pixels clearly brighter than the local alley median (hero rim / white robot / LEDs).
+sprite_pop = sum(1 for v in char_luma if v >= char_p50 + 35) / cn
+local_spread = char_p90 - char_luma[int(cn * 0.10)]
+print(
+    f"readability charMean={char_mean:.1f} p50={char_p50:.0f} p90={char_p90:.0f} "
+    f"p95={char_p95:.0f} spread90={local_spread:.1f} spritePop={sprite_pop:.3%}"
+)
+# Require either a healthy local contrast spread or a real bright-sprite fraction.
+if local_spread < 22.0 and sprite_pop < 0.004:
     raise SystemExit(
-        f"FAIL: hero/robot band not readable vs background (contrast={contrast:.1f} < 8)"
+        f"FAIL: hero/robot band not readable vs background "
+        f"(spread90={local_spread:.1f} spritePop={sprite_pop:.3%})"
+    )
+if char_p95 < 48.0:
+    raise SystemExit(
+        f"FAIL: play band has no bright sprite highlights (p95={char_p95:.0f} < 48)"
     )
 
 def near_white_frac(im, box):
