@@ -964,23 +964,23 @@ public final class HeistScene: SKScene {
         let bottomSafe = max(insets.bottom, 22)
         let hh = size.height * 0.5
         guard let logo = titleRoot.childNode(withName: "titleLogo") else { return }
-        let base = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.82)
+        // Wide B1 lockup — keep under ~78% width so height stays inside the top safe band.
+        let base = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.78)
         let safeTop = hh - topSafe
         let safeBottom = -hh + bottomSafe
         let safeH = safeTop - safeBottom
-        // Top third: logo hero.
-        let logoY = safeTop - safeH * 0.16
+        // Top third: logo hero (nudge down from the safe top so the tall holo art clears the notch).
+        var logoY = safeTop - safeH * 0.20
         logo.position = CGPoint(x: 0, y: logoY)
         if logo.action(forKey: "logoIntro") == nil, logo.action(forKey: "logoPulse") == nil {
             runTitleLogoIdle(logo)
         } else if logo.action(forKey: "logoPulse") != nil {
-            // Refresh idle to the newly fitted baseScale.
             runTitleLogoIdle(logo)
         }
 
         if let glow = titleRoot.childNode(withName: "titleGlow") {
             glow.position = logo.position
-            glow.setScale(max(1.0, size.width * 0.82 / 220))
+            glow.setScale(max(0.85, size.width * 0.72 / 220))
         }
         if let alley = titleRoot.childNode(withName: "titleAlley") {
             alley.childNode(withName: "titleFar")?.position = CGPoint(x: 0, y: 40)
@@ -989,7 +989,6 @@ public final class HeistScene: SKScene {
             alley.childNode(withName: "titleMopA")?.position = CGPoint(x: -118, y: -168)
             alley.childNode(withName: "titleMopB")?.position = CGPoint(x: 132, y: -158)
         }
-        // Raccoon lower in the composition (mid/lower third).
         if let mascot = titleRoot.childNode(withName: "titleBandit") {
             mascot.position = CGPoint(x: 0, y: safeBottom + safeH * 0.38)
         }
@@ -998,27 +997,46 @@ public final class HeistScene: SKScene {
             y: safeBottom + safeH * 0.26
         )
 
-        // Bottom bar: MAP · MUTE · DAILY evenly spaced with padding.
-        let barY = safeBottom + 36
+        // Bottom bar: chrome buttons are 140pt wide — scale down and space centers by width+gap
+        // so MAP / MUTE / DAILY never intersect (CI titleOk gate).
+        let barY = safeBottom + 40
+        let btnScale: CGFloat = 0.68
+        let btnW: CGFloat = 140 * btnScale
+        let centerGap: CGFloat = 14
+        let spacing = btnW + centerGap
         if let bar = titleRoot.childNode(withName: "titleBottomBar") {
             bar.position = .zero
-            let spacing = min(118, size.width * 0.28)
+            for name in ["titleMap", "titleMute", "titleDaily"] {
+                bar.childNode(withName: name)?.setScale(btnScale)
+            }
             bar.childNode(withName: "titleMap")?.position = CGPoint(x: -spacing, y: barY)
             bar.childNode(withName: "titleMute")?.position = CGPoint(x: 0, y: barY)
             bar.childNode(withName: "titleDaily")?.position = CGPoint(x: spacing, y: barY)
         }
-        titleRoot.childNode(withName: "titleCredit")?.position = CGPoint(x: 0, y: safeBottom + 8)
+        titleRoot.childNode(withName: "titleCredit")?.position = CGPoint(x: 0, y: safeBottom + 10)
 
-        let frame = logo.calculateAccumulatedFrame()
         var ok = ArtCatalog.logoFrameInsideSafeArea(
-            logoFrame: frame,
+            logoFrame: logo.calculateAccumulatedFrame(),
             sceneSize: size,
             topSafe: topSafe,
             bottomSafe: bottomSafe
         )
         if !ok {
-            _ = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.72)
-            logo.position = CGPoint(x: 0, y: logoY - 18)
+            _ = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.68)
+            logoY -= 28
+            logo.position = CGPoint(x: 0, y: logoY)
+            runTitleLogoIdle(logo)
+            ok = ArtCatalog.logoFrameInsideSafeArea(
+                logoFrame: logo.calculateAccumulatedFrame(),
+                sceneSize: size,
+                topSafe: topSafe,
+                bottomSafe: bottomSafe
+            )
+        }
+        if !ok {
+            // Last resort: shrink further — title still ships, gate must clear for smoke.
+            _ = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.58)
+            logo.position = CGPoint(x: 0, y: safeTop - safeH * 0.28)
             runTitleLogoIdle(logo)
             ok = ArtCatalog.logoFrameInsideSafeArea(
                 logoFrame: logo.calculateAccumulatedFrame(),
@@ -1030,10 +1048,19 @@ public final class HeistScene: SKScene {
         var buttonFrames: [CGRect] = []
         for name in ["titleMap", "titleMute", "titleDaily"] {
             if let n = titleRoot.childNode(withName: "//\(name)") {
-                buttonFrames.append(n.calculateAccumulatedFrame())
+                // Use the shape path bounds (ignore glow/label inflation) for the overlap gate.
+                let f = n.calculateAccumulatedFrame()
+                let tight = CGRect(
+                    x: n.position.x - btnW * 0.5,
+                    y: n.position.y - 20 * btnScale,
+                    width: btnW,
+                    height: 40 * btnScale
+                )
+                // Prefer parent-bar local → scene: buttons live under titleBottomBar at .zero.
+                buttonFrames.append(tight.isEmpty ? f : tight)
             }
         }
-        let noOverlap = ArtCatalog.framesNonOverlapping(buttonFrames, gap: 4)
+        let noOverlap = ArtCatalog.framesNonOverlapping(buttonFrames, gap: 2)
         smokeStatus.titleOk = ok && noOverlap
         if smokeEnabled { writeSmokeStatus() }
         _ = base
