@@ -120,7 +120,25 @@ public enum ReachabilityValidator {
             let x = id % map.width
             let y = id / map.width
             guard map.tile(atX: x, y: y) == .oneWay else { continue }
-            if oneWayIsHazardLip(map: map, x: x, y: y) { continue }
+            // Latch/wall sealed against a one-way (L----) pins hunters that path into the wall.
+            for nx in [x - 1, x + 1] {
+                let neighbor = map.tile(atX: nx, y: y)
+                if neighbor == .latch || neighbor == .wall {
+                    softlocks.append("latch-seal@\(x),\(y)")
+                    break
+                }
+            }
+            if oneWayIsHazardLip(map: map, x: x, y: y) {
+                // Open gaps preferred: a one-way lip beside a solid street stand soft-locks
+                // hold-down / death-seek (dropThrough neighbor stutter on the solid).
+                for nx in [x - 1, x + 1] {
+                    let n = map.tile(atX: nx, y: y)
+                    if map.isSolid(n), n != .oneWay {
+                        softlocks.append("hazard-lip-adjacent@\(nx),\(y)")
+                    }
+                }
+                continue
+            }
             let rowKey = y * map.width + x
             if checkedOneWayRows.contains(rowKey) { continue }
             let strip = oneWayStrip(map: map, stands: stands, x: x, y: y)

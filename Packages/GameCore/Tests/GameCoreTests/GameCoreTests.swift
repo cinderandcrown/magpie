@@ -427,7 +427,6 @@ final class GameCoreTests: XCTestCase {
         let tuning = Tuning.default
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
-        // Unit test: pre-arm harness flags so the director can run end-to-end without waits.
         SmokeBrain.clearSmokeFlags()
         for name in [
             "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt",
@@ -441,20 +440,13 @@ final class GameCoreTests: XCTestCase {
         var sawDeath = false
         var sawRetry = false
         var sawWin = false
-        var maskAt = -1.0
-        var deathAt = -1.0
-        var iters = 0
-        var retries = 0
         let limit = Int(480 * tuning.simHz)
         for _ in 0..<limit {
-            iters += 1
             let cue = brain.next(sim: sim)
             if cue.start { sim.startRun() }
             if cue.retry {
                 sawRetry = true
-                retries += 1
                 sim.retry()
-                // Keep finish-push on the street after the death beat.
                 brain.act = .finishPush
             }
             if case .playing = sim.state.phase {
@@ -462,8 +454,8 @@ final class GameCoreTests: XCTestCase {
                 for e in sim.state.events {
                     switch e.kind {
                     case .stomp: sawStomp = true; brain.noteStomp()
-                    case .maskOn: sawMask = true; if maskAt < 0 { maskAt = sim.state.elapsed }
-                    case .fail: sawDeath = true; if deathAt < 0 { deathAt = sim.state.elapsed }
+                    case .maskOn: sawMask = true
+                    case .fail: sawDeath = true
                     case .win: sawWin = true
                     default: break
                     }
@@ -917,6 +909,115 @@ final class GameCoreTests: XCTestCase {
     }
 
 
+    func testSeekDeathFromStreetKills() throws {
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 7)
+        sim.startRun()
+        let tile = sim.tuning.tileSize
+        let startY = map.findFirst(.start)!.1
+        sim.state.bandit.position = Vec2(40 * tile, Double(startY) * tile + 14)
+        sim.state.bandit.velocity = .zero
+        var brain = SmokeBrain()
+        brain.act = .seekDeath
+        brain.sawMask = true
+        SmokeBrain.clearSmokeFlags()
+        for name in [
+            "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt",
+            "smoke_mask2_ok.txt", "smoke_foreground.txt", "smoke_death_ok.txt",
+        ] {
+            SmokeBrain.setSmokeFlag(name, present: true)
+        }
+        defer { SmokeBrain.clearSmokeFlags() }
+        var died = false
+        for _ in 0..<600 {
+            let cue = brain.next(sim: sim)
+            sim.step(cue.input)
+            if case .failed = sim.state.phase {
+                died = true
+                break
+            }
+        }
+        XCTAssertTrue(died, "seekDeath from street must walk into the canal")
+    }
+
+    func testCanalWalkOffKills() throws {
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 1)
+        sim.startRun()
+        let tile = sim.tuning.tileSize
+        let startY = map.findFirst(.start)!.1
+        sim.state.bandit.position = Vec2(44.2 * tile, Double(startY) * tile + 14)
+        sim.state.bandit.velocity = .zero
+        var died = false
+        for _ in 0..<240 {
+            sim.step(InputFrame(moveX: 1.0))
+            if case .failed = sim.state.phase {
+                died = true
+                break
+            }
+        }
+        XCTAssertTrue(died, "walking into the open canal gap must kill")
+    }
+
+    func testGroundedWalkOffNotCornerPulled() throws {
+        // Regression: grounded walk-off must not be nudged back onto the ledge.
+        let map = try TileMap.parse("""
+        ##########
+        #........#
+        #.@......#
+        #====....#
+        #....~~~.#
+        #========#
+        ##########
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 1)
+        sim.state.phase = .playing
+        let tile = sim.tuning.tileSize
+        sim.state.bandit.position = Vec2(3.2 * tile, 3 * tile + 14)
+        sim.state.bandit.velocity = .zero
+        for _ in 0..<30 { sim.step(InputFrame()) }
+        let x0 = sim.state.bandit.position.x
+        for _ in 0..<90 { sim.step(InputFrame(moveX: 1.0)) }
+        XCTAssertGreaterThan(sim.state.bandit.position.x, x0 + tile, "must walk off the solid ledge")
+        var fell = false
+        if case .failed = sim.state.phase { fell = true }
+        XCTAssertTrue(fell || sim.state.bandit.position.y < 3 * tile, "must leave the deck into the pit")
+    }
+
+    func testLatchSealedOneWayReportsSoftlock() throws {
+        let map = try TileMap.parse("""
+        ##########
+        #........#
+        #..L----.#
+        #..L.....#
+        #.@.....E#
+        #========#
+        ##########
+        """)
+        let report = ReachabilityValidator.validate(map: map)
+        XCTAssertTrue(
+            report.softlocks.contains { $0.hasPrefix("latch-seal@") },
+            "expected latch-seal, got \(report.softlocks)"
+        )
+    }
+
+    func testHazardLipBesideSolidReportsSoftlock() throws {
+        let map = try TileMap.parse("""
+        ##########
+        #........#
+        #.@.....E#
+        #====-...#
+        #....~~~.#
+        #========#
+        ##########
+        """)
+        let report = ReachabilityValidator.validate(map: map)
+        XCTAssertTrue(
+            report.softlocks.contains { $0.hasPrefix("hazard-lip-adjacent@") },
+            "expected hazard-lip-adjacent, got \(report.softlocks)"
+        )
+    }
+
     func testAllDistrictsReachable() throws {
         for id in DistrictID.allCases {
             let map = try DistrictLevels.load(id)
@@ -1002,6 +1103,7 @@ final class GameCoreTests: XCTestCase {
         let onStreet = sim.state.bandit.position.y < streetY + sim.tuning.tileSize * 1.5
         XCTAssertTrue(onStreet || sawStomp, "re-entry hunt should reach the street deck after dropping")
     }
+
 }
 
 struct SeededGenerator: RandomNumberGenerator {

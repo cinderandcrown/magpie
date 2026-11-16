@@ -107,7 +107,7 @@ jobs:
           | tee xcodebuild.log \
           | xcbeautify --renderer github-actions
 
-      - name: Fail on Magpie warnings/errors
+      - name: Fail on app-target warnings/errors
         if: always()
         run: |
           [ -f xcodebuild.log ] || exit 0

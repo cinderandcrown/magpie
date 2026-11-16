@@ -2,6 +2,14 @@
 
 Every choice that changes the plan, with the reason. Newest first.
 
+## 2026-11-16 — Product name: The Neon City Bandit
+
+| Decision | Reason |
+| --- | --- |
+| User-facing / docs name is **The Neon City Bandit** (home screen **Neon City Bandit**) | Nicholas: the game was never called MAGPIE. |
+| Repo renamed to `cinderandcrown/neon-city-bandit` | Match the product name; old `magpie` URL redirects. |
+| Bundle ID `com.cinderandcrown.magpie`, ASC app **Magpie Toy City** / SKU `magpie-001`, Xcode target `Magpie` stay | Signing and store identifiers must not change mid-pipeline. |
+
 ## 2026-11-15 — Mission 1 bar raised (side-view + asset manifest)
 
 | Decision | Reason |
@@ -61,7 +69,7 @@ Every choice that changes the plan, with the reason. Newest first.
 
 | Adaptation | Reason |
 | --- | --- |
-| Cursor **cloud agents on Linux VMs** are the engineers (not Grok on Nicholas’s Windows PC) | That is how Magpie is actually built; drop local-PC toolchain assumptions. |
+| Cursor **cloud agents on Linux VMs** are the engineers (not Grok on Nicholas’s Windows PC) | That is how The Neon City Bandit is actually built; drop local-PC toolchain assumptions. |
 | **Fire Fox** coordinates, merges PRs, and pushes TestFlight / approval tags | Nicholas plays builds and says APPROVED only; agents do not self-merge or self-tag. |
 | GameCore `swift test` on the **agent Linux VM** + CI Linux job (not “this PC”) | Agents have Swift on the VM; they cannot compile the iPhone app there. |
 | Signing: **ASC API key** path proven on `phoenix-fox`; **no fastlane match** unless cloud signing fails | Secrets already work; avoid a second cert pipeline until needed. |

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright © 2026 Cinder and Crown LLC. All rights reserved.
-"""Check a signed MAGPIE app before it is uploaded to TestFlight.
+"""Check a signed Neon City Bandit app before it is uploaded to TestFlight.
 
     check_signed_app.py --info Info.plist --entitlements entitlements.plist \
         --team TEAMID --bundle-id com.cinderandcrown.magpie --version 0.1.0 --build 42.1

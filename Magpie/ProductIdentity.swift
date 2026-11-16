@@ -1,9 +1,10 @@
 // Copyright © 2026 Cinder and Crown LLC. All rights reserved.
 
-/// Single place for product naming. Code identifiers stay MAGPIE / magpie.
-/// Do not scatter title string literals.
+/// Single place for product naming.
+/// User-facing title: The Neon City Bandit. Do not scatter title string literals.
+/// Bundle ID / Xcode target / historical `MAGPIE` code identifiers stay unchanged.
 enum ProductIdentity {
-    /// Engineering / repo codename. Never change without an explicit rename mission.
+    /// Historical engineering codename in code identifiers (bundle ID, target). Not user-facing.
     static let codename = "MAGPIE"
 
     /// Full user-facing title.

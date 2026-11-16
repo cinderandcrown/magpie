@@ -429,11 +429,10 @@ public struct SmokeBrain: Equatable, Sendable {
         let tx = Int(floor(b.position.x / tile))
         let ty = Int(floor(feet / tile))
         if sim.map.tile(atX: tx, y: ty) == .oneWay { return true }
-        // Foot samples near walls / tile seams.
+        // Foot sample a hair lower for tile-seam stands — do NOT scan horizontal
+        // neighbors (canal lip one-ways beside street solids false-trigger "elevated").
         let tyLo = Int(floor((feet - 2) / tile))
         return sim.map.tile(atX: tx, y: tyLo) == .oneWay
-            || sim.map.tile(atX: tx - 1, y: ty) == .oneWay
-            || sim.map.tile(atX: tx + 1, y: ty) == .oneWay
     }
 
     /// True when the cell under (tx, ty-1) can be stood on (solid or one-way).
@@ -516,16 +515,35 @@ public struct SmokeBrain: Equatable, Sendable {
             }
             return InputFrame(moveX: moveX, moveY: -1, jumpPressed: false, jumpHeld: false)
         }
-        // Street: bee-line toward the canal water tile; never jump the lip.
-        let waterX = sim.map.findFirst(.water).map { Double($0.0) * tile } ?? (Double(tx + 20) * tile)
+        // Street: bee-line into the canal pit center and walk off (no jump).
+        // Aim past the left water column — targeting the tile edge made toward flip
+        // at the lip and oscillate forever (CI death hang at heroX≈canal).
+        let waters = sim.map.findAll(.water)
+        let waterX: Double
+        if waters.isEmpty {
+            waterX = Double(tx + 20) * tile
+        } else {
+            let avgX = waters.map { Double($0.0) }.reduce(0, +) / Double(waters.count)
+            waterX = (avgX + 0.5) * tile
+        }
         let toward = waterX >= b.position.x ? 1.0 : -1.0
-        let under = sim.map.tile(atX: tx + (toward > 0 ? 1 : -1), y: ty - 1)
-        let ahead = sim.map.tile(atX: tx + (toward > 0 ? 1 : -1), y: ty)
-        let lipIsHazard = under == .water || under == .spike || under == .empty
-            || ahead == .water || ahead == .spike
-            || sim.map.tile(atX: tx + (toward > 0 ? 1 : -1), y: ty - 2) == .water
+        let step = toward > 0 ? 1 : -1
+        let underFoot = sim.map.tile(atX: tx, y: Int(floor((b.position.y - halfH - 1) / tile)))
+        let under = sim.map.tile(atX: tx + step, y: ty - 1)
+        let ahead = sim.map.tile(atX: tx + step, y: ty)
+        let underHere = sim.map.tile(atX: tx, y: ty - 1)
+        // Open canal / empty floor underfoot or ahead — commit into the pit.
+        let overGap = underHere == .empty || underHere == .water || underHere == .spike || underHere == .oneWay
+        let lipIsHazard = overGap
+            || under == .water || under == .spike || under == .empty || under == .oneWay
+            || ahead == .water || ahead == .spike || ahead == .empty
+            || underFoot == .oneWay
+            || sim.map.tile(atX: tx + step, y: ty - 2) == .water
+        if underFoot == .oneWay || overGap {
+            return InputFrame(moveX: toward, moveY: -1)
+        }
         if lipIsHazard || seekDeathFrames > 180 {
-            return InputFrame(moveX: toward) // walk off / commit
+            return InputFrame(moveX: toward, moveY: under == .oneWay ? -1 : 0)
         }
         if b.onWallRight || b.onWallLeft || sim.map.isSolid(ahead) {
             return InputFrame(

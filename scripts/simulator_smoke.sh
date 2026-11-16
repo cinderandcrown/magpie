@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Copyright © 2026 Cinder and Crown LLC. All rights reserved.
-# Launch Magpie with -SmokeAutoplay, record gameplay, capture moment screenshots
+# Launch The Neon City Bandit (Magpie.app) with -SmokeAutoplay, record gameplay, capture moment screenshots
 # driven by smoke_status milestones (not blind sleeps).
 # FPS: warn below 55; hard-fail only below 30 or on freezes (maxFrameMs > 500).
 set -euo pipefail
 
 DEVICE="${1:?simulator UDID}"
-APP_PATH="${2:?path to Magpie.app}"
+APP_PATH="${2:?path to Magpie.app (Xcode product)}"
 OUT_DIR="${3:-smoke-artifacts}"
 BUNDLE_ID="${BUNDLE_ID:-com.cinderandcrown.magpie}"
 DISPLAY_ID="${SIMCTL_DISPLAY:-1}"
@@ -83,7 +83,7 @@ app_alive() {
 require_app() {
   local label="$1"
   if ! app_alive; then
-    echo "FAIL: Magpie not alive at $label" >&2
+    echo "FAIL: app not alive at $label" >&2
     shot "$OUT_DIR/fail-$label-homescreen.png" || true
     read_status >&2 || true
     exit 1
@@ -92,7 +92,7 @@ require_app() {
 }
 
 # Poll until python predicate on status line prints YES, or timeout.
-# Predicate receives the status line as sys.argv[1].
+# Returns 1 on timeout (callers may soft-continue). Use wait_status_strict to hard-fail.
 wait_status() {
   local label="$1"
   local pypred="$2"
@@ -108,12 +108,19 @@ wait_status() {
     fi
     now="$(date +%s)"
     if (( now - start >= timeout )); then
-      echo "FAIL: timeout waiting for $label (status=$status)" >&2
+      echo "WARN: timeout waiting for $label (status=$status)" >&2
       shot "$OUT_DIR/fail-$label-timeout.png" || true
-      exit 1
+      return 1
     fi
     sleep 0.35
   done
+}
+
+wait_status_strict() {
+  if ! wait_status "$@"; then
+    echo "FAIL: timeout waiting for $1" >&2
+    exit 1
+  fi
 }
 
 echo "Smoke (autoplay) on $DEVICE (display=$DISPLAY_ID)"
@@ -243,7 +250,7 @@ REC_STARTED_AT="${REC_STARTED_AT:-$(date +%s)}"
 # 02 — midrun: street neon run BEFORE prefer_roof (palette gate needs magenta storefronts).
 # Allow sticky died= from a prior premature splash; require live playing + no stomps yet.
 # Prefer maskOn=0 for the neon alley still; don't hard-require it (timer-hold can race).
-wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0)) else 1)' 120
+wait_status_strict "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0)) else 1)' 120
 shot "$OUT_DIR/02-midrun.png"
 # Release midrun so subsequent stomps count.
 write_flag "smoke_midrun_ok.txt"
@@ -272,13 +279,13 @@ rm -f "$(data_container)/Documents/smoke_prefer_roof.txt" 2>/dev/null || true
 
 # 03 — real MOP stomp (before pause/bg so Mask Mode still has timer headroom for 04).
 # Accept mask/combo as proof when early stomps happened before midrun_ok started counting.
-wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); c=re.search(r"combo=([0-9]+)", s); ok_st=(m and int(m.group(1))>=1); ok_mask=("mask=1" in s and c and int(c.group(1))>=1); sys.exit(0 if (ok_st or ok_mask) else 1)' 120
+wait_status_strict "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); c=re.search(r"combo=([0-9]+)", s); ok_st=(m and int(m.group(1))>=1); ok_mask=("mask=1" in s and c and int(c.group(1))>=1); sys.exit(0 if (ok_st or ok_mask) else 1)' 120
 shot "$OUT_DIR/03-mop-stomp.png"
 
 # 03b — three consecutive chained stomps (Nick feel pass).
 # Midrun hold ignores pre-hunt stomps in the stomps= counter, so accept combo>=3
 # (Mask threshold) as proof of a 3-chain even when stomps= only shows post-midrun hits.
-wait_status "stomp-chain" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); c=re.search(r"combo=([0-9]+)", s); ok_st=(m and int(m.group(1))>=3); ok_combo=(c and int(c.group(1))>=3); sys.exit(0 if ("phase=playing" in s and (ok_st or ok_combo)) else 1)' 120
+wait_status_strict "stomp-chain" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); c=re.search(r"combo=([0-9]+)", s); ok_st=(m and int(m.group(1))>=3); ok_combo=(c and int(c.group(1))>=3); sys.exit(0 if ("phase=playing" in s and (ok_st or ok_combo)) else 1)' 120
 shot "$OUT_DIR/03b-stomp-chain.png"
 
 # 04 — Mask Mode while still playing (requires live maskOn=1, not sticky mask=).
@@ -373,20 +380,20 @@ rm -f "$(data_container)/Documents/smoke_force_mask.txt" 2>/dev/null || true
 
 # 02b — Pause menu (after Mask shot so the LED beat is not racing the timer)
 write_flag "smoke_show_pause.txt"
-wait_status "pause-menu" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=1" in s else 1)' 60
+wait_status_strict "pause-menu" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=1" in s else 1)' 60
 sleep 0.35
 shot "$OUT_DIR/02b-pause-menu.png"
 write_flag "smoke_pause_ok.txt"
 # Accept any unpaused phase — death must not race this wait after mask_ok.
-wait_status "pause-resume" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s else 1)' 60
+wait_status_strict "pause-resume" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s else 1)' 60
 
 # 02c — Background / foreground interruption (system pause + 3-2-1 resume)
 write_flag "smoke_background.txt"
-wait_status "background" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=1" in s else 1)' 60
+wait_status_strict "background" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=1" in s else 1)' 60
 sleep 0.35
 shot "$OUT_DIR/02c-background.png"
 write_flag "smoke_foreground.txt"
-wait_status "foreground" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s else 1)' 90
+wait_status_strict "foreground" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s else 1)' 90
 
 # 05 — death / retry overlay (app holds failed until smoke_death_ok.txt).
 # Soft path: if seekDeath can't reach the canal from a mid ledge, force-fail into water.
@@ -418,12 +425,12 @@ write_flag "smoke_death_ok.txt"
 rm -f "$(data_container)/Documents/smoke_force_fail.txt" 2>/dev/null || true
 
 # 06 — RESULTS (win after retry)
-wait_status "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("won=1" in s or "phase=won" in s) else 1)' 120
+wait_status_strict "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("won=1" in s or "phase=won" in s) else 1)' 120
 shot "$OUT_DIR/06-results.png"
 
 # 07 — District map (retention)
 write_flag "smoke_show_map.txt"
-wait_status "district-map" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "map=1" in s else 1)' 60
+wait_status_strict "district-map" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "map=1" in s else 1)' 60
 sleep 0.35
 shot "$OUT_DIR/07-district-map.png"
 # Hold map on-screen so the continuous video captures the neon district board.
@@ -434,7 +441,7 @@ write_flag "smoke_map_ok.txt"
 # Clear map flag first so the app doesn't flip map↔daily every frame.
 rm -f "$(data_container)/Documents/smoke_show_map.txt" 2>/dev/null || true
 write_flag "smoke_show_daily.txt"
-wait_status "daily-heist" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "daily=1" in s else 1)' 60
+wait_status_strict "daily-heist" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "daily=1" in s else 1)' 60
 # Let RetentionChrome.present() finish its fade-in before the still.
 sleep 0.55
 shot "$OUT_DIR/08-daily-heist.png"

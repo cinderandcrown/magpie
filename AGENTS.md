@@ -1,6 +1,6 @@
-# MAGPIE — AGENTS.md (adapted Master Brief)
+# The Neon City Bandit — AGENTS.md (adapted Master Brief)
 
-This is the working agent brief for Magpie. Design, originality, pillars, feel bar, and mission quality standards come from `docs/PLAN.md` Part 2 (theme-amended) and `docs/DESIGN.md`. **`docs/PLAN.md` keeps process/gates;** product theme is the raccoon neon heist.
+This is the working agent brief for **The Neon City Bandit**. Design, originality, pillars, feel bar, and mission quality standards come from `docs/PLAN.md` Part 2 (theme-amended) and `docs/DESIGN.md`. **`docs/PLAN.md` keeps process/gates;** product theme is the raccoon neon heist.
 
 **How this file relates to the plan:** keep the plan’s rules and ambition; adapt only *who runs where* and *who merges/tags* to our real setup. Every adaptation is logged in `DECISIONS.md`. When an ad-hoc chat brief conflicts with this file or the plan’s design bar, **this file + the plan’s design win** — aim for a badass game; do not sandbag feel or juice.
 
@@ -26,7 +26,7 @@ Fire Fox merges and tags. You do **not** push `testflight/*` or `mNN-approved` t
 
 ## 2. The product
 
-- Codename: MAGPIE. The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed). Title via `ProductIdentity.displayTitle` only.
+- The game is **The Neon City Bandit**. Title via `ProductIdentity.displayTitle` only. Engineering identifiers (bundle ID `com.cinderandcrown.magpie`, Xcode target `Magpie`) stay unchanged.
 - One line: a cocky masked raccoon in a neon night city. Pounce, belly-flop, hijack rides, bank Shinies before time runs out. Free the crew from MOP.
 - Genre: 2D top-down action sandbox, played in 180-second runs.
 - Device: iPhone only. Portrait only. One thumb. iOS 17.0 minimum.
@@ -186,7 +186,7 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 
 - **Cursor cloud agents** run on **Linux VMs**. Run GameCore (and other Foundation-only package) tests with `swift test` on the VM before every push. Never claim an iPhone build you did not run in Actions.
 - **All Apple builds** run in GitHub Actions on the standard **`xcode-27`** hosted runner. Never use `xlarge` or any larger runner.
-- The code repo is public (`cinderandcrown/magpie`). A second, private repo will hold art, audio, level data, economy tables and licensed assets; the build will pull it with a deploy key when that exists.
+- The code repo is public (`cinderandcrown/neon-city-bandit`). A second, private repo will hold art, audio, level data, economy tables and licensed assets; the build will pull it with a deploy key when that exists.
 - Signing and TestFlight upload use the **App Store Connect API key** already proven on `cinderandcrown/phoenix-fox` (secrets: `APPLE_TEAM_ID`, `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_KEY_P8`). Prefer Xcode cloud-managed / automatic signing with that key. **Do not introduce fastlane match** unless cloud signing fails on the runner and Fire Fox / Nicholas approve the fallback.
 
 ### Stack
@@ -202,7 +202,7 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 | --- | --- | --- |
 | GameCore | All game rules and the simulation | Pure Swift, Foundation only. No UIKit, SpriteKit or SwiftUI. Must pass `swift test` on the Linux agent VM, in the Linux CI job, and on the Mac CI runner |
 | GameRender | Draws the state with SpriteKit | Reads state, never changes rules. Smooths between sim steps |
-| GameApp (Magpie target) | SwiftUI shell, menus, HUD, settings | No game rules |
+| GameApp (`Magpie` Xcode target) | SwiftUI shell, menus, HUD, settings | No game rules |
 | Services | Store, Game Center, clips, analytics, remote config, haptics, audio, save | Each behind a protocol, with a mock for tests |
 
 ### Determinism

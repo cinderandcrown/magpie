@@ -158,7 +158,9 @@ public struct Sim: Equatable, Sendable {
             }
         }
 
-        // Drop through one-ways: hold down on a one-way deck.
+        // Drop through one-ways: hold down while feet are ON a one-way deck.
+        // Do NOT scan horizontal neighbors — a canal lip beside solid street used to
+        // pin Bandit in a dropThrough stutter soft-lock when holding down / seeking death.
         if b.onGround, input.moveY < -0.45 {
             let tile = tuning.tileSize
             let feet = b.position.y - halfH - 1
@@ -167,8 +169,6 @@ public struct Sim: Equatable, Sendable {
             let tyLo = Int(floor((feet - 2) / tile))
             let onOneWay = map.tile(atX: tx, y: ty) == .oneWay
                 || map.tile(atX: tx, y: tyLo) == .oneWay
-                || map.tile(atX: tx - 1, y: ty) == .oneWay
-                || map.tile(atX: tx + 1, y: ty) == .oneWay
             if onOneWay {
                 b.dropThrough = 0.28
                 b.onGround = false
@@ -414,7 +414,9 @@ public struct Sim: Equatable, Sendable {
             let footR = landableAt(bandit.position.x + halfW * 0.6, feet)
             if footL || footR {
                 // Near-miss landing: only one foot catches a ledge — nudge onto the solid.
-                if footL != footR, corner > 0 {
+                // Only while landing from air. Applying this while grounded pulls Bandit
+                // back onto every walk-off (canal soft-lock at the lip).
+                if footL != footR, corner > 0, !wasGrounded {
                     let dir: Double = footR ? 1 : -1
                     for step in stride(from: 1.0, through: corner, by: 1.0) {
                         let nx = bandit.position.x + dir * step

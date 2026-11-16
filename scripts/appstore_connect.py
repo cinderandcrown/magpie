@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Copyright © 2026 Cinder and Crown LLC. All rights reserved.
-"""Prepare App Store Connect for a MAGPIE upload, and check on the build after it.
+"""Prepare App Store Connect for a Neon City Bandit upload, and check on the build after it.
 
 The TestFlight workflow runs this. It needs only Python and `openssl`, both of which are
 on every GitHub runner.
@@ -13,7 +13,7 @@ The key comes from the environment: ASC_KEY_ID, ASC_ISSUER_ID, and ASC_KEY_PATH 
 file). The job log of a public repository is public, so nothing here prints a name, an
 email address, or any part of the key.
 
-Adapted from cinderandcrown/phoenix-fox for Magpie (no Meta capabilities).
+Adapted from cinderandcrown/phoenix-fox for The Neon City Bandit (no Meta capabilities).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 API = "https://api.appstoreconnect.apple.com"
-AGENT = "Magpie-CI/1.0 (+https://github.com/cinderandcrown/magpie)"
+AGENT = "NeonCityBandit-CI/1.0 (+https://github.com/cinderandcrown/neon-city-bandit)"
 
 
 class ApiError(Exception):

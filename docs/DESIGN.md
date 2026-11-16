@@ -1,8 +1,9 @@
 # The Neon City Bandit — Design
 
 **Status:** Live product direction (Mission 1+)  
-**Codename in code:** `MAGPIE` (repo, bundle id `com.cinderandcrown/magpie`, modules).  
-**User-facing title:** **The Neon City Bandit** via `ProductIdentity.displayTitle`. Home screen: `CFBundleDisplayName` = **Neon City Bandit**. Do not scatter title strings. Bundle ID does not change.
+**Repo:** `cinderandcrown/neon-city-bandit`.  
+**User-facing title:** **The Neon City Bandit** via `ProductIdentity.displayTitle`. Home screen: `CFBundleDisplayName` = **Neon City Bandit**. Do not scatter title strings.  
+**Unchanged engineering IDs:** bundle id `com.cinderandcrown.magpie`, Xcode target/scheme `Magpie`, ASC app record (see OWNER_SETUP).
 
 ## Pitch
 
