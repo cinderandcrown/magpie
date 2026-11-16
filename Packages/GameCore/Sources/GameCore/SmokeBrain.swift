@@ -330,6 +330,17 @@ public struct SmokeBrain: Equatable, Sendable {
         if tx <= 5 {
             moveX = max(moveX, 0.9)
         }
+        // Before midrun still: never climb latch towers — street magenta needs a ground camera.
+        let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
+        let latchNear = sim.map.tile(atX: tx, y: ty) == .latch
+            || sim.map.tile(atX: tx + 1, y: ty) == .latch
+            || sim.map.tile(atX: tx - 1, y: ty) == .latch
+            || sim.map.tile(atX: tx, y: ty + 1) == .latch
+        if !midrunOk, latchNear || ((b.onWallLeft || b.onWallRight) && latchNear) {
+            let latchX = sim.map.findFirst(.latch).map(\.0) ?? (tx + 10)
+            moveX = tx <= latchX ? -0.85 : 0.85
+            return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false)
+        }
         if b.onWallLeft || b.onWallRight, !b.onGround {
             jumpPressed = tick % 20 == 0
             jumpHeld = true
@@ -472,11 +483,13 @@ public struct SmokeBrain: Equatable, Sendable {
             jumpHeld = true
             moveX = b.onWallRight ? -0.25 : 0.75
         } else if b.onGround || b.coyote > 0 {
-            // Keep hopping toward the mid-map latch tower (~x 20–40).
+            // Hop toward the post-canal latch tower (Neon Docks ~x 55–65).
+            let latchX = sim.map.findFirst(.latch).map(\.0) ?? 60
             jumpPressed = tick % 18 == 0 || sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty))
             jumpHeld = jumpPressed || (!b.onGround && b.velocity.y > 0)
-            if tx < 22 { moveX = 1.0 }
-            else if tx > 48 { moveX = -0.4 }
+            if tx < latchX - 2 { moveX = 1.0 }
+            else if tx > latchX + 8 { moveX = -0.4 }
+            else { moveX = 0.55 }
         } else {
             jumpHeld = b.velocity.y > 0
             if b.velocity.y < 0, !b.flopping {

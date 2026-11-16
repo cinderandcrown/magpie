@@ -605,6 +605,15 @@ public enum ArtCatalog {
             glow.zPosition = 0
             root.addChild(glow)
 
+            if i % 2 == 0 {
+                let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 0.95, height: h * 0.85))
+                plate.name = "storefrontPlate"
+                plate.position = glow.position
+                plate.alpha = 0.9
+                plate.blendMode = .alpha
+                plate.zPosition = 0.5
+                root.addChild(plate)
+            }
             let sign: SKSpriteNode
             if !textures.isEmpty {
                 let tex = textures[i % textures.count]
@@ -619,11 +628,11 @@ public enum ArtCatalog {
             // Magenta bias so the palette gate can't pass on teal alone.
             if i % 2 == 0 {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.35
+                sign.colorBlendFactor = 0.55
                 sign.blendMode = .add
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.25
+                sign.colorBlendFactor = 0.3
                 sign.blendMode = .add
             }
             root.addChild(sign)
@@ -665,10 +674,21 @@ public enum ArtCatalog {
             glow.position = CGPoint(x: x, y: y)
             glow.color = accent
             glow.colorBlendFactor = 1
-            glow.alpha = 0.75
+            glow.alpha = 0.85
             glow.blendMode = .add
             glow.zPosition = 0
             root.addChild(glow)
+
+            // Opaque neon plate so midrun palette still reads on dark brick (add-blend alone washes out).
+            if i % 2 == 0 {
+                let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 0.95, height: h * 0.8))
+                plate.name = "storefrontPlate"
+                plate.position = CGPoint(x: x, y: y)
+                plate.alpha = 0.92
+                plate.blendMode = .alpha
+                plate.zPosition = 0.5
+                root.addChild(plate)
+            }
 
             let sign: SKSpriteNode
             if !textures.isEmpty {
@@ -681,10 +701,10 @@ public enum ArtCatalog {
             sign.zPosition = 1
             if i % 2 == 0 {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.3
+                sign.colorBlendFactor = 0.55
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.22
+                sign.colorBlendFactor = 0.3
             }
             sign.blendMode = .add
             root.addChild(sign)
