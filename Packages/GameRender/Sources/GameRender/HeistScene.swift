@@ -297,23 +297,23 @@ public final class HeistScene: SKScene {
     private func addWetFloorReflection(at pos: CGPoint, tile: CGFloat) {
         let cyan = SKSpriteNode(color: ArtCatalog.neonCyan, size: CGSize(width: tile * 0.92, height: 3.5))
         cyan.position = CGPoint(x: pos.x, y: pos.y + tile * 0.48)
-        cyan.alpha = 0.55
+        cyan.alpha = 0.5
         cyan.zPosition = 3.05
         cyan.blendMode = .add
         world.addChild(cyan)
-        let pink = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.7, height: 2.8))
-        pink.position = CGPoint(x: pos.x + tile * 0.08, y: pos.y + tile * 0.4)
-        pink.alpha = 0.62
+        let pink = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.88, height: 3.6))
+        pink.position = CGPoint(x: pos.x + tile * 0.05, y: pos.y + tile * 0.38)
+        pink.alpha = 0.85
         pink.zPosition = 3.06
         pink.blendMode = .add
         world.addChild(pink)
         // Soft puddle blob so magenta shows up in the play-band crop.
-        let puddle = SKShapeNode(ellipseOf: CGSize(width: tile * 0.85, height: tile * 0.22))
-        puddle.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.35)
-        puddle.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.25)
-        puddle.lineWidth = 0.6
-        puddle.glowWidth = 1.2
-        puddle.position = CGPoint(x: pos.x - tile * 0.1, y: pos.y + tile * 0.32)
+        let puddle = SKShapeNode(ellipseOf: CGSize(width: tile * 0.95, height: tile * 0.28))
+        puddle.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.55)
+        puddle.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.4)
+        puddle.lineWidth = 0.8
+        puddle.glowWidth = 2.0
+        puddle.position = CGPoint(x: pos.x - tile * 0.08, y: pos.y + tile * 0.3)
         puddle.zPosition = 3.04
         world.addChild(puddle)
     }
@@ -409,25 +409,41 @@ public final class HeistScene: SKScene {
                     world.addChild(n)
                 }
 
-                // Wet-floor reflections on solid tops (every other tile for magenta coverage).
-                if !openBelow, (x + y) % 2 == 0 {
+                // Wet-floor reflections on solid tops (dense magenta puddles for the palette gate).
+                if !openBelow {
                     addWetFloorReflection(at: pos, tile: tile)
                 }
 
-                // Magenta strip light under every other floating ledge.
-                if openBelow, x % 2 == 1 {
-                    let strip = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.95, height: 3.5))
+                // Magenta strip light under every floating ledge.
+                if openBelow {
+                    let strip = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.98, height: 4.5))
                     strip.position = CGPoint(x: pos.x, y: pos.y - tile * 0.42)
-                    strip.alpha = 0.85
+                    strip.alpha = 0.95
                     strip.blendMode = .add
                     strip.zPosition = 3.1
                     world.addChild(strip)
-                    let stripGlow = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 1.2, height: 8))
+                    let stripGlow = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 1.35, height: 12))
                     stripGlow.position = strip.position
-                    stripGlow.alpha = 0.35
+                    stripGlow.alpha = 0.5
                     stripGlow.blendMode = .add
                     stripGlow.zPosition = 3.05
                     world.addChild(stripGlow)
+                }
+
+                // Wall-mounted magenta neon tubes (play-band coverage independent of camera).
+                if kind == .wall, x % 4 == 0, y % 2 == 1 {
+                    let tube = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: 4, height: tile * 0.85))
+                    tube.position = CGPoint(x: pos.x + tile * 0.35, y: pos.y)
+                    tube.alpha = 0.95
+                    tube.blendMode = .add
+                    tube.zPosition = 2.6
+                    world.addChild(tube)
+                    let tubeGlow = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: 14, height: tile * 1.05))
+                    tubeGlow.position = tube.position
+                    tubeGlow.alpha = 0.4
+                    tubeGlow.blendMode = .add
+                    tubeGlow.zPosition = 2.55
+                    world.addChild(tubeGlow)
                 }
 
                 // Supports under every floating ledge (scaffold / pipe), denser than before.
