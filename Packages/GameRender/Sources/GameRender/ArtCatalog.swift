@@ -380,13 +380,27 @@ public enum ArtCatalog {
     private static func solidFallbackTexture(tileSize: CGSize) -> SKTexture {
         let format = UIGraphicsImageRendererFormat()
         format.opaque = false
-        format.scale = 1
+        format.scale = 2
         let img = UIGraphicsImageRenderer(size: tileSize, format: format).image { ctx in
             let cg = ctx.cgContext
-            cg.setFillColor(UIColor(red: 0.12, green: 0.1, blue: 0.2, alpha: 1).cgColor)
+            let w = tileSize.width
+            let h = tileSize.height
+            // Neon dock plate — not a flat grey placeholder.
+            cg.setFillColor(UIColor(red: 0.08, green: 0.07, blue: 0.16, alpha: 1).cgColor)
             cg.fill(CGRect(origin: .zero, size: tileSize))
-            cg.setFillColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.85).cgColor)
-            cg.fill(CGRect(x: 0, y: 0, width: tileSize.width, height: 3))
+            cg.setFillColor(UIColor(red: 0.14, green: 0.12, blue: 0.24, alpha: 1).cgColor)
+            cg.fill(CGRect(x: 1, y: 1, width: w - 2, height: h - 2))
+            // Magenta edge + teal top lip.
+            cg.setStrokeColor(UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.55).cgColor)
+            cg.setLineWidth(1)
+            cg.stroke(CGRect(x: 0.5, y: 0.5, width: w - 1, height: h - 1))
+            cg.setFillColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.9).cgColor)
+            cg.fill(CGRect(x: 0, y: h - 3.5, width: w, height: 3.5))
+            // Rivet dots.
+            cg.setFillColor(UIColor(red: 0.55, green: 0.9, blue: 1.0, alpha: 0.45).cgColor)
+            for (x, y) in [(4.0, 6.0), (w - 4, 6.0), (4.0, h - 8), (w - 4, h - 8)] {
+                cg.fillEllipse(in: CGRect(x: x - 1.2, y: y - 1.2, width: 2.4, height: 2.4))
+            }
         }
         let tex = SKTexture(image: img)
         tex.filteringMode = .nearest
@@ -621,6 +635,7 @@ public final class BanditVisual: SKNode {
     private let tail: SKSpriteNode
     private let shadow: SKShapeNode
     private let maskGlow: SKSpriteNode
+    private let rimLight: SKSpriteNode
     private var cycles: [String: SpriteCycle] = [:]
     private var runTextures: [SKTexture] = []
     private var walkTextures: [SKTexture] = []
@@ -630,6 +645,7 @@ public final class BanditVisual: SKNode {
     private var hurtTextures: [SKTexture] = []
     private var deathTextures: [SKTexture] = []
     private var pickUpTextures: [SKTexture] = []
+    private var headAnchorsByAnim: [BanditAnim: [HeadAnchor]] = [:]
     private var idleTex: SKTexture?
     private var jumpTex: SKTexture?
     private var fallTex: SKTexture?
@@ -647,6 +663,13 @@ public final class BanditVisual: SKNode {
     private var trailAcc: CGFloat = 0
     private let trailPoolSize = 18
     private var sheetDriven = false
+    /// Manual sheet driver so fps can track |vx| and LEDs can follow the head frame.
+    private var driveTextures: [SKTexture] = []
+    private var driveAnchors: [HeadAnchor] = []
+    private var driveIndex: CGFloat = 0
+    private var driveFPS: CGFloat = 12
+    private var driveLoop = true
+    private var driveSpeed: CGFloat = 1
 
     public override init() {
         ArtCatalog.warmAtlases()
@@ -662,14 +685,41 @@ public final class BanditVisual: SKNode {
         let deathC = load("death")
         let pickC = load("pick_up")
         sheetDriven = (runC?.textures.count ?? 0) >= 6 && (idleC?.textures.count ?? 0) >= 2
-        if let idleC { cycles["idle"] = idleC; idleTextures = idleC.textures; footAnchorY = idleC.footAnchorY }
-        if let walkC { cycles["walk"] = walkC; walkTextures = walkC.textures }
-        if let runC { cycles["run"] = runC; runTextures = runC.textures }
-        if let jumpC { cycles["jump"] = jumpC; jumpTextures = jumpC.textures }
-        if let attackC { cycles["attack"] = attackC; attackTextures = attackC.textures }
-        if let hurtC { cycles["hurt"] = hurtC; hurtTextures = hurtC.textures }
-        if let deathC { cycles["death"] = deathC; deathTextures = deathC.textures }
-        if let pickC { cycles["pick_up"] = pickC; pickUpTextures = pickC.textures }
+        if let idleC {
+            cycles["idle"] = idleC; idleTextures = idleC.textures; footAnchorY = idleC.footAnchorY
+            headAnchorsByAnim[.idle] = idleC.headAnchors
+        }
+        if let walkC {
+            cycles["walk"] = walkC; walkTextures = walkC.textures
+            headAnchorsByAnim[.walk] = walkC.headAnchors
+        }
+        if let runC {
+            cycles["run"] = runC; runTextures = runC.textures
+            headAnchorsByAnim[.run] = runC.headAnchors
+        }
+        if let jumpC {
+            cycles["jump"] = jumpC; jumpTextures = jumpC.textures
+            headAnchorsByAnim[.jump] = jumpC.headAnchors
+            headAnchorsByAnim[.apex] = jumpC.headAnchors
+            headAnchorsByAnim[.fall] = jumpC.headAnchors
+            headAnchorsByAnim[.wallSlide] = jumpC.headAnchors
+        }
+        if let attackC {
+            cycles["attack"] = attackC; attackTextures = attackC.textures
+            headAnchorsByAnim[.pounce] = attackC.headAnchors
+        }
+        if let hurtC {
+            cycles["hurt"] = hurtC; hurtTextures = hurtC.textures
+            headAnchorsByAnim[.hurt] = hurtC.headAnchors
+        }
+        if let deathC {
+            cycles["death"] = deathC; deathTextures = deathC.textures
+            headAnchorsByAnim[.death] = deathC.headAnchors
+        }
+        if let pickC {
+            cycles["pick_up"] = pickC; pickUpTextures = pickC.textures
+            headAnchorsByAnim[.pickUp] = pickC.headAnchors
+        }
         usesWestSheets = sheetDriven
 
         if !sheetDriven {
@@ -756,32 +806,44 @@ public final class BanditVisual: SKNode {
         shadow.zPosition = -1
         shadow.position = CGPoint(x: 0, y: -2)
 
-        // LED eye glints for Mask Mode (crisp points — not a translucent head plate).
-        maskGlow = SKSpriteNode(color: .clear, size: CGSize(width: 28, height: 12))
+        // LED eye glints for Mask Mode — parented under `body` and moved to the
+        // per-frame head anchor so they never sit on the belly.
+        maskGlow = SKSpriteNode(color: .clear, size: CGSize(width: 32, height: 14))
         maskGlow.alpha = 0
         maskGlow.isHidden = true
         maskGlow.zPosition = 3
-        maskGlow.position = CGPoint(x: 2, y: 22)
-        let eyeL = SKShapeNode(circleOfRadius: 2.4)
+        maskGlow.position = CGPoint(x: 2, y: SpriteCycles.banditDisplaySize.height * 0.48)
+        let eyeL = SKShapeNode(circleOfRadius: 2.8)
         eyeL.fillColor = ArtCatalog.neonCyan
         eyeL.strokeColor = .white
         eyeL.lineWidth = 0.6
-        eyeL.glowWidth = 1.2
-        eyeL.position = CGPoint(x: -5, y: 0)
-        let eyeR = SKShapeNode(circleOfRadius: 2.4)
+        eyeL.glowWidth = 1.4
+        eyeL.position = CGPoint(x: -6, y: 0)
+        let eyeR = SKShapeNode(circleOfRadius: 2.8)
         eyeR.fillColor = ArtCatalog.neonCyan
         eyeR.strokeColor = .white
         eyeR.lineWidth = 0.6
-        eyeR.glowWidth = 1.2
-        eyeR.position = CGPoint(x: 5, y: 0)
+        eyeR.glowWidth = 1.4
+        eyeR.position = CGPoint(x: 6, y: 0)
         maskGlow.addChild(eyeL)
         maskGlow.addChild(eyeR)
 
+        // Soft magenta/cyan rim behind the sheet (readable against dark alley mid-tones).
+        rimLight = SKSpriteNode(texture: idleTex, size: SpriteCycles.banditDisplaySize)
+        rimLight.name = "rimLight"
+        rimLight.anchorPoint = CGPoint(x: 0.5, y: footAnchorY)
+        rimLight.zPosition = 0.4
+        rimLight.color = ArtCatalog.neonPink
+        rimLight.colorBlendFactor = 0.85
+        rimLight.alpha = 0
+        rimLight.blendMode = .add
+
         super.init()
         addChild(shadow)
-        addChild(maskGlow)
         addChild(body)
+        body.addChild(rimLight)
         body.addChild(sprite)
+        body.addChild(maskGlow)
         body.addChild(rig)
         for n in [tail, armB, legB, torso, legF, armF, head] as [SKNode] {
             rig.addChild(n)
@@ -789,10 +851,10 @@ public final class BanditVisual: SKNode {
         name = "bandit"
         applyFacingScale()
 
-        let trailTex = ArtCatalog.motionTrailTexture()
         for i in 0..<trailPoolSize {
-            let speck = SKSpriteNode(texture: trailTex, size: CGSize(width: 12, height: 22))
+            let speck = SKSpriteNode(texture: idleTex, size: SpriteCycles.banditDisplaySize)
             speck.name = "trail_\(i)"
+            speck.anchorPoint = CGPoint(x: 0.5, y: footAnchorY)
             speck.blendMode = .add
             speck.alpha = 0
             speck.isHidden = true
@@ -838,21 +900,38 @@ public final class BanditVisual: SKNode {
         ]), withKey: "sq")
     }
 
-    public func show(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool = false) {
+    public func show(
+        anim: BanditAnim,
+        maskMode: Bool,
+        dt: CGFloat,
+        moveSpeed: CGFloat = 0,
+        runSpeed: CGFloat = 1,
+        smokeLite: Bool = false
+    ) {
         if anim != currentAnim {
             currentAnim = anim
             applyPose(anim)
         }
-        bobPhase += dt
+        // Animation rate tracks horizontal speed for walk/run (clamped); one-shots stay at authored fps.
+        let speedRatio: CGFloat = {
+            switch anim {
+            case .walk, .run:
+                let denom = max(runSpeed, 0.1)
+                return max(0.6, min(1.4, abs(moveSpeed) / denom))
+            default:
+                return 1
+            }
+        }()
+        driveSpeed = speedRatio
+        bobPhase += dt * speedRatio
         // Sheet cycles already animate; skip extra bob when sheet-driven.
         if !sheetDriven, anim == .idle || anim == .run || anim == .walk {
             let runLike = anim == .run
             sprite.position.y = sin(bobPhase * (runLike ? 15 : 3.2)) * (runLike ? 2.6 : 1.3)
-        } else if sheetDriven {
-            sprite.position.y = 0
         } else {
             sprite.position.y = 0
         }
+        tickSheetDriver(dt: dt)
         if maskMode {
             // Crisp cyan rim — not a blurry ghost head wash.
             sprite.color = ArtCatalog.neonCyan
@@ -861,6 +940,10 @@ public final class BanditVisual: SKNode {
             tail.colorBlendFactor = 0.28
             maskGlow.isHidden = false
             maskGlow.alpha = 0.95
+            rimLight.isHidden = false
+            rimLight.alpha = 0.55
+            rimLight.texture = sprite.texture
+            rimLight.position = CGPoint(x: facingSign * 2.5, y: 1.5)
         } else {
             sprite.color = .white
             sprite.colorBlendFactor = 0
@@ -868,26 +951,13 @@ public final class BanditVisual: SKNode {
             tail.colorBlendFactor = 0
             maskGlow.isHidden = true
             maskGlow.alpha = 0
+            rimLight.alpha = 0.22
+            rimLight.isHidden = false
+            rimLight.texture = sprite.texture
+            rimLight.color = ArtCatalog.neonCyan
+            rimLight.position = CGPoint(x: -facingSign * 2.0, y: 1.0)
         }
-        if sprite.action(forKey: "frames") == nil {
-            switch anim {
-            case .jump, .apex: sprite.texture = jumpTex ?? idleTex
-            case .fall, .wallSlide: sprite.texture = fallTex ?? idleTex
-            case .pounce: sprite.texture = (flopTex ?? pounceTex) ?? idleTex
-            case .walk where walkTextures.count > 1:
-                sprite.texture = walkTextures[Int(bobPhase * 12) % walkTextures.count]
-            case .run where runTextures.count > 1:
-                sprite.texture = runTextures[Int(bobPhase * 14) % runTextures.count]
-            case .hurt where hurtTextures.count > 0:
-                sprite.texture = hurtTextures[min(hurtTextures.count - 1, Int(bobPhase * 20) % hurtTextures.count)]
-            case .death where deathTextures.count > 0:
-                sprite.texture = deathTextures[min(deathTextures.count - 1, Int(bobPhase * 12))]
-            case .pickUp where pickUpTextures.count > 0:
-                sprite.texture = pickUpTextures[min(pickUpTextures.count - 1, Int(bobPhase * 18) % pickUpTextures.count)]
-            default:
-                sprite.texture = idleTex
-            }
-        }
+        updateMaskGlowToHead()
         tickMotionTrail(anim: anim, maskMode: maskMode, dt: dt, smokeLite: smokeLite)
     }
 
@@ -895,27 +965,72 @@ public final class BanditVisual: SKNode {
         cycles[action]?.timePerFrame ?? fallback
     }
 
-    private func playLoop(_ textures: [SKTexture], action: String, fallbackTPF: TimeInterval) {
-        guard textures.count > 1 else {
-            sprite.texture = textures.first ?? idleTex
-            return
+    private func beginDrive(
+        textures: [SKTexture],
+        anchors: [HeadAnchor],
+        fps: CGFloat,
+        loop: Bool
+    ) {
+        sprite.removeAction(forKey: "frames")
+        driveTextures = textures
+        driveAnchors = anchors
+        driveFPS = max(fps, 1)
+        driveLoop = loop
+        driveIndex = 0
+        if let first = textures.first {
+            sprite.texture = first
+            rimLight.texture = first
         }
-        sprite.run(SKAction.repeatForever(
-            SKAction.animate(with: textures, timePerFrame: tpf(action, fallback: fallbackTPF))
-        ), withKey: "frames")
+        updateMaskGlowToHead()
+    }
+
+    private func tickSheetDriver(dt: CGFloat) {
+        guard !driveTextures.isEmpty else { return }
+        driveIndex += dt * driveFPS * driveSpeed
+        if driveLoop {
+            let count = CGFloat(driveTextures.count)
+            if driveIndex >= count { driveIndex = driveIndex.truncatingRemainder(dividingBy: count) }
+        } else {
+            driveIndex = min(driveIndex, CGFloat(driveTextures.count - 1))
+        }
+        let i = max(0, min(driveTextures.count - 1, Int(driveIndex)))
+        sprite.texture = driveTextures[i]
+        rimLight.texture = driveTextures[i]
+    }
+
+    private func updateMaskGlowToHead() {
+        let i = max(0, min(driveTextures.count - 1, Int(driveIndex)))
+        let anchor: HeadAnchor = {
+            if driveAnchors.indices.contains(i) { return driveAnchors[i] }
+            if let list = headAnchorsByAnim[currentAnim], list.indices.contains(i) { return list[i] }
+            return HeadAnchor(x: 0.02, y: 0.48)
+        }()
+        let w = sprite.size.width
+        let h = sprite.size.height
+        // Body already flips for facing; keep LED x in sheet space (no extra facing flip).
+        maskGlow.position = CGPoint(x: anchor.x * w, y: anchor.y * h)
+    }
+
+    private func playLoop(_ textures: [SKTexture], action: String, fallbackTPF: TimeInterval) {
+        let fps = CGFloat(1.0 / tpf(action, fallback: fallbackTPF))
+        let anchors = headAnchorsByAnim[currentAnim]
+            ?? cycles[action]?.headAnchors
+            ?? Array(repeating: HeadAnchor(x: 0, y: 0.48), count: textures.count)
+        beginDrive(textures: textures, anchors: anchors, fps: fps, loop: true)
     }
 
     private func playOnce(_ textures: [SKTexture], action: String, fallbackTPF: TimeInterval) {
-        guard textures.count > 1 else {
-            sprite.texture = textures.first ?? idleTex
-            return
-        }
-        sprite.run(SKAction.animate(with: textures, timePerFrame: tpf(action, fallback: fallbackTPF)), withKey: "frames")
+        let fps = CGFloat(1.0 / tpf(action, fallback: fallbackTPF))
+        let anchors = headAnchorsByAnim[currentAnim]
+            ?? cycles[action]?.headAnchors
+            ?? Array(repeating: HeadAnchor(x: 0, y: 0.48), count: textures.count)
+        beginDrive(textures: textures, anchors: anchors, fps: fps, loop: false)
     }
 
     private func applyPose(_ anim: BanditAnim) {
         stopLimbActions()
         sprite.removeAction(forKey: "frames")
+        driveIndex = 0
         if sheetDriven { rig.alpha = 0 }
         switch anim {
         case .walk:
@@ -928,22 +1043,34 @@ public final class BanditVisual: SKNode {
             if !sheetDriven { poseJump() }
             if jumpTextures.count > 2 {
                 let ascent = Array(jumpTextures.prefix(max(2, jumpTextures.count / 2)))
-                sprite.run(SKAction.animate(with: ascent, timePerFrame: tpf("jump", fallback: 0.06)), withKey: "frames")
+                let anchors = Array((headAnchorsByAnim[.jump] ?? []).prefix(ascent.count))
+                beginDrive(textures: ascent, anchors: anchors, fps: CGFloat(1.0 / tpf("jump", fallback: 0.06)), loop: false)
             } else {
                 sprite.texture = jumpTex ?? idleTex
+                driveTextures = []
             }
         case .apex:
             if !sheetDriven { poseApex() }
-            sprite.texture = jumpTextures.dropFirst(jumpTextures.count / 2).first ?? jumpTex ?? idleTex
+            let tex = jumpTextures.dropFirst(jumpTextures.count / 2).first ?? jumpTex ?? idleTex
+            if let tex {
+                sprite.texture = tex
+                let anchors = headAnchorsByAnim[.apex] ?? []
+                let mid = anchors.isEmpty ? 0 : min(anchors.count - 1, max(0, jumpTextures.count / 2))
+                let head = anchors.isEmpty ? HeadAnchor(x: 0, y: 0.48) : anchors[mid]
+                beginDrive(textures: [tex], anchors: [head], fps: 1, loop: false)
+            } else {
+                driveTextures = []
+            }
         case .fall, .wallSlide:
             if !sheetDriven { poseFall() }
             if jumpTextures.count > 2 {
                 let descent = Array(jumpTextures.suffix(max(2, jumpTextures.count / 2)))
-                sprite.run(SKAction.repeatForever(
-                    SKAction.animate(with: descent, timePerFrame: tpf("jump", fallback: 0.08))
-                ), withKey: "frames")
+                let all = headAnchorsByAnim[.fall] ?? []
+                let anchors = Array(all.suffix(descent.count))
+                beginDrive(textures: descent, anchors: anchors, fps: CGFloat(1.0 / tpf("jump", fallback: 0.08)), loop: true)
             } else {
                 sprite.texture = fallTex ?? idleTex
+                driveTextures = []
             }
         case .pounce:
             if !sheetDriven { posePounce() }
@@ -951,6 +1078,7 @@ public final class BanditVisual: SKNode {
                 playOnce(attackTextures, action: "attack", fallbackTPF: 0.04)
             } else {
                 sprite.texture = (flopTex ?? pounceTex) ?? idleTex
+                driveTextures = []
             }
         case .hurt:
             playOnce(hurtTextures, action: "hurt", fallbackTPF: 0.04)
@@ -1170,19 +1298,25 @@ public final class BanditVisual: SKNode {
         trailCursor += 1
         speck.removeAllActions()
         let face: CGFloat = facingSign
-        speck.position = CGPoint(x: -face * (maskMode ? 22 : 16), y: dash ? 2 : 4)
+        // Raccoon-silhouette afterimage (current sheet frame), not a rectangle speck.
+        speck.texture = sprite.texture ?? idleTex
+        speck.size = sprite.size
+        speck.anchorPoint = sprite.anchorPoint
+        speck.xScale = bodyFaceScale()
+        speck.yScale = 1
+        speck.position = CGPoint(x: -face * (maskMode ? 18 : 12), y: dash ? 1 : 0)
         speck.zRotation = 0
-        speck.setScale(maskMode ? 1.45 : (dash ? 1.2 : 0.9))
         speck.color = maskMode ? ArtCatalog.neonCyan : ArtCatalog.neonPink
-        speck.colorBlendFactor = 0.7
-        speck.alpha = maskMode ? 0.85 : 0.48
+        speck.colorBlendFactor = maskMode ? 0.9 : 0.75
+        speck.alpha = maskMode ? 0.55 : 0.32
         speck.isHidden = false
-        let drift = -face * (maskMode ? 40 : 24)
-        let life: TimeInterval = maskMode ? 0.32 : 0.2
+        let drift = -face * (maskMode ? 36 : 22)
+        let life: TimeInterval = maskMode ? 0.28 : 0.18
+        let endScaleX = bodyFaceScale() * (maskMode ? 0.85 : 0.7)
         speck.run(SKAction.sequence([
             SKAction.group([
                 SKAction.fadeOut(withDuration: life),
-                SKAction.scaleX(to: 0.25, y: maskMode ? 1.7 : 1.25, duration: life),
+                SKAction.scaleX(to: endScaleX, y: maskMode ? 1.05 : 0.9, duration: life),
                 SKAction.moveBy(x: drift, y: 0, duration: life),
             ]),
             SKAction.run { speck.isHidden = true; speck.alpha = 0 },
