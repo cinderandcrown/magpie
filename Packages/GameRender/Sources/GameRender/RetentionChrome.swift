@@ -134,6 +134,11 @@ public enum RetentionChrome {
             board.addChild(tick)
         }
 
+        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 72, height: 72))
+        mascot.name = "mapBandit"
+        mascot.position = CGPoint(x: 0, y: -size.height * 0.28)
+        root.addChild(mascot)
+
         let back = makeChromeButton(title: "BACK", color: ArtCatalog.neonPink, name: "mapBack")
         back.position = CGPoint(x: 0, y: -size.height * 0.38)
         root.addChild(back)
@@ -182,12 +187,17 @@ public enum RetentionChrome {
         clears.name = "dailyClears"
         root.addChild(clears)
 
+        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 88, height: 88))
+        mascot.name = "dailyBandit"
+        mascot.position = CGPoint(x: 0, y: size.height * 0.0 - 48)
+        root.addChild(mascot)
+
         let play = makeChromeButton(title: "RUN HEIST", color: ArtCatalog.neonLime, name: "dailyPlay", wide: true)
-        play.position = CGPoint(x: 0, y: -70)
+        play.position = CGPoint(x: 0, y: -110)
         root.addChild(play)
 
         let back = makeChromeButton(title: "BACK", color: ArtCatalog.neonPink, name: "dailyBack")
-        back.position = CGPoint(x: 0, y: -130)
+        back.position = CGPoint(x: 0, y: -165)
         root.addChild(back)
         return root
     }

@@ -198,7 +198,7 @@ Prices and catalog still need Nicholas approval before shipping (see open questi
 
 #### SFX handoff
 
-Fire Fox generates with ElevenLabs → deliver to `Assets/Audio/sfx/` with a manifest. Use placeholders until then.
+Fire Fox delivered ElevenLabs juice pack to `Assets/Audio/sfx/` with `sfx_manifest.json`. Wired via `SFXManager` (preload, ambient session, separate music/SFX volumes + mute).
 
 ## Unchanged engineering pillars
 

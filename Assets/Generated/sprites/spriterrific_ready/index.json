@@ -8,6 +8,11 @@
           "fps": 6,
           "path": "sprites/spriterrific_ready/bandit/idle"
         },
+        "idle_front": {
+          "frames": 10,
+          "fps": 6,
+          "path": "sprites/spriterrific_ready/bandit/idle_front"
+        },
         "walk": {
           "frames": 29,
           "fps": 24,
@@ -88,6 +93,11 @@
           "fps": 24,
           "path": "sprites/spriterrific_ready/mop_9000_boss/walk"
         },
+        "tread_roll": {
+          "frames": 27,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/mop_9000_boss/tread_roll"
+        },
         "attack": {
           "frames": 25,
           "fps": 24,
@@ -106,5 +116,5 @@
       }
     }
   },
-  "notes": "Side views face WEST; flip xScale for right. Anchor bottom-center at shared foot_y."
+  "notes": "Side views face WEST; flip xScale for right. Anchor bottom-center at foot_y."
 }

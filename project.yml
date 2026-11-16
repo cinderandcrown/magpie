@@ -62,9 +62,21 @@ targets:
           test -f "${DEST}/ui/logo_neon_city_bandit@1024.png"
           test -f "${DEST}/audio/level_loop.m4a"
           test -f "${DEST}/sprites/spriterrific_ready/bandit/idle/01.png"
+          test -f "${DEST}/sprites/spriterrific_ready/bandit/idle_front/01.png"
           test -f "${DEST}/sprites/spriterrific_ready/mop_bot/walk/01.png"
+          test -f "${DEST}/sprites/spriterrific_ready/mop_9000_boss/tread_roll/01.png"
           test -f "${DEST}/sprites/spriterrific/bandit/idle/spritesheet.png"
+          # Juice SFX pack (separate from Generated — identical basenames collide if flattened).
+          SFX_SRC="${SRCROOT}/Assets/Audio/sfx"
+          SFX_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Audio/sfx"
+          mkdir -p "$SFX_DEST"
+          rsync -a --delete "${SFX_SRC}/" "${SFX_DEST}/"
+          test -f "${SFX_DEST}/sfx_manifest.json"
+          test -f "${SFX_DEST}/jump.wav"
+          test -f "${SFX_DEST}/startup_jingle.wav"
+          test -f "${SFX_DEST}/boss_tread_rumble.wav"
           echo "Copied Generated -> $DEST"
+          echo "Copied SFX -> $SFX_DEST"
     settings:
       base:
         INFOPLIST_FILE: Magpie/Info.plist

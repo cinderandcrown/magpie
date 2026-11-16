@@ -61,6 +61,8 @@ public final class HeistScene: SKScene {
     private var hitStop: TimeInterval = 0
     private var cameraFocus = CGPoint.zero
     private var maskMusicOn = false
+    /// MOP ids that already barked `mop_bot_alert` this approach.
+    private var mopAlerted: Set<Int> = []
     private var hapticLight = UIImpactFeedbackGenerator(style: .light)
     private var hapticMed = UIImpactFeedbackGenerator(style: .medium)
     private var hapticHeavy = UIImpactFeedbackGenerator(style: .heavy)
@@ -608,6 +610,12 @@ public final class HeistScene: SKScene {
         logo.name = "titleLogo"
         titleRoot.addChild(logo)
 
+        // Front-facing Spriterrific idle for title / menu / Hideout mascot.
+        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 110, height: 110))
+        mascot.name = "titleBandit"
+        mascot.zPosition = 2
+        titleRoot.addChild(mascot)
+
         let sub = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
         sub.name = "titleSub"
         // Swappable with TitleArt — no ASC / CFBundleDisplayName rename yet.
@@ -657,6 +665,14 @@ public final class HeistScene: SKScene {
         dailyBtn.position = CGPoint(x: 78, y: -150)
         titleRoot.addChild(dailyBtn)
 
+        let muteBtn = RetentionChrome.makeChromeButton(
+            title: JuiceSound.shared.muted ? "UNMUTE" : "MUTE",
+            color: ArtCatalog.neonPink,
+            name: "titleMute"
+        )
+        muteBtn.position = CGPoint(x: 0, y: -210)
+        titleRoot.addChild(muteBtn)
+
         let credits = SKLabelNode(fontNamed: "AvenirNext-Medium")
         credits.name = "titleCredits"
         credits.text = TitleArt.assetCredits
@@ -666,6 +682,12 @@ public final class HeistScene: SKScene {
         titleRoot.addChild(credits)
 
         layoutTitleChrome()
+    }
+
+    private func refreshMuteButton() {
+        guard let btn = titleRoot.childNode(withName: "titleMute") else { return }
+        let label = btn.children.compactMap { $0 as? SKLabelNode }.first
+        label?.text = JuiceSound.shared.muted ? "UNMUTE" : "MUTE"
     }
 
     private func setupRetention() {
@@ -743,11 +765,16 @@ public final class HeistScene: SKScene {
             glow.position = logo.position
             glow.setScale(max(1.0, size.width * 0.85 / 220))
         }
-        titleRoot.childNode(withName: "titleSub")?.position = CGPoint(x: 0, y: logoY - 78)
+        // Front idle mascot sits under the wordmark (feet on an invisible ground line).
+        if let mascot = titleRoot.childNode(withName: "titleBandit") {
+            mascot.position = CGPoint(x: 0, y: logoY - 118)
+        }
+        titleRoot.childNode(withName: "titleSub")?.position = CGPoint(x: 0, y: logoY - 168)
         titleRoot.childNode(withName: "tapToStart")?.position = CGPoint(x: 0, y: -12)
         titleRoot.childNode(withName: "hintPlate")?.position = CGPoint(x: 0, y: -78)
         titleRoot.childNode(withName: "titleMap")?.position = CGPoint(x: -78, y: -150)
         titleRoot.childNode(withName: "titleDaily")?.position = CGPoint(x: 78, y: -150)
+        titleRoot.childNode(withName: "titleMute")?.position = CGPoint(x: 0, y: -210)
         titleRoot.childNode(withName: "titleCredits")?.position = CGPoint(x: 0, y: -hh + bottomSafe + 18)
 
         // Runtime + unit-testable gate: logo frame must sit inside safe area.
@@ -988,8 +1015,9 @@ public final class HeistScene: SKScene {
             }
         }
         JuiceSound.shared.prepare()
-        playSFX(.sfxUITap, smokeHero: true)
+        JuiceSound.shared.playUITap()
         JuiceSound.shared.startLevelMusic()
+        mopAlerted.removeAll()
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
         titleRoot.isHidden = true
@@ -999,8 +1027,9 @@ public final class HeistScene: SKScene {
 
     private func doRetry() {
         JuiceSound.shared.prepare()
-        playSFX(.sfxUITap, smokeHero: true)
+        JuiceSound.shared.playUITap()
         JuiceSound.shared.startLevelMusic()
+        mopAlerted.removeAll()
         sim.retry()
         hideOutcome()
         updateHUDVisibility()
@@ -1024,16 +1053,19 @@ public final class HeistScene: SKScene {
             if !retentionRoot.isHidden {
                 let hitNames = Set(nodes(at: touch.location(in: self)).compactMap(\.name))
                 if hitNames.contains("mapBack") || hitNames.contains("dailyBack") {
+                    JuiceSound.shared.playUIBack()
                     hideRetention()
                     return
                 }
                 if hitNames.contains("dailyPlay") {
+                    JuiceSound.shared.playUITap()
                     hideRetention()
                     progressStore.recordDailyClear(dayKey: ProgressStore.dayKey())
                     beginPlay()
                     return
                 }
                 if hitNames.contains("district_neon_docks") || hitNames.contains("districtLabel") {
+                    JuiceSound.shared.playUITap()
                     hideRetention()
                     beginPlay()
                     return
@@ -1042,11 +1074,21 @@ public final class HeistScene: SKScene {
             }
             if case .title = sim.state.phase {
                 let hitNames = Set(nodes(at: touch.location(in: self)).compactMap(\.name))
+                if hitNames.contains("titleMute") {
+                    JuiceSound.shared.toggleMute()
+                    refreshMuteButton()
+                    if !JuiceSound.shared.muted {
+                        JuiceSound.shared.playUITap()
+                    }
+                    return
+                }
                 if hitNames.contains("titleMap") {
+                    JuiceSound.shared.playUITap()
                     showDistrictMap()
                     return
                 }
                 if hitNames.contains("titleDaily") {
+                    JuiceSound.shared.playUITap()
                     showDailyHeist()
                     return
                 }
@@ -1058,6 +1100,7 @@ public final class HeistScene: SKScene {
                 if let home = card.childNode(withName: "homeBtn"), home.contains(pCard) {
                     hideOutcome()
                     JuiceSound.shared.stopMusic()
+                    JuiceSound.shared.playUIBack()
                     JuiceSound.shared.playTitleSting()
                     sim = Sim(map: sim.map, tuning: tuning, seed: smokeEnabled ? 7 : 11)
                     titleRoot.isHidden = false
@@ -1265,30 +1308,35 @@ public final class HeistScene: SKScene {
         JuiceSound.shared.play(key)
     }
 
+    private func playJuice(_ body: () -> Void, smokeHero: Bool = false) {
+        if smokeEnabled, !smokeHero { return }
+        body()
+    }
+
     private func handle(_ events: [SimEvent]) {
         for e in events {
             switch e.kind {
             case .jump:
-                playSFX(.sfxJump)
+                playJuice({ JuiceSound.shared.playJump() })
                 if !smokeEnabled { hapticLight.impactOccurred() }
                 squash(0.78, 1.28)
             case .land:
-                playSFX(.sfxLand)
+                playJuice({ JuiceSound.shared.playLand() })
                 squash(1.35, 0.65)
                 dust(at: e.position)
             case .pounce:
-                playSFX(.sfxPounce)
+                playJuice({ JuiceSound.shared.playPounce() })
                 if !smokeEnabled { hapticMed.impactOccurred() }
                 shake(0.4)
             case .flop:
-                playSFX(.sfxBellyFlop)
+                playJuice({ JuiceSound.shared.playLand() })
                 squash(1.4, 0.55)
             case .stomp:
                 smoke.noteStomp()
                 // Midrun hold: ignore accidental pre-hunt stomps in the smoke counter/wait gate.
                 let midrunOk = !smokeEnabled || SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
                 if midrunOk { smokeStatus.stomps += 1 }
-                playSFX(.sfxMopHit, smokeHero: true)
+                playJuice({ JuiceSound.shared.playStomp() }, smokeHero: true)
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
                 // 70ms hit-stop + shake + sparks + MOP squash + score pop (must read in smoke video).
                 hitStop = 0.07
@@ -1301,10 +1349,12 @@ public final class HeistScene: SKScene {
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
                 scorePop(at: e.position, text: "+\(max(1, sim.state.bandit.combo))", color: ArtCatalog.neonLime)
             case .shiny:
-                playSFX(.sfxCollectShiny)
+                let combo = sim.state.bandit.combo
+                playJuice({ JuiceSound.shared.playCollect(combo: max(1, combo), loot: false) })
                 collectShinyJuice(at: e.position)
             case .bank:
-                playSFX(.sfxCollectShiny)
+                let combo = max(1, sim.state.bandit.combo)
+                playJuice({ JuiceSound.shared.playCollect(combo: combo, loot: true) })
                 shinySparkle(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonLime)
             case .maskOn:
@@ -1318,7 +1368,7 @@ public final class HeistScene: SKScene {
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
                 flashMask()
             case .hurt:
-                playSFX(.sfxPlayerHit, smokeHero: true)
+                playJuice({ JuiceSound.shared.playHurt() }, smokeHero: true)
                 damageFlash()
                 shake(0.35)
             case .win:
@@ -1330,7 +1380,7 @@ public final class HeistScene: SKScene {
                 writeSmokeStatus()
             case .fail:
                 smokeStatus.died = true
-                playSFX(.sfxFail, smokeHero: true)
+                playJuice({ JuiceSound.shared.playKO() }, smokeHero: true)
                 JuiceSound.shared.setMaskModeMusic(false)
                 clearMaskGrade()
                 // Smoke: never overlay SPLASHED during the Mask beat capture window.
@@ -1452,7 +1502,10 @@ public final class HeistScene: SKScene {
                 star.run(SKAction.sequence([
                     SKAction.wait(forDuration: 0.28 + 0.14 * Double(i)),
                     SKAction.group([
-                        SKAction.run { JuiceSound.shared.play(.sfxUITap) },
+                        SKAction.run {
+                            let name = ["star_1", "star_2", "star_3"][i]
+                            SFXManager.shared.play(name)
+                        },
                         SKAction.fadeAlpha(to: 1, duration: 0.14),
                         SKAction.scale(to: 1.25, duration: 0.14),
                     ]),
@@ -1514,8 +1567,16 @@ public final class HeistScene: SKScene {
                 node.isHidden = false
                 node.alpha = 1
                 var pose = m.anim
-                if pose == .walk, abs(m.position.x - b.position.x) < 80 {
+                let near = abs(m.position.x - b.position.x) < 80
+                    && abs(m.position.y - b.position.y) < 60
+                if pose == .walk, near {
                     pose = .attack
+                    if !mopAlerted.contains(m.id), !smokeEnabled {
+                        mopAlerted.insert(m.id)
+                        JuiceSound.shared.playMopAlert()
+                    }
+                } else if !near {
+                    mopAlerted.remove(m.id)
                 }
                 node.show(anim: pose, facing: m.facing)
             } else if m.anim == .death, m.animHold > 0 {

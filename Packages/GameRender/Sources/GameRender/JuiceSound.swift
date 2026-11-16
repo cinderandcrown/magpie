@@ -4,23 +4,61 @@
 import AVFoundation
 import Foundation
 
-/// Plays Fire Fox audio from `Assets/Generated/audio/` by AssetKey.
+/// Music + façade over `SFXManager`. Music and SFX volumes are separate; one mute gates both.
 /// Uses AVAudioPlayer only (no AVAudioEngine graph mutations off-thread).
 ///
+/// Session category is `.ambient` so the hardware silent switch is respected.
 /// Simulator `simctl io recordVideo` does not capture app audio — during smoke we also
 /// append a timeline to Documents/smoke_audio_events.txt so CI can mux music+SFX onto the mp4.
 public final class JuiceSound: @unchecked Sendable {
     public static let shared = JuiceSound()
 
     private var sessionReady = false
-    private var oneshots: [AVAudioPlayer] = []
     private var levelMusic: AVAudioPlayer?
     private var maskLayer: AVAudioPlayer?
     private var smokeLogURL: URL?
     private var smokeLogAnchor: TimeInterval?
     private let logLock = NSLock()
 
-    private init() {}
+    private let musicVolumeKey = "neon_bandit.musicVolume"
+    private let muteKey = "neon_bandit.audioMuted"
+
+    /// 0…1. Persisted. Independent of SFX volume.
+    public var musicVolume: Float {
+        didSet {
+            let v = max(0, min(1, musicVolume))
+            if v != musicVolume { musicVolume = v; return }
+            UserDefaults.standard.set(Double(v), forKey: musicVolumeKey)
+            applyMusicVolumes()
+        }
+    }
+
+    /// Convenience mirror of SFXManager.volume.
+    public var sfxVolume: Float {
+        get { SFXManager.shared.volume }
+        set { SFXManager.shared.volume = newValue }
+    }
+
+    /// Mutes music + SFX. Persisted. Silent-switch still applies on top via ambient session.
+    public var muted: Bool {
+        didSet {
+            UserDefaults.standard.set(muted, forKey: muteKey)
+            SFXManager.shared.muted = muted
+            SFXManager.shared.applyMuteState()
+            applyMusicVolumes()
+        }
+    }
+
+    public func toggleMute() {
+        muted.toggle()
+    }
+
+    private init() {
+        let mv = UserDefaults.standard.object(forKey: musicVolumeKey) as? Double
+        musicVolume = Float(mv ?? 0.42)
+        muted = UserDefaults.standard.bool(forKey: muteKey)
+        SFXManager.shared.muted = muted
+    }
 
     public static var smokeAudioLogURL: URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -39,24 +77,116 @@ public final class JuiceSound: @unchecked Sendable {
     }
 
     public func prepare() {
-        guard !sessionReady else { return }
+        guard !sessionReady else {
+            _ = SFXManager.shared.preload()
+            return
+        }
         #if os(iOS)
-        // `.playback` keeps music audible under silent-switch / smoke mux workflows.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, options: [.mixWithOthers])
+        // `.ambient` respects the hardware silent switch (user request). Smoke mux still
+        // rebuilds the soundtrack offline from smoke_audio_events.txt.
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
         try? AVAudioSession.sharedInstance().setActive(true)
         #endif
+        _ = SFXManager.shared.preload()
         sessionReady = true
     }
 
+    /// Map legacy AssetKey SFX onto the juice pack when available; fall back to Generated/audio.
     public func play(_ key: AssetKey) {
         prepare()
+        if playJuiceMapped(key) { return }
         guard let url = AssetManifest.audioURL(key) else { return }
         logSmoke("sfx \(key.rawValue)")
-        playOneShot(url)
+        playLegacyOneShot(url)
     }
 
+    /// Title / logo ident — juice `startup_jingle`, else legacy title sting.
     public func playTitleSting() {
+        prepare()
+        if SFXManager.shared.loadedCount > 0 {
+            logSmoke("sfx startup_jingle")
+            SFXManager.shared.playStartupJingle()
+            return
+        }
         play(.musicTitleSting)
+    }
+
+    public func playUITap() {
+        prepare()
+        logSmoke("sfx ui_tap")
+        SFXManager.shared.playUITap()
+    }
+
+    public func playUIBack() {
+        prepare()
+        logSmoke("sfx ui_back")
+        SFXManager.shared.playUIBack()
+    }
+
+    public func playJump() {
+        prepare()
+        logSmoke("sfx jump")
+        SFXManager.shared.playJump()
+    }
+
+    public func playLand() {
+        prepare()
+        logSmoke("sfx land")
+        SFXManager.shared.playLand()
+    }
+
+    public func playPounce() {
+        prepare()
+        logSmoke("sfx pounce_whoosh")
+        SFXManager.shared.playPounce()
+    }
+
+    public func playStomp() {
+        prepare()
+        logSmoke("sfx stomp_crunch")
+        SFXManager.shared.playStomp()
+    }
+
+    public func playCollect(combo: Int, loot: Bool) {
+        prepare()
+        logSmoke(loot ? "sfx loot_pickup" : "sfx coin_pickup")
+        SFXManager.shared.playCollect(combo: combo, loot: loot)
+    }
+
+    public func playHurt() {
+        prepare()
+        logSmoke("sfx raccoon_hurt")
+        SFXManager.shared.playHurt()
+    }
+
+    public func playKO() {
+        prepare()
+        logSmoke("sfx raccoon_ko")
+        SFXManager.shared.playKO()
+    }
+
+    public func playMopAlert() {
+        prepare()
+        logSmoke("sfx mop_bot_alert")
+        SFXManager.shared.playMopAlert()
+    }
+
+    public func playMopHit() {
+        prepare()
+        logSmoke("sfx mop_bot_hit")
+        SFXManager.shared.playMopHit()
+    }
+
+    private var bossTreadLogged = false
+
+    public func setBossTreadMoving(_ moving: Bool) {
+        prepare()
+        if moving, !bossTreadLogged {
+            logSmoke("sfx boss_tread_rumble")
+            bossTreadLogged = true
+        }
+        if !moving { bossTreadLogged = false }
+        SFXManager.shared.setBossTreadMoving(moving)
     }
 
     public func startLevelMusic() {
@@ -64,7 +194,7 @@ public final class JuiceSound: @unchecked Sendable {
         stopMusic()
         guard let url = AssetManifest.audioURL(.musicLevelLoop) else { return }
         logSmoke("music level_loop")
-        levelMusic = loopPlayer(url: url, volume: 0.42)
+        levelMusic = loopPlayer(url: url, volume: effectiveMusicVolume)
     }
 
     public func setMaskModeMusic(_ on: Bool) {
@@ -73,7 +203,7 @@ public final class JuiceSound: @unchecked Sendable {
             guard maskLayer == nil,
                   let url = AssetManifest.audioURL(.musicMaskLayer) else { return }
             logSmoke("music mask_mode_layer")
-            maskLayer = loopPlayer(url: url, volume: 0.45)
+            maskLayer = loopPlayer(url: url, volume: effectiveMusicVolume * 1.05)
         } else {
             if maskLayer != nil { logSmoke("music_mask_off") }
             maskLayer?.stop()
@@ -86,6 +216,56 @@ public final class JuiceSound: @unchecked Sendable {
         maskLayer?.stop()
         levelMusic = nil
         maskLayer = nil
+        SFXManager.shared.stopAllLoops()
+    }
+
+    // MARK: - Mapping
+
+    @discardableResult
+    private func playJuiceMapped(_ key: AssetKey) -> Bool {
+        guard SFXManager.shared.loadedCount > 0 else { return false }
+        switch key {
+        case .sfxJump:
+            playJump(); return true
+        case .sfxLand:
+            playLand(); return true
+        case .sfxPounce:
+            playPounce(); return true
+        case .sfxBellyFlop:
+            // No dedicated flop clip — soft land thud.
+            playLand(); return true
+        case .sfxMopHit:
+            playStomp(); return true
+        case .sfxCollectShiny:
+            playCollect(combo: 1, loot: false); return true
+        case .sfxPlayerHit:
+            playHurt(); return true
+        case .sfxFail:
+            playKO(); return true
+        case .sfxUITap:
+            playUITap(); return true
+        case .sfxMopAlert:
+            playMopAlert(); return true
+        default:
+            return false
+        }
+    }
+
+    private var effectiveMusicVolume: Float {
+        muted ? 0 : musicVolume
+    }
+
+    private func applyMusicVolumes() {
+        let v = effectiveMusicVolume
+        levelMusic?.volume = v
+        maskLayer?.volume = v * 1.05
+        if muted {
+            levelMusic?.pause()
+            maskLayer?.pause()
+        } else {
+            if let p = levelMusic, !p.isPlaying { p.play() }
+            if let p = maskLayer, !p.isPlaying { p.play() }
+        }
     }
 
     private func logSmoke(_ token: String) {
@@ -110,18 +290,21 @@ public final class JuiceSound: @unchecked Sendable {
         }
     }
 
-    private func playOneShot(_ url: URL) {
+    private var legacyOneshots: [AVAudioPlayer] = []
+
+    private func playLegacyOneShot(_ url: URL) {
+        guard !muted else { return }
         do {
             let player = try AVAudioPlayer(contentsOf: url)
+            player.volume = sfxVolume
             player.prepareToPlay()
             player.play()
-            oneshots.append(player)
-            oneshots.removeAll { !$0.isPlaying && $0 !== player }
-            // Hard cap — prevents AVAudioPlayer pile-up under autoplay stomps/SFX spam.
-            if oneshots.count > 5 {
-                let drop = oneshots.count - 5
-                for p in oneshots.prefix(drop) { p.stop() }
-                oneshots.removeFirst(drop)
+            legacyOneshots.append(player)
+            legacyOneshots.removeAll { !$0.isPlaying && $0 !== player }
+            if legacyOneshots.count > 5 {
+                let drop = legacyOneshots.count - 5
+                for p in legacyOneshots.prefix(drop) { p.stop() }
+                legacyOneshots.removeFirst(drop)
             }
         } catch {
             // Missing/corrupt clip — ignore rather than crash the host.
@@ -134,7 +317,7 @@ public final class JuiceSound: @unchecked Sendable {
             player.numberOfLoops = -1
             player.volume = volume
             player.prepareToPlay()
-            player.play()
+            if !muted { player.play() }
             return player
         } catch {
             return nil

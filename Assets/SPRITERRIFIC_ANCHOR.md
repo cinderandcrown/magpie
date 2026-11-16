@@ -13,4 +13,4 @@ Wired through `SpriteCycles` → `BanditVisual` / `MopVisual` / `BossVisual`. Si
 | MOP bot | `kh7feaba60taq5mxyby324vb1d8jbn7g` |
 | MOP-9000 boss | `kh7bhpgdh7xmesrm223krqc0658ja9k6` |
 | Earlier text anchor | `kh73s9m80tz14zdr7n3gp16d358jakpv` |
-| Status | Sheets handed off; wired in-game. `disco_dance` kept for backlog easter egg. |
+| Status | Sheets handed off; wired in-game. `idle_front` → title/menu; boss move = `tread_roll`. `disco_dance` kept for backlog easter egg. |

@@ -18,10 +18,11 @@ GYM = OUT / "_gym"
 
 CHARS: dict[str, list[str]] = {
     "bandit": [
-        "idle", "walk", "run", "jump", "attack", "hurt", "death", "pick_up", "disco_dance",
+        "idle", "idle_front", "walk", "run", "jump", "attack", "hurt", "death",
+        "pick_up", "disco_dance",
     ],
     "mop_bot": ["walk", "attack", "hurt", "death"],
-    "mop_9000_boss": ["idle", "walk", "attack", "hurt", "death"],
+    "mop_9000_boss": ["idle", "walk", "tread_roll", "attack", "hurt", "death"],
 }
 
 
@@ -172,7 +173,8 @@ def main() -> None:
         "Sliced + foot-baseline-normalized from `sprites/spriterrific/`.\n"
         "Side views face WEST — flip xScale for right.\n"
         "`disco_dance` kept for backlog easter egg. `bandit/anchor_front.png` for menu/Hideout.\n"
-        "Boss tread_roll sheet is swappable when it arrives; walk scrolls tread in code for now.\n"
+        "`idle_front` = title/menu/Hideout mascot. Boss movement uses `tread_roll` "
+        "(code tread scroll is polish only).\n"
     )
     print("DONE", OUT)
 

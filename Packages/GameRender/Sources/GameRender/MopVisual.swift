@@ -79,14 +79,16 @@ public final class MopVisual: SKSpriteNode {
     }
 }
 
-/// MOP-9000 boss — Spriterrific sheets; tread scroll while moving until tread_roll arrives.
+/// MOP-9000 boss — Spriterrific sheets. Movement uses `tread_roll` (not walk);
+/// a light code tread offset remains as polish on top of the sheet.
 @MainActor
 public final class BossVisual: SKNode {
     public let sprite: SKSpriteNode
-    /// Swappable tread layer: offset while moving; replace textures when tread_roll sheet lands.
+    /// Polish tread stripe under the body; subtle x-offset while moving.
     public let tread: SKSpriteNode
     private var idle: [SKTexture] = []
-    private var walk: [SKTexture] = []
+    private var treadRoll: [SKTexture] = []
+    private var walkFallback: [SKTexture] = []
     private var attack: [SKTexture] = []
     private var hurt: [SKTexture] = []
     private var death: [SKTexture] = []
@@ -95,9 +97,6 @@ public final class BossVisual: SKNode {
     private var treadPhase: CGFloat = 0
     private var usesWestSheets = true
     private var facingSign: CGFloat = 1
-    /// When true, prefer a future `tread_roll` cycle instead of UV offset.
-    public var useTreadRollSheet = false
-    private var treadRoll: [SKTexture] = []
 
     public override init() {
         let idleC = SpriteCycles.mop9000("idle")
@@ -107,14 +106,12 @@ public final class BossVisual: SKNode {
         sprite.anchorPoint = CGPoint(x: 0.5, y: idleC?.footAnchorY ?? 0.11)
         ArtCatalog.applyDespill(sprite)
 
-        tread = SKSpriteNode(color: SKColor(white: 0.15, alpha: 0.0), size: CGSize(width: 90, height: 18))
+        tread = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.28), size: CGSize(width: 88, height: 14))
         tread.name = "tread"
         tread.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        tread.position = CGPoint(x: 0, y: -SpriteCycles.bossDisplaySize.height * 0.28)
-        tread.zPosition = 0.5
-        // Placeholder tread stripe — scrolled in code; swap for tread_roll sheet when delivered.
-        tread.color = ArtCatalog.neonCyan.withAlphaComponent(0.35)
-        tread.colorBlendFactor = 1
+        tread.position = CGPoint(x: 0, y: -SpriteCycles.bossDisplaySize.height * 0.30)
+        tread.zPosition = -0.2
+        tread.alpha = 0.2
 
         super.init()
         addChild(sprite)
@@ -126,8 +123,12 @@ public final class BossVisual: SKNode {
             tpf["idle"] = idleC.timePerFrame
             usesWestSheets = true
         }
+        if let c = SpriteCycles.mop9000("tread_roll"), !c.textures.isEmpty {
+            treadRoll = c.textures
+            tpf["tread_roll"] = c.timePerFrame
+        }
         if let c = SpriteCycles.mop9000("walk") {
-            walk = c.textures
+            walkFallback = c.textures
             tpf["walk"] = c.timePerFrame
         }
         if let c = SpriteCycles.mop9000("attack") {
@@ -142,12 +143,6 @@ public final class BossVisual: SKNode {
             death = c.textures
             tpf["death"] = c.timePerFrame
         }
-        // Optional future sheet path — keep swappable.
-        if let c = SpriteCycles.mop9000("tread_roll"), !c.textures.isEmpty {
-            treadRoll = c.textures
-            useTreadRollSheet = true
-            tpf["tread_roll"] = c.timePerFrame
-        }
         show(action: "idle", facing: 1, moving: false, dt: 0)
     }
 
@@ -158,21 +153,37 @@ public final class BossVisual: SKNode {
         facingSign = facing >= 0 ? 1 : -1
         let face = usesWestSheets ? -facingSign : facingSign
         sprite.xScale = face
-        if action != current || sprite.action(forKey: "frames") == nil {
-            current = action
+
+        // Movement sheet = tread_roll (replaces walk). Idle/attack/hurt/death unchanged.
+        let resolved: String = {
+            if moving || action == "walk" || action == "tread_roll" {
+                return treadRoll.isEmpty ? "walk" : "tread_roll"
+            }
+            return action
+        }()
+
+        if resolved != current || sprite.action(forKey: "frames") == nil {
+            current = resolved
             sprite.removeAction(forKey: "frames")
             let textures: [SKTexture]
-            switch action {
-            case "walk": textures = walk.isEmpty ? idle : walk
-            case "attack": textures = attack.isEmpty ? idle : attack
-            case "hurt": textures = hurt.isEmpty ? idle : hurt
-            case "death": textures = death.isEmpty ? idle : death
-            default: textures = idle
+            switch resolved {
+            case "tread_roll":
+                textures = treadRoll.isEmpty ? (walkFallback.isEmpty ? idle : walkFallback) : treadRoll
+            case "walk":
+                textures = walkFallback.isEmpty ? idle : walkFallback
+            case "attack":
+                textures = attack.isEmpty ? idle : attack
+            case "hurt":
+                textures = hurt.isEmpty ? idle : hurt
+            case "death":
+                textures = death.isEmpty ? idle : death
+            default:
+                textures = idle
             }
-            let rate = tpf[action] ?? (1.0 / 12)
+            let rate = tpf[resolved] ?? (1.0 / 12)
             if textures.count > 1 {
                 let anim = SKAction.animate(with: textures, timePerFrame: rate)
-                if action == "idle" || action == "walk" {
+                if resolved == "idle" || resolved == "walk" || resolved == "tread_roll" {
                     sprite.run(SKAction.repeatForever(anim), withKey: "frames")
                 } else {
                     sprite.run(anim, withKey: "frames")
@@ -181,26 +192,19 @@ public final class BossVisual: SKNode {
                 sprite.texture = t
             }
         }
-        // Tread: scroll offset in code, or play tread_roll when present.
+
+        // Boss tread rumble loop while moving (juice SFX pack).
+        #if canImport(AVFoundation)
+        JuiceSound.shared.setBossTreadMoving(moving)
+        #endif
+
+        // Light code tread scroll as polish under the tread_roll body sheet.
         if moving {
-            treadPhase += dt * 8
-            if useTreadRollSheet, treadRoll.count > 1 {
-                if tread.action(forKey: "tread") == nil {
-                    tread.texture = treadRoll[0]
-                    tread.size = CGSize(width: 100, height: 24)
-                    tread.alpha = 1
-                    tread.run(SKAction.repeatForever(
-                        SKAction.animate(with: treadRoll, timePerFrame: tpf["tread_roll"] ?? 0.05)
-                    ), withKey: "tread")
-                }
-            } else {
-                tread.removeAction(forKey: "tread")
-                tread.alpha = 0.55
-                tread.position.x = CGFloat(sin(treadPhase)) * 6 * face
-            }
+            treadPhase += dt * 10
+            tread.alpha = 0.45
+            tread.position.x = CGFloat(sin(treadPhase)) * 5 * face
         } else {
-            tread.removeAction(forKey: "tread")
-            tread.alpha = 0.25
+            tread.alpha = 0.18
             tread.position.x = 0
         }
     }

@@ -350,6 +350,7 @@ ensure_ffmpeg() {
 ensure_ffmpeg
 
 AUDIO_DIR="Assets/Generated/audio"
+SFX_DIR="Assets/Audio/sfx"
 EVENTS_SRC="$(data_container)/Documents/smoke_audio_events.txt"
 EVENTS_COPY="$OUT_DIR/smoke_audio_events.txt"
 if [[ -f "$EVENTS_SRC" ]]; then
@@ -358,10 +359,10 @@ else
   echo "WARN: missing smoke_audio_events.txt — muxing music bed only" >&2
   : > "$EVENTS_COPY"
 fi
-python3 - "$VIDEO_OUT" "$AUDIO_DIR" "$EVENTS_COPY" "$MIN_VIDEO_SECS" <<'PY'
+python3 - "$VIDEO_OUT" "$AUDIO_DIR" "$SFX_DIR" "$EVENTS_COPY" "$MIN_VIDEO_SECS" <<'PY'
 import os, shutil, subprocess, sys, tempfile
 
-video, audio_dir, events_path, min_secs_s = sys.argv[1:5]
+video, audio_dir, sfx_dir, events_path, min_secs_s = sys.argv[1:6]
 min_secs = float(min_secs_s)
 ffmpeg = shutil.which("ffmpeg")
 ffprobe = shutil.which("ffprobe")
@@ -380,10 +381,11 @@ if dur + 0.05 < min_secs:
 print(f"OK continuous video duration {dur:.1f}s >= {min_secs:.0f}s")
 
 def find_clip(stem: str):
-    for ext in (".wav", ".caf", ".m4a", ".mp3"):
-        p = os.path.join(audio_dir, stem + ext)
-        if os.path.isfile(p):
-            return p
+    for folder in (sfx_dir, audio_dir):
+        for ext in (".wav", ".caf", ".m4a", ".mp3"):
+            p = os.path.join(folder, stem + ext)
+            if os.path.isfile(p):
+                return p
     return None
 
 music = find_clip("level_loop")
@@ -393,11 +395,20 @@ if not music:
 # Parse timeline: "<sec> sfx <key>" / "<sec> music <name>"
 sfx_map = {
     "mop_hit": "mop_hit",
+    "stomp_crunch": "stomp_crunch",
+    "mop_bot_break": "mop_bot_break",
     "mask_mode_on": "mask_mode_on",
     "player_hit": "player_hit",
+    "raccoon_hurt": "raccoon_hurt",
+    "raccoon_ko": "raccoon_ko",
     "fail": "fail",
     "win": "win",
     "ui_tap": "ui_tap",
+    "coin_pickup": "coin_pickup",
+    "loot_pickup": "loot_pickup",
+    "jump": "jump",
+    "land": "land",
+    "pounce_whoosh": "pounce_whoosh",
 }
 events = []
 with open(events_path, encoding="utf-8") as f:

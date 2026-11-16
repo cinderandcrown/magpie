@@ -22,11 +22,11 @@ Side views face WEST; ready frames are foot-baseline-normalized 256². `disco_da
 | --- | --- | --- | --- | --- |
 | `sprites/raccoon/*.png` + `sprites/raccoon/licensed_ccby/**` | [Cute raccoon 2d game sprite and animations](https://opengameart.org/content/cute-raccoon-2d-game-sprite-and-animations) | null-painter-error | **CC-BY 4.0** | Keep attribution while files remain in tree |
 
-## Juice SFX (pending)
+## Juice SFX
 
 | Asset | Source | License |
 | --- | --- | --- |
-| `Assets/Audio/sfx/**` (ElevenLabs; manifest TBD) | Fire Fox handoff after core-slice review | Cinder & Crown; ElevenLabs ToS |
+| `Assets/Audio/sfx/**` (41 WAVs + `sfx_manifest.json`) | Fire Fox / ElevenLabs 2026-11-15 | Cinder & Crown; ElevenLabs ToS |
 
 ## Raccoon procedural rig (fallback / squash helpers)
 

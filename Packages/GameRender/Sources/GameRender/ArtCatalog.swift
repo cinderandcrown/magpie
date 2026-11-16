@@ -90,6 +90,22 @@ public enum ArtCatalog {
         BanditVisual()
     }
 
+    /// Front-facing idle for title / menu / Hideout (`idle_front` sheet).
+    public static func makeBanditFrontMascot(size: CGSize = CGSize(width: 96, height: 96)) -> SKSpriteNode {
+        let cycle = SpriteCycles.bandit("idle_front")
+        let tex = cycle?.textures.first ?? texture(.raccoonIdle) ?? SKTexture()
+        let n = SKSpriteNode(texture: tex, size: size)
+        n.name = "banditFront"
+        n.anchorPoint = CGPoint(x: 0.5, y: cycle?.footAnchorY ?? 0.11)
+        applyDespill(n)
+        if let cycle, cycle.textures.count > 1 {
+            n.run(SKAction.repeatForever(
+                SKAction.animate(with: cycle.textures, timePerFrame: cycle.timePerFrame)
+            ), withKey: "frames")
+        }
+        return n
+    }
+
     /// Rig parts cropped from the project idle sheet (see `Assets/LICENSES.md`). No third-party art.
     public static func raccoonRigParts() -> (
         head: SKTexture, torso: SKTexture, arm: SKTexture, leg: SKTexture, tail: SKTexture
