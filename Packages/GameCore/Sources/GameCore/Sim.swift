@@ -69,7 +69,7 @@ public struct Sim: Equatable, Sendable {
         }
         var mops: [MopEnemy] = []
         for (i, c) in map.findAll(.mopSpawn).enumerated() {
-            let p = map.worldCenter(ofX: c.0, y: c.1, tileSize: tile)
+            let p = map.worldStandOnDeckBelow(ofX: c.0, markerY: c.1, tileSize: tile)
             mops.append(MopEnemy(
                 id: i, position: p, home: p, patrolSpan: tile * 2.5, phase: Double(i) * 0.7,
                 alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1

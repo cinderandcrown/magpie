@@ -8,7 +8,7 @@ import UIKit
 /// Side-view neon docks heist wired to `Assets/Generated/` via AssetManifest.
 public final class HeistScene: SKScene {
     /// Zoom so playfield + skyline fill portrait (no empty black letterbox bands).
-    public static let worldZoom: CGFloat = 1.42
+    public static let worldZoom: CGFloat = 1.85
     private var tileMapNode: SKTileMapNode?
 
     private var sim: Sim!
@@ -80,6 +80,13 @@ public final class HeistScene: SKScene {
     private var maskGradePulse: CGFloat = 0
     private var lastAwardedMedals = 0
     private var retentionMode: String? = nil // "map" | "daily"
+    private var isPaused = false
+    private var pauseFromSystem = false
+    private var resumeCountdown: TimeInterval = 0
+    private var failOutcomeHold: TimeInterval = 0
+    private let pauseRoot = SKNode()
+    private var pauseBtn: SKShapeNode!
+    private var pauseCountLabel: SKLabelNode?
     /// Wall-clock play timer for smoke (monotonic across death/retry — review gate).
     private var smokeWallStart: TimeInterval = 0
     private var smokeWallElapsed: TimeInterval = 0
@@ -186,6 +193,7 @@ public final class HeistScene: SKScene {
         setupHUD()
         setupTitle()
         setupOutcome()
+        setupPauseMenu()
         setupRetention()
         #if DEBUG
         setupDebugTuning()
@@ -788,6 +796,140 @@ public final class HeistScene: SKScene {
         }
     }
 
+    private func setupPauseMenu() {
+        pauseBtn = makeFaceButton(title: "PAUSE", color: ArtCatalog.neonCyan)
+        pauseBtn.name = "pauseBtn"
+        pauseBtn.zPosition = 212
+        playHUD.addChild(pauseBtn)
+
+        pauseRoot.zPosition = 330
+        pauseRoot.isHidden = true
+        pauseRoot.name = "pauseRoot"
+        overlay.addChild(pauseRoot)
+
+        let wash = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
+        wash.fillColor = SKColor(red: 0.02, green: 0.02, blue: 0.08, alpha: 0.62)
+        wash.strokeColor = .clear
+        wash.name = "pauseWash"
+        pauseRoot.addChild(wash)
+
+        let card = SKShapeNode(rectOf: CGSize(width: 272, height: 290), cornerRadius: 14)
+        card.fillColor = SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 0.96)
+        card.strokeColor = ArtCatalog.neonCyan
+        card.lineWidth = 2.5
+        card.glowWidth = 2
+        card.name = "pauseCard"
+        pauseRoot.addChild(card)
+
+        let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        title.name = "pauseTitle"
+        title.text = "PAUSED"
+        title.fontSize = 26
+        title.fontColor = ArtCatalog.neonCyan
+        title.position = CGPoint(x: 0, y: 108)
+        card.addChild(title)
+
+        let resume = makeOutcomeButton(title: "RESUME", color: ArtCatalog.neonLime, name: "pauseResume", wide: true)
+        resume.position = CGPoint(x: 0, y: 48)
+        card.addChild(resume)
+        let restart = makeOutcomeButton(title: "RESTART", color: ArtCatalog.neonOrange, name: "pauseRestart", wide: true)
+        restart.position = CGPoint(x: 0, y: -12)
+        card.addChild(restart)
+        let mute = makeOutcomeButton(
+            title: JuiceSound.shared.muted ? "UNMUTE" : "MUTE",
+            color: ArtCatalog.neonPink,
+            name: "pauseMute",
+            wide: true
+        )
+        mute.position = CGPoint(x: 0, y: -72)
+        card.addChild(mute)
+        let home = makeOutcomeButton(title: "HOME", color: ArtCatalog.neonPink, name: "pauseHome", wide: true)
+        home.position = CGPoint(x: 0, y: -132)
+        card.addChild(home)
+
+        let note = SKLabelNode(fontNamed: "AvenirNext-Medium")
+        note.name = "pauseVolumeNote"
+        note.text = JuiceSound.shared.muted ? "Audio muted" : "Music + SFX on"
+        note.fontSize = 11
+        note.fontColor = SKColor(white: 1, alpha: 0.65)
+        note.position = CGPoint(x: 0, y: -168)
+        card.addChild(note)
+
+        let count = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        count.name = "pauseCountdown"
+        count.fontSize = 48
+        count.fontColor = .white
+        count.alpha = 0
+        count.zPosition = 5
+        count.verticalAlignmentMode = .center
+        pauseRoot.addChild(count)
+        pauseCountLabel = count
+    }
+
+    private func refreshPauseMuteButton() {
+        guard let card = pauseRoot.childNode(withName: "pauseCard") else { return }
+        if let mute = card.childNode(withName: "pauseMute"),
+           let label = mute.children.compactMap({ $0 as? SKLabelNode }).first {
+            label.text = JuiceSound.shared.muted ? "UNMUTE" : "MUTE"
+        }
+        if let note = card.childNode(withName: "pauseVolumeNote") as? SKLabelNode {
+            note.text = JuiceSound.shared.muted ? "Audio muted" : "Music + SFX on"
+        }
+    }
+
+    private func setPaused(_ on: Bool, system: Bool = false) {
+        guard !smokeEnabled else { return }
+        let playing: Bool = {
+            if case .playing = sim.state.phase { return true }
+            return false
+        }()
+        guard playing || isPaused else { return }
+        if on {
+            if isPaused { return }
+            isPaused = true
+            pauseFromSystem = system
+            resumeCountdown = 0
+            pauseCountLabel?.alpha = 0
+            pauseCountLabel?.text = ""
+            moveX = 0
+            jumpHeld = false
+            jumpPressed = false
+            pouncePressed = false
+            stickTouch = nil
+            jumpTouch = nil
+            pauseRoot.isHidden = false
+            layoutUI()
+        } else {
+            isPaused = false
+            pauseFromSystem = false
+            pauseRoot.isHidden = true
+            layoutUI()
+        }
+    }
+
+    /// Auto-pause from SwiftUI / UIKit lifecycle (resign active, background).
+    public func pauseFromAppLifecycle() {
+        setPaused(true, system: true)
+    }
+
+    /// Resume after lifecycle pause: brief 3-2-1, else immediate unpause.
+    private func beginResumeFromPause() {
+        guard isPaused else { return }
+        JuiceSound.shared.playUITap()
+        isPaused = false
+        pauseRoot.isHidden = true
+        if pauseFromSystem {
+            pauseFromSystem = false
+            resumeCountdown = 3.0
+            pauseCountLabel?.text = "3"
+            pauseCountLabel?.alpha = 1
+            pauseCountLabel?.setScale(1.2)
+            layoutUI()
+        } else {
+            layoutUI()
+        }
+    }
+
     private func setupOutcome() {
         outcomeRoot.zPosition = 320
         outcomeRoot.isHidden = true
@@ -956,6 +1098,11 @@ public final class HeistScene: SKScene {
                 glow.text = label.text
             }
         }
+        if let pauseBtn {
+            pauseBtn.position = CGPoint(x: hw - 52 - rightSafe, y: hudTop - 4)
+            let pl = pauseBtn.childNode(withName: "btnLabel") as? SKLabelNode
+            pl?.fontSize = 11
+        }
         #if DEBUG
         fpsLabel.position = CGPoint(x: -hw + 16, y: -hh + 16 + bottomSafe * 0.25)
         debugToggle?.position = CGPoint(x: hw - 40, y: hudTop)
@@ -979,10 +1126,24 @@ public final class HeistScene: SKScene {
             if case .playing = sim.state.phase { return true }
             return false
         }()
-        playHUD.isHidden = !playing
-        if !playing {
+        let showPlayHUD = playing && resumeCountdown <= 0
+        playHUD.isHidden = !showPlayHUD
+        pauseBtn?.isHidden = !showPlayHUD
+        if !showPlayHUD || isPaused {
             stickKnob.position = stickBase.position
             moveX = 0
+        }
+        if isPaused {
+            for node in [stickBase, stickKnob, jumpBtn, pounceBtn, pauseBtn] as [SKNode?] {
+                node?.alpha = 0
+            }
+        } else if playing, resumeCountdown <= 0 {
+            let stickA: CGFloat = stickTouch == nil ? (smokeEnabled ? 1 : 0.22) : 1
+            stickBase?.alpha = stickA
+            stickKnob?.alpha = stickA
+            jumpBtn?.alpha = 1
+            pounceBtn?.alpha = 1
+            pauseBtn?.alpha = 1
         }
     }
 
@@ -1010,6 +1171,9 @@ public final class HeistScene: SKScene {
     }
 
     private func doRetry() {
+        failOutcomeHold = 0
+        resumeCountdown = 0
+        setPaused(false)
         JuiceSound.shared.prepare()
         JuiceSound.shared.playUITap()
         JuiceSound.shared.startLevelMusic(district: smokeEnabled ? .rooftops : .neonDocks)
@@ -1079,6 +1243,49 @@ public final class HeistScene: SKScene {
                 beginPlay()
                 return
             }
+            if !pauseRoot.isHidden, let card = pauseRoot.childNode(withName: "pauseCard") {
+                let pCard = touch.location(in: card)
+                let hitNames = Set(nodes(at: touch.location(in: self)).compactMap(\.name))
+                if hitNames.contains("pauseResume") {
+                    beginResumeFromPause()
+                    return
+                }
+                if hitNames.contains("pauseRestart") {
+                    JuiceSound.shared.playUITap()
+                    setPaused(false)
+                    doRetry()
+                    return
+                }
+                if hitNames.contains("pauseMute") {
+                    JuiceSound.shared.toggleMute()
+                    refreshPauseMuteButton()
+                    if !JuiceSound.shared.muted { JuiceSound.shared.playUITap() }
+                    return
+                }
+                if hitNames.contains("pauseHome") {
+                    setPaused(false)
+                    hideOutcome()
+                    JuiceSound.shared.stopMusic()
+                    JuiceSound.shared.playUIBack()
+                    JuiceSound.shared.playTitleSting()
+                    sim = Sim(map: sim.map, tuning: tuning, seed: smokeEnabled ? 7 : 11)
+                    titleRoot.isHidden = false
+                    layoutTitleChrome()
+                    writeSmokeStatus()
+                    updateHUDVisibility()
+                    return
+                }
+                if card.contains(pCard) { return }
+            }
+            if case .playing = sim.state.phase, resumeCountdown <= 0, !isPaused {
+                let pHud = touch.location(in: hud)
+                if pauseBtn?.contains(pHud) == true {
+                    JuiceSound.shared.playUITap()
+                    setPaused(true)
+                    return
+                }
+            }
+            if isPaused || resumeCountdown > 0 { return }
             if !outcomeRoot.isHidden, let card = outcomeRoot.childNode(withName: "outcomeCard") {
                 let pCard = touch.location(in: card)
                 if let home = card.childNode(withName: "homeBtn"), home.contains(pCard) {
@@ -1132,14 +1339,14 @@ public final class HeistScene: SKScene {
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if smokeEnabled { return }
+        if smokeEnabled || isPaused || resumeCountdown > 0 { return }
         for touch in touches where touch === stickTouch {
             updateStick(touch.location(in: hud))
         }
     }
 
     public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if smokeEnabled { return }
+        if smokeEnabled || isPaused || resumeCountdown > 0 { return }
         for touch in touches {
             if touch === stickTouch {
                 stickTouch = nil
@@ -1238,6 +1445,34 @@ public final class HeistScene: SKScene {
             }
         }
 
+        if failOutcomeHold > 0 {
+            failOutcomeHold = max(0, failOutcomeHold - dt)
+            sync(dt: CGFloat(dt))
+            updateHUDVisibility()
+            if failOutcomeHold <= 0 {
+                showOutcome()
+            }
+            return
+        }
+
+        if resumeCountdown > 0 {
+            resumeCountdown = max(0, resumeCountdown - dt)
+            let tick = Int(ceil(resumeCountdown))
+            if tick > 0, let count = pauseCountLabel {
+                count.text = "\(tick)"
+                count.alpha = 1
+            } else {
+                pauseCountLabel?.alpha = 0
+                pauseCountLabel?.text = ""
+            }
+            sync(dt: CGFloat(dt))
+            updateHUDVisibility()
+            if resumeCountdown <= 0 {
+                layoutUI()
+            }
+            return
+        }
+
         // Hit-stop must survive screenshot stalls (dt spikes to 0.1). Drain at most ~1 frame.
         if hitStop > 0 {
             hitStop = max(0, hitStop - min(dt, 1.0 / 60.0))
@@ -1246,6 +1481,12 @@ public final class HeistScene: SKScene {
                 sync(dt: 0)
                 return
             }
+        }
+
+        if isPaused {
+            sync(dt: 0)
+            updateHUDVisibility()
+            return
         }
 
         accumulator += dt
@@ -1323,7 +1564,7 @@ public final class HeistScene: SKScene {
                 playJuice({ JuiceSound.shared.playStomp() }, smokeHero: true)
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
                 // 70ms hit-stop + shake + sparks + MOP squash + score pop (must read in smoke video).
-                hitStop = 0.07
+                hitStop = 0.10
                 shake(0.9)
                 squash(1.42, 0.48)
                 neonBurst(at: e.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 6 : 14)
@@ -1344,13 +1585,19 @@ public final class HeistScene: SKScene {
             case .maskOn:
                 smoke.sawMask = true
                 smokeStatus.mask = true
-                playSFX(.sfxMaskModeOn, smokeHero: true)
-                if !maskMusicOn {
-                    maskMusicOn = true
-                    JuiceSound.shared.setMaskModeMusic(true)
-                }
-                if !smokeEnabled { hapticHeavy.impactOccurred() }
-                flashMask()
+                run(SKAction.sequence([
+                    SKAction.wait(forDuration: 0.09),
+                    SKAction.run { [weak self] in
+                        guard let self else { return }
+                        self.playSFX(.sfxMaskModeOn, smokeHero: true)
+                        if !self.maskMusicOn {
+                            self.maskMusicOn = true
+                            JuiceSound.shared.setMaskModeMusic(true)
+                        }
+                        if !self.smokeEnabled { self.hapticHeavy.impactOccurred() }
+                        self.flashMask()
+                    },
+                ]))
             case .hurt:
                 playJuice({ JuiceSound.shared.playHurt() }, smokeHero: true)
                 damageFlash()
@@ -1372,7 +1619,7 @@ public final class HeistScene: SKScene {
                 if smokeEnabled, !maskOk {
                     writeSmokeStatus()
                 } else {
-                    showOutcome()
+                    failOutcomeHold = smokeEnabled ? 0.35 : 0.55
                     writeSmokeStatus()
                 }
             case .checkpoint:
@@ -1764,23 +2011,23 @@ public final class HeistScene: SKScene {
     private func scorePop(at pos: Vec2, text: String, color: SKColor) {
         let l = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         l.text = text
-        l.fontSize = 15
+        l.fontSize = 22
         l.fontColor = color
         l.position = cg(pos)
         l.zPosition = 63
-        l.setScale(0.4)
+        l.setScale(0.35)
         l.alpha = 0
         l.name = "scorePop"
         world.addChild(l)
         l.run(SKAction.sequence([
             SKAction.group([
                 SKAction.fadeIn(withDuration: 0.05),
-                SKAction.scale(to: 1.25, duration: 0.1),
-                SKAction.moveBy(x: 0, y: 14, duration: 0.1),
+                SKAction.scale(to: 1.55, duration: 0.12),
+                SKAction.moveBy(x: 0, y: 18, duration: 0.12),
             ]),
             SKAction.group([
-                SKAction.moveBy(x: 0, y: 22, duration: 0.35),
-                SKAction.fadeOut(withDuration: 0.35),
+                SKAction.moveBy(x: 0, y: 28, duration: 0.38),
+                SKAction.fadeOut(withDuration: 0.38),
             ]),
             SKAction.removeFromParent(),
         ]))
@@ -1819,14 +2066,16 @@ public final class HeistScene: SKScene {
         if node.userData == nil { node.userData = NSMutableDictionary() }
         node.userData?["squashing"] = true
         node.removeAllActions()
+        let face = (node.xScale >= 0 ? 1 : -1)
+        node.xScale = face
         node.run(SKAction.sequence([
             SKAction.group([
-                SKAction.scaleX(to: 1.35, y: 0.25, duration: 0.08),
-                SKAction.fadeAlpha(to: 0.5, duration: 0.08),
+                SKAction.scaleX(to: 1.08 * face, y: 0.22, duration: 0.06),
+                SKAction.fadeAlpha(to: 0.65, duration: 0.06),
             ]),
             SKAction.group([
-                SKAction.scaleY(to: 0.05, duration: 0.1),
-                SKAction.fadeOut(withDuration: 0.1),
+                SKAction.scaleX(to: 1.2 * face, y: 0.06, duration: 0.1),
+                SKAction.fadeOut(withDuration: 0.12),
             ]),
             SKAction.run { [weak node] in
                 node?.isHidden = true

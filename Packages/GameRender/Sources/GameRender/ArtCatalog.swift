@@ -96,7 +96,7 @@ public enum ArtCatalog {
         let tex = cycle?.textures.first ?? texture(.raccoonIdle) ?? SKTexture()
         let n = SKSpriteNode(texture: tex, size: size)
         n.name = "banditFront"
-        n.anchorPoint = CGPoint(x: 0.5, y: cycle?.footAnchorY ?? 0.11)
+        n.anchorPoint = CGPoint(x: 0.5, y: cycle?.footAnchorY ?? 0.14)
         applyDespill(n)
         if let cycle, cycle.textures.count > 1 {
             n.run(SKAction.repeatForever(
@@ -545,7 +545,7 @@ public final class BanditVisual: SKNode {
     /// World facing: +1 = right/east. Sheets face west, so body.xScale = −facingSign.
     private var facingSign: CGFloat = 1
     private var usesWestSheets = true
-    private var footAnchorY: CGFloat = 0.11
+    private var footAnchorY: CGFloat = 0.14
     private var currentAnim: BanditAnim = .idle
     private var trailPool: [SKSpriteNode] = []
     private var trailCursor: Int = 0
@@ -661,14 +661,9 @@ public final class BanditVisual: SKNode {
         shadow.zPosition = -1
         shadow.position = CGPoint(x: 0, y: -2)
 
-        let glowTex = maskTex ?? idleTex
-        maskGlow = SKSpriteNode(texture: glowTex, size: CGSize(width: 110, height: 110))
-        maskGlow.color = ArtCatalog.neonCyan
-        maskGlow.colorBlendFactor = 0.85
+        maskGlow = SKSpriteNode(color: .clear, size: CGSize(width: 4, height: 4))
         maskGlow.alpha = 0
-        maskGlow.zPosition = -0.5
         maskGlow.isHidden = true
-        maskGlow.blendMode = .add
 
         super.init()
         addChild(shadow)
@@ -748,12 +743,11 @@ public final class BanditVisual: SKNode {
         }
         if maskMode {
             sprite.color = ArtCatalog.neonCyan
-            sprite.colorBlendFactor = sheetDriven ? 0.12 : 0.22
+            sprite.colorBlendFactor = sheetDriven ? 0.22 : 0.38
             tail.color = ArtCatalog.neonCyan
-            tail.colorBlendFactor = 0.25
-            maskGlow.isHidden = false
-            maskGlow.alpha = 0.55 + 0.35 * sin(bobPhase * 5)
-            maskGlow.setScale(1.15 + 0.18 * sin(bobPhase * 6))
+            tail.colorBlendFactor = 0.35
+            maskGlow.isHidden = true
+            maskGlow.alpha = 0
         } else {
             sprite.color = .white
             sprite.colorBlendFactor = 0
@@ -761,7 +755,6 @@ public final class BanditVisual: SKNode {
             tail.colorBlendFactor = 0
             maskGlow.isHidden = true
             maskGlow.alpha = 0
-            maskGlow.setScale(1)
         }
         if sprite.action(forKey: "frames") == nil {
             switch anim {

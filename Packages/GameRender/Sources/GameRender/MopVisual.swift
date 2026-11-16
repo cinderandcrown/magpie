@@ -26,7 +26,7 @@ public final class MopVisual: SKSpriteNode {
             ?? SKTexture()
         self.init(texture: tex, color: .clear, size: SpriteCycles.mopDisplaySize)
         name = "mop"
-        anchorPoint = CGPoint(x: 0.5, y: walkC?.footAnchorY ?? 0.11)
+        anchorPoint = CGPoint(x: 0.5, y: walkC?.footAnchorY ?? 0.14)
         ArtCatalog.applyDespill(self)
         if let walkC, !walkC.textures.isEmpty {
             walk = walkC.textures

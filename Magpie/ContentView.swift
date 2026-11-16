@@ -3,9 +3,11 @@
 import GameRender
 import SpriteKit
 import SwiftUI
+import UIKit
 
 /// SwiftUI shell hosting the Mission 1 neon heist scene.
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var scene: HeistScene = {
         let smoke = ProcessInfo.processInfo.arguments.contains("-SmokeAutoplay")
         let s = HeistScene(size: CGSize(width: 390, height: 844), smokeAutoplay: smoke)
@@ -27,6 +29,20 @@ struct ContentView: View {
         .ignoresSafeArea()
         .statusBarHidden()
         .preferredColorScheme(.dark)
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .inactive, .background:
+                scene.pauseFromAppLifecycle()
+            default:
+                break
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            scene.pauseFromAppLifecycle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            scene.pauseFromAppLifecycle()
+        }
     }
 
     private func sized(_ scene: HeistScene, to size: CGSize) -> HeistScene {
