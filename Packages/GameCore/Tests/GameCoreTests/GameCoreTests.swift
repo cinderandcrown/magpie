@@ -912,7 +912,70 @@ final class GameCoreTests: XCTestCase {
         XCTAssertFalse(story.paTaunts.isEmpty)
         XCTAssertFalse(story.tagline.isEmpty)
         XCTAssertTrue(story.tagline.lowercased().contains("trash") || story.tagline.lowercased().contains("raccoon"))
+        XCTAssertTrue(story.premise.lowercased().contains("omniclean"))
+        XCTAssertTrue(story.premise.lowercased().contains("vigilante") || story.tagline.lowercased().contains("raccoon"))
         XCTAssertNotNil(story.district(id: .neonDocks))
+    }
+
+    func testMaskReentryDropsFromOneWayToStreetMop() throws {
+        // Mid ledge one-way above a street MOP — same failure mode as CI mask-2 hang.
+        let map = try TileMap.parse("""
+        ##########
+        #........#
+        #..----..#
+        #........#
+        #.@..M...#
+        #========#
+        ##########
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 3)
+        sim.state.phase = .playing
+        // Climb onto the one-way.
+        for _ in 0..<40 {
+            sim.step(InputFrame(moveX: 0.2, jumpPressed: true, jumpHeld: true))
+        }
+        for _ in 0..<20 { sim.step(InputFrame(moveX: 0.4)) }
+        let streetY = Double(map.findFirst(.start)!.1) * sim.tuning.tileSize
+        // If still low, place on the one-way top.
+        if sim.state.bandit.position.y < streetY + sim.tuning.tileSize {
+            let ow = map.findFirst(.oneWay)!
+            let top = Double(ow.1 + 1) * sim.tuning.tileSize
+            sim.state.bandit.position = Vec2(Double(ow.0) * sim.tuning.tileSize + 16, top + 14)
+            sim.state.bandit.velocity = .zero
+            sim.state.bandit.onGround = true
+        }
+        var brain = SmokeBrain()
+        SmokeBrain.clearSmokeFlags()
+        defer { SmokeBrain.clearSmokeFlags() }
+        for name in ["smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt"] {
+            SmokeBrain.setSmokeFlag(name, present: true)
+        }
+        brain.act = .showcaseMask
+        brain.sawMask = true
+        brain.sawStomp = true
+        var sawStomp = false
+        let yStart = sim.state.bandit.position.y
+        for _ in 0..<Int(20 * sim.tuning.simHz) {
+            let cue = brain.next(sim: sim)
+            sim.step(cue.input)
+            for e in sim.state.events {
+                if case .stomp = e.kind {
+                    sawStomp = true
+                    brain.noteStomp()
+                }
+            }
+            if sawStomp, sim.state.bandit.position.y < yStart - sim.tuning.tileSize * 0.2 {
+                break
+            }
+        }
+        XCTAssertLessThan(
+            sim.state.bandit.position.y,
+            yStart - sim.tuning.tileSize * 0.25,
+            "re-entry hunt must leave the elevated one-way (CI mask-2 hang)"
+        )
+        // Street contact after the drop is enough — Mask needs a multi-stomp combo on ship builds.
+        let onStreet = sim.state.bandit.position.y < streetY + sim.tuning.tileSize * 1.5
+        XCTAssertTrue(onStreet || sawStomp, "re-entry hunt should reach the street deck after dropping")
     }
 }
 

@@ -1,5 +1,5 @@
 {
-  "premise": "Neon City hired OmniClean to scrub every alley spotless. Their polite MOP robots smile, sync up, and bag every stray that doesn't shine. Bandit — masked vigilante of the trash tides — steals back through each district to free the crew and put a dent in the MOP-9000's perfect city.",
+  "premise": "Neon City hired OmniClean to scrub every alley spotless. Their polite MOP robots smile in sync, march in lockstep, and bag every stray that doesn't shine. Bandit — masked vigilante of the alleys, hero to the city's strays — steals back through each district to free the crew and put a dent in the MOP-9000's perfect city.",
   "tagline": "One city's trash is one raccoon's cause.",
   "introPanels": [
     {
@@ -9,23 +9,23 @@
     },
     {
       "id": "raid",
-      "caption": "OmniClean's MOPs arrived smiling. In perfect sync. Creepy.",
-      "artHint": "synchronized MOP robots swoop into alley"
+      "caption": "OmniClean's MOPs arrived smiling. In perfect sync. All of them. Creepy.",
+      "artHint": "synchronized polite MOP robots swoop into alley in lockstep"
     },
     {
       "id": "bagged",
       "caption": "One polite 'excuse me' later, the crew was bagged for sanitation.",
-      "artHint": "crew stuffed into MOP bags"
+      "artHint": "crew stuffed into MOP bags by smiling robots"
     },
     {
       "id": "escape",
-      "caption": "Bandit slipped the sweep. The alleys still needed a hero.",
-      "artHint": "Bandit escaping down wet alley"
+      "caption": "Bandit slipped the sweep. The alleys still needed a vigilante.",
+      "artHint": "Bandit escaping down wet alley with mask"
     },
     {
       "id": "mask",
-      "caption": "Mask on. Vigilante of the trash. Time to clean up.",
-      "artHint": "Bandit puts on the mask"
+      "caption": "Mask on. Hero to the strays. Time to un-clean the city.",
+      "artHint": "Bandit puts on the mask as alley vigilante"
     }
   ],
   "districts": {
@@ -100,6 +100,7 @@
     "OmniClean PA: Please remain orderly while we collect the irregulars.",
     "OmniClean PA: Your shine rating just dropped. How unfortunate for you.",
     "OmniClean PA: The MOP-9000 appreciates your cooperation. And your dustpan.",
-    "OmniClean PA: Resistance noted. Applying industrial-strength pep talk. Synchronize."
+    "OmniClean PA: Resistance noted. Applying industrial-strength pep talk. Synchronize.",
+    "OmniClean PA: A masked pest is still a pest. Smile for the sweep."
   ]
 }

@@ -164,8 +164,13 @@ public struct Sim: Equatable, Sendable {
             let feet = b.position.y - halfH - 1
             let tx = Int(floor(b.position.x / tile))
             let ty = Int(floor(feet / tile))
-            if map.tile(atX: tx, y: ty) == .oneWay {
-                b.dropThrough = 0.22
+            let tyLo = Int(floor((feet - 2) / tile))
+            let onOneWay = map.tile(atX: tx, y: ty) == .oneWay
+                || map.tile(atX: tx, y: tyLo) == .oneWay
+                || map.tile(atX: tx - 1, y: ty) == .oneWay
+                || map.tile(atX: tx + 1, y: ty) == .oneWay
+            if onOneWay {
+                b.dropThrough = 0.28
                 b.onGround = false
             }
         }

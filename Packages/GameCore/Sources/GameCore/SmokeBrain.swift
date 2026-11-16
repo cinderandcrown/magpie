@@ -359,29 +359,63 @@ public struct SmokeBrain: Equatable, Sendable {
         return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed)
     }
 
-    /// Drop from rooftops if needed, then stomp-hunt for Mask re-entry.
+    /// Drop from rooftops / mid ledges, then stomp-hunt street MOPs for Mask re-entry.
     private func maskReentryHuntInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
+        let halfH = 14.0
         let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? b.position.y
+        let feetY = b.position.y - halfH
+        let elevated = feetY > streetY + tile * 0.35
+        let onOneWay = standingOnOneWay(sim: sim, halfH: halfH)
+
         // Prefer street-deck MOPs for the second Mask (opening pack / patrols).
         let streetMops = sim.state.mops.filter {
             $0.alive && abs($0.position.y - streetY) < tile * 2.5
         }
-        let mop = streetMops.min(by: { $0.position.distance(to: b.position) < $1.position.distance(to: b.position) })
-            ?? nearestMop(sim: sim)
+        let mop = streetMops.min(by: {
+            $0.position.distance(to: b.position) < $1.position.distance(to: b.position)
+        }) ?? nearestMop(sim: sim)
 
-        // Still perched after the rooftop beat — drop through one-ways / walk off ledges.
-        if b.position.y > streetY + tile * 1.2 {
-            let edgeR = !sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty - 1))
-                || sim.map.tile(atX: tx + 1, y: ty - 1) == .oneWay
+        // Still perched after the rooftop beat — drop one-ways / walk off solid ledges.
+        // CI failure mode: Bandit stuck on latch-tower --- / short ==== above street MOPs.
+        if elevated || onOneWay {
+            var moveX: Double = 1.0
+            if b.onWallRight { moveX = -1.0 }
+            else if b.onWallLeft { moveX = 1.0 }
+            else if let mop {
+                let dx = mop.position.x - b.position.x
+                // Prefer the nearer open ledge when a wall hems us in on a one-way.
+                if floorSupport(sim: sim, tx: tx + 1, ty: ty) && !floorSupport(sim: sim, tx: tx - 1, ty: ty) {
+                    moveX = -1.0
+                } else if !floorSupport(sim: sim, tx: tx + 1, ty: ty) {
+                    moveX = 1.0
+                } else if dx < -tile {
+                    moveX = -0.85
+                }
+            } else if !floorSupport(sim: sim, tx: tx + 1, ty: ty) {
+                moveX = 1.0
+            } else if !floorSupport(sim: sim, tx: tx - 1, ty: ty) {
+                moveX = -1.0
+            }
+
+            // Against a latch wall on a one-way: hold down + nudge (no jump) so Sim dropThrough fires.
+            if onOneWay, b.onGround {
+                return InputFrame(moveX: moveX, moveY: -1, jumpPressed: false, jumpHeld: false)
+            }
             if !b.onGround {
-                return InputFrame(moveX: 0.85, moveY: -1, pouncePressed: !b.flopping)
+                return InputFrame(moveX: moveX, moveY: -1, pouncePressed: !b.flopping)
             }
-            if edgeR {
-                return InputFrame(moveX: 1, moveY: -1)
+            // Solid mid ledge: walk toward open air; hop only when both sides are blocked.
+            let blockedBoth = floorSupport(sim: sim, tx: tx + 1, ty: ty)
+                && floorSupport(sim: sim, tx: tx - 1, ty: ty)
+                && (b.onWallLeft || b.onWallRight
+                    || sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty))
+                    || sim.map.isSolid(sim.map.tile(atX: tx - 1, y: ty)))
+            if blockedBoth {
+                return InputFrame(moveX: moveX, moveY: -1, jumpPressed: true, jumpHeld: true)
             }
-            return InputFrame(moveX: 1, moveY: -1, jumpPressed: false, jumpHeld: false)
+            return InputFrame(moveX: moveX, moveY: -1, jumpPressed: false, jumpHeld: false)
         }
 
         guard let mop else {
@@ -407,6 +441,26 @@ public struct SmokeBrain: Equatable, Sendable {
             jumpHeld: jumpHeld || jumpPressed,
             pouncePressed: pouncePressed
         )
+    }
+
+    private func standingOnOneWay(sim: Sim, halfH: Double) -> Bool {
+        let b = sim.state.bandit
+        let tile = sim.tuning.tileSize
+        let feet = b.position.y - halfH - 1
+        let tx = Int(floor(b.position.x / tile))
+        let ty = Int(floor(feet / tile))
+        if sim.map.tile(atX: tx, y: ty) == .oneWay { return true }
+        // Foot samples near walls / tile seams.
+        let tyLo = Int(floor((feet - 2) / tile))
+        return sim.map.tile(atX: tx, y: tyLo) == .oneWay
+            || sim.map.tile(atX: tx - 1, y: ty) == .oneWay
+            || sim.map.tile(atX: tx + 1, y: ty) == .oneWay
+    }
+
+    /// True when the cell under (tx, ty-1) can be stood on (solid or one-way).
+    private func floorSupport(sim: Sim, tx: Int, ty: Int) -> Bool {
+        let below = sim.map.tile(atX: tx, y: ty - 1)
+        return sim.map.isStandable(below)
     }
 
     /// Drive toward latch / one-way climb for the rooftop-route smoke still + clip.
