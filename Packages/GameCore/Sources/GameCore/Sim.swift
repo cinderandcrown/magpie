@@ -495,6 +495,7 @@ public struct Sim: Equatable, Sendable {
                 bandit.hearts -= 1
                 bandit.invuln = tuning.invulnSeconds
                 var away = bandit.position.x >= state.mops[i].position.x ? 1.0 : -1.0
+                let tile = tuning.tileSize
                 let minSafe = tile * 5
                 let maxSafe = Double(map.width) * tile - tile * 5
                 var nx = bandit.position.x + away * tile * 1.2
@@ -507,8 +508,8 @@ public struct Sim: Equatable, Sendable {
                     nx = maxSafe
                 }
                 bandit.position.x = nx
-                bandit.velocity.y = tuning.jumpVelocity * tuning.tileSize / 3
-                bandit.velocity.x = away * tuning.runSpeed * tuning.tileSize * 0.85
+                bandit.velocity.y = tuning.jumpVelocity * tile / 3
+                bandit.velocity.x = away * tuning.runSpeed * tile * 0.85
                 state.mops[i].position.x -= away * tile * 0.5
                 state.mops[i].home.x = state.mops[i].position.x
                 state.mops[i].stun = 0.5

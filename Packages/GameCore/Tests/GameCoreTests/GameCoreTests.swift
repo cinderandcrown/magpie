@@ -153,16 +153,17 @@ final class GameCoreTests: XCTestCase {
 
     func testStompMopRaisesComboAndMask() throws {
         let map = try TileMap.parse("""
-        ##########
-        #........#
-        #.@..M...#
-        #========#
-        ##########
+        ################
+        #..............#
+        #.@..........M.#
+        #==============#
+        ################
         """)
         var tuning = Tuning.default
         tuning.comboGroundGrace = 3
         var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
+        XCTAssertFalse(sim.state.mops.isEmpty, "MOP must sit outside 4-tile spawn clear zone")
         // Jump onto mop repeatedly via respawn
         for _ in 0..<8 {
             if !sim.state.mops[0].alive {
@@ -469,16 +470,18 @@ final class GameCoreTests: XCTestCase {
     }
 
     func testHurtThenBagged() throws {
+        // MOP beyond the 4-tile spawn clear zone so it isn't skipped at init.
         let map = try TileMap.parse("""
-        ######
-        #.@M.#
-        #====#
-        ######
+        ##############
+        #.@........M.#
+        #============#
+        ##############
         """)
         var tuning = Tuning.default
         tuning.hearts = 1
         var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
+        XCTAssertFalse(sim.state.mops.isEmpty, "expected MOP outside spawn clear zone")
         sim.state.bandit.position = sim.state.mops[0].position
         sim.state.bandit.velocity = .zero
         sim.state.bandit.onGround = true
@@ -510,13 +513,14 @@ final class GameCoreTests: XCTestCase {
 
     func testMopPatrolMoves() throws {
         let map = try TileMap.parse("""
-        ######
-        #..M.#
-        #====#
-        ######
+        ##############
+        #.@........M.#
+        #============#
+        ##############
         """)
         var sim = Sim(map: map, tuning: .default)
         sim.state.phase = .playing
+        XCTAssertFalse(sim.state.mops.isEmpty)
         let x0 = sim.state.mops[0].position.x
         for _ in 0..<40 { sim.step(.idle) }
         XCTAssertNotEqual(sim.state.mops[0].position.x, x0)
@@ -544,16 +548,17 @@ final class GameCoreTests: XCTestCase {
 
     func testHurtLocksAnimBriefly() throws {
         let map = try TileMap.parse("""
-        ######
-        #.@M.#
-        #====#
-        ######
+        ##############
+        #.@........M.#
+        #============#
+        ##############
         """)
         var sim = Sim(map: map, tuning: .default)
         sim.state.phase = .playing
+        XCTAssertFalse(sim.state.mops.isEmpty)
         // Walk into MOP
         var sawHurt = false
-        for _ in 0..<120 {
+        for _ in 0..<400 {
             sim.step(InputFrame(moveX: 1))
             if sim.state.bandit.anim == .hurt {
                 sawHurt = true
