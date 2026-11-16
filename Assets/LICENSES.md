@@ -28,6 +28,12 @@ Side views face WEST; ready frames are foot-baseline-normalized 256². `disco_da
 | --- | --- | --- |
 | `Assets/Audio/sfx/**` (41 WAVs + `sfx_manifest.json`) | Fire Fox / ElevenLabs 2026-11-15 | Cinder & Crown; ElevenLabs ToS |
 
+## Soundtrack (ElevenLabs Music)
+
+| Asset | Source | License |
+| --- | --- | --- |
+| `Assets/Audio/music/**` (main/menu/district/boss `.m4a` loops + README) | ElevenLabs Music v2.5, 2026-11-15 | Cinder & Crown; ElevenLabs ToS; instrumental original |
+
 ## Raccoon procedural rig (fallback / squash helpers)
 
 | Asset | Source | License |

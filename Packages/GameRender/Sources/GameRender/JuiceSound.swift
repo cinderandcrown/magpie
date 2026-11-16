@@ -3,19 +3,18 @@
 #if canImport(AVFoundation)
 import AVFoundation
 import Foundation
+import GameCore
 
-/// Music + façade over `SFXManager`. Music and SFX volumes are separate; one mute gates both.
+/// Music + façade over `SFXManager` and `MusicManager`. Music and SFX volumes are separate; one mute gates both.
 /// Uses AVAudioPlayer only (no AVAudioEngine graph mutations off-thread).
 ///
 /// Session category is `.ambient` so the hardware silent switch is respected.
-/// Simulator `simctl io recordVideo` does not capture app audio — during smoke we also
+/// Simulator `simctl recordVideo` does not capture app audio — during smoke we also
 /// append a timeline to Documents/smoke_audio_events.txt so CI can mux music+SFX onto the mp4.
 public final class JuiceSound: @unchecked Sendable {
     public static let shared = JuiceSound()
 
     private var sessionReady = false
-    private var levelMusic: AVAudioPlayer?
-    private var maskLayer: AVAudioPlayer?
     private var smokeLogURL: URL?
     private var smokeLogAnchor: TimeInterval?
     private let logLock = NSLock()
@@ -29,7 +28,8 @@ public final class JuiceSound: @unchecked Sendable {
             let v = max(0, min(1, musicVolume))
             if v != musicVolume { musicVolume = v; return }
             UserDefaults.standard.set(Double(v), forKey: musicVolumeKey)
-            applyMusicVolumes()
+            MusicManager.shared.volume = v
+            MusicManager.shared.applyMuteState()
         }
     }
 
@@ -45,7 +45,8 @@ public final class JuiceSound: @unchecked Sendable {
             UserDefaults.standard.set(muted, forKey: muteKey)
             SFXManager.shared.muted = muted
             SFXManager.shared.applyMuteState()
-            applyMusicVolumes()
+            MusicManager.shared.muted = muted
+            MusicManager.shared.applyMuteState()
         }
     }
 
@@ -58,6 +59,8 @@ public final class JuiceSound: @unchecked Sendable {
         musicVolume = Float(mv ?? 0.42)
         muted = UserDefaults.standard.bool(forKey: muteKey)
         SFXManager.shared.muted = muted
+        MusicManager.shared.volume = musicVolume
+        MusicManager.shared.muted = muted
     }
 
     public static var smokeAudioLogURL: URL {
@@ -83,6 +86,7 @@ public final class JuiceSound: @unchecked Sendable {
     public func prepare() {
         guard !sessionReady else {
             _ = SFXManager.shared.preload()
+            _ = MusicManager.shared.preload()
             return
         }
         #if os(iOS)
@@ -92,6 +96,7 @@ public final class JuiceSound: @unchecked Sendable {
         try? AVAudioSession.sharedInstance().setActive(true)
         #endif
         _ = SFXManager.shared.preload()
+        _ = MusicManager.shared.preload()
         sessionReady = true
     }
 
@@ -104,20 +109,20 @@ public final class JuiceSound: @unchecked Sendable {
         playLegacyOneShot(url)
     }
 
-    /// Title / logo ident — juice `startup_jingle`, else legacy title sting.
+    /// Title / logo ident — juice `startup_jingle`, then crossfade menu theme.
     public func playTitleSting() {
         prepare()
-        // Smoke never needs the 5.5s jingle in-process (mux uses the events log / music bed).
-        if smokeAutoplay {
-            logSmoke("sfx startup_jingle")
-            return
-        }
+        logSmoke("sfx startup_jingle")
         if SFXManager.shared.loadedCount > 0 {
-            logSmoke("sfx startup_jingle")
+            MusicManager.shared.stop()
             SFXManager.shared.playStartupJingle()
+            MusicManager.shared.playTitleMenu(jingleFirst: true)
+            logSmoke("music menu_theme")
             return
         }
+        logSmoke("music level_loop")
         play(.musicTitleSting)
+        MusicManager.shared.startMenu(smokeLogToken: "level_loop")
     }
 
     public func playUITap() {
@@ -162,6 +167,7 @@ public final class JuiceSound: @unchecked Sendable {
         prepare()
         logSmoke("sfx stomp_crunch")
         SFXManager.shared.playStomp()
+        MusicManager.shared.duckBriefly()
     }
 
     public func playCollect(combo: Int, loot: Bool) {
@@ -174,12 +180,14 @@ public final class JuiceSound: @unchecked Sendable {
         prepare()
         logSmoke("sfx raccoon_hurt")
         SFXManager.shared.playHurt()
+        MusicManager.shared.duckBriefly()
     }
 
     public func playKO() {
         prepare()
         logSmoke("sfx raccoon_ko")
         SFXManager.shared.playKO()
+        MusicManager.shared.duckBriefly(depth: 0.5, duration: 0.55)
     }
 
     public func playMopAlert() {
@@ -206,39 +214,41 @@ public final class JuiceSound: @unchecked Sendable {
         SFXManager.shared.setBossTreadMoving(moving)
     }
 
-    public func startLevelMusic() {
+    /// District gameplay bed (main+district rotation, or boss).
+    public func startLevelMusic(district: DistrictID? = nil, boss: Bool = false) {
         prepare()
-        stopMusic()
-        guard let url = AssetManifest.audioURL(.musicLevelLoop) else { return }
-        logSmoke("music level_loop")
-        levelMusic = loopPlayer(url: url, volume: effectiveMusicVolume)
+        let token: String
+        if boss {
+            token = "boss_theme"
+        } else if let district {
+            switch district {
+            case .neonDocks: token = "docks_theme"
+            case .arcadeRow: token = "arcade_row_theme"
+            case .rooftops: token = "rooftops_theme"
+            case .sewerGrid: token = "sewer_grid_theme"
+            }
+        } else {
+            token = MusicManager.shared.hasSoundtrackPack ? "main_theme" : "level_loop"
+        }
+        logSmoke("music \(token)")
+        MusicManager.shared.startGameplay(district: district, boss: boss, smokeLogToken: token)
     }
 
     public func setMaskModeMusic(_ on: Bool) {
         prepare()
-        // Smoke: skip the extra mask music decode — keeps SpriteKit city textures resident
-        // for the Mask Mode screenshot (CI blowout gate).
-        if smokeAutoplay {
-            if on { logSmoke("music mask_mode_layer") } else if maskLayer != nil { logSmoke("music_mask_off") }
-            return
-        }
         if on {
-            guard maskLayer == nil,
-                  let url = AssetManifest.audioURL(.musicMaskLayer) else { return }
             logSmoke("music mask_mode_layer")
-            maskLayer = loopPlayer(url: url, volume: effectiveMusicVolume * 1.05)
+            MusicManager.shared.setMaskBed(true)
+            MusicManager.shared.duckBriefly(depth: 0.35, duration: 0.5)
         } else {
-            if maskLayer != nil { logSmoke("music_mask_off") }
-            maskLayer?.stop()
-            maskLayer = nil
+            logSmoke("music_mask_off")
+            MusicManager.shared.setMaskBed(false)
         }
     }
 
     public func stopMusic() {
-        levelMusic?.stop()
-        maskLayer?.stop()
-        levelMusic = nil
-        maskLayer = nil
+        logSmoke("music_stop")
+        MusicManager.shared.stop()
         SFXManager.shared.stopAllLoops()
     }
 
@@ -271,23 +281,6 @@ public final class JuiceSound: @unchecked Sendable {
             playMopAlert(); return true
         default:
             return false
-        }
-    }
-
-    private var effectiveMusicVolume: Float {
-        muted ? 0 : musicVolume
-    }
-
-    private func applyMusicVolumes() {
-        let v = effectiveMusicVolume
-        levelMusic?.volume = v
-        maskLayer?.volume = v * 1.05
-        if muted {
-            levelMusic?.pause()
-            maskLayer?.pause()
-        } else {
-            if let p = levelMusic, !p.isPlaying { p.play() }
-            if let p = maskLayer, !p.isPlaying { p.play() }
         }
     }
 
@@ -324,26 +317,13 @@ public final class JuiceSound: @unchecked Sendable {
             player.play()
             legacyOneshots.append(player)
             legacyOneshots.removeAll { !$0.isPlaying && $0 !== player }
-            if legacyOneshots.count > 5 {
-                let drop = legacyOneshots.count - 5
+            if legacyOneshots.count > 6 {
+                let drop = legacyOneshots.count - 6
                 for p in legacyOneshots.prefix(drop) { p.stop() }
                 legacyOneshots.removeFirst(drop)
             }
         } catch {
             // Missing/corrupt clip — ignore rather than crash the host.
-        }
-    }
-
-    private func loopPlayer(url: URL, volume: Float) -> AVAudioPlayer? {
-        do {
-            let player = try AVAudioPlayer(contentsOf: url)
-            player.numberOfLoops = -1
-            player.volume = volume
-            player.prepareToPlay()
-            if !muted { player.play() }
-            return player
-        } catch {
-            return nil
         }
     }
 }

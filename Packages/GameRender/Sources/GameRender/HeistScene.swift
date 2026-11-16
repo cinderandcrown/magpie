@@ -1000,7 +1000,7 @@ public final class HeistScene: SKScene {
         }
         JuiceSound.shared.prepare()
         JuiceSound.shared.playUITap()
-        JuiceSound.shared.startLevelMusic()
+        JuiceSound.shared.startLevelMusic(district: smokeEnabled ? .rooftops : .neonDocks)
         mopAlerted.removeAll()
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
@@ -1012,7 +1012,7 @@ public final class HeistScene: SKScene {
     private func doRetry() {
         JuiceSound.shared.prepare()
         JuiceSound.shared.playUITap()
-        JuiceSound.shared.startLevelMusic()
+        JuiceSound.shared.startLevelMusic(district: smokeEnabled ? .rooftops : .neonDocks)
         mopAlerted.removeAll()
         sim.retry()
         hideOutcome()

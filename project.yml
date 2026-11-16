@@ -75,8 +75,16 @@ targets:
           test -f "${SFX_DEST}/jump.wav"
           test -f "${SFX_DEST}/startup_jingle.wav"
           test -f "${SFX_DEST}/boss_tread_rumble.wav"
+          MUSIC_SRC="${SRCROOT}/Assets/Audio/music"
+          MUSIC_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Audio/music"
+          mkdir -p "$MUSIC_DEST"
+          rsync -a --delete "${MUSIC_SRC}/" "${MUSIC_DEST}/"
+          test -f "${MUSIC_DEST}/main_theme.m4a"
+          test -f "${MUSIC_DEST}/menu_theme.m4a"
+          test -f "${MUSIC_DEST}/boss_theme.m4a"
           echo "Copied Generated -> $DEST"
           echo "Copied SFX -> $SFX_DEST"
+          echo "Copied music -> $MUSIC_DEST"
     settings:
       base:
         INFOPLIST_FILE: Magpie/Info.plist
