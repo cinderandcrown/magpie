@@ -250,8 +250,7 @@ public final class HeistScene: SKScene {
                 let plate = node.copy() as? SKSpriteNode ?? SKSpriteNode(texture: node.texture, size: node.size)
                 plate.position = CGPoint(x: CGFloat(i) * width * 0.92, y: y)
                 plate.zPosition = z
-                // Pin texture residency; never rely on a bright white tint as a purge fallback.
-                plate.texture?.preload()
+                // Keep tint mild — never rely on a bright white tint as a purge fallback.
                 if brighten {
                     plate.color = SKColor(red: 1.08, green: 1.02, blue: 1.1, alpha: 1)
                     plate.colorBlendFactor = smokeEnabled ? 0.08 : 0.16
