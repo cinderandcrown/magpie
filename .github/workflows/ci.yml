@@ -9,109 +9,13 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# Default read for normal CI jobs. Spriterrific job elevates to write to push sheets.
-# (Job permissions may only narrow a workflow grant — so write must be allowed here.)
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  # One-shot Spriterrific spend. Gate is a STEP check (hashFiles is illegal in jobs.*.if
-  # and was failing the whole workflow file with zero jobs). Own concurrency group never
-  # cancels an in-flight spend. Secret: SPRITERRIFIC_API_KEY (never logged).
-  spriterrific:
-    name: Spriterrific raccoon (credit spend)
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    concurrency:
-      group: spriterrific-raccoon-${{ github.repository }}
-      cancel-in-progress: false
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 0
-      - name: Gate on request flags
-        id: gate
-        run: |
-          set -euo pipefail
-          if [ -f Assets/SPRITERRIFIC_ANIMATE ]; then
-            echo "phase=animate" >> "$GITHUB_OUTPUT"
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "Animate flag present (Fire Fox approved anchor)"
-          elif [ -f Assets/SPRITERRIFIC_REQUEST ]; then
-            echo "phase=anchor" >> "$GITHUB_OUTPUT"
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "Request flag present — Anchor First only (await Fire Fox)"
-          else
-            echo "phase=none" >> "$GITHUB_OUTPUT"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No Spriterrific flags — skipping spend"
-          fi
-      - name: Install Pillow
-        if: steps.gate.outputs.run == 'true'
-        run: python3 -m pip install --quiet pillow numpy
-      - name: Generate (Anchor First or approved animate; abort if bal<460)
-        if: steps.gate.outputs.run == 'true'
-        env:
-          SPRITERRIFIC_API_KEY: ${{ secrets.SPRITERRIFIC_API_KEY }}
-          PHASE: ${{ steps.gate.outputs.phase }}
-        run: |
-          set -euo pipefail
-          test -n "${SPRITERRIFIC_API_KEY:-}" || { echo "SPRITERRIFIC_API_KEY missing"; exit 1; }
-          if [ "$PHASE" = "animate" ]; then
-            python3 scripts/spriterrific_raccoon.py \
-              --phase=animate \
-              --out spriterrific-runs \
-              --dry-run=false
-          else
-            python3 scripts/spriterrific_raccoon.py \
-              --phase=anchor \
-              --ref Assets/Generated/sprites/raccoon/idle.png \
-              --out spriterrific-runs \
-              --dry-run=false
-          fi
-      - name: Import sheets (animate phase only)
-        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.phase == 'animate'
-        run: |
-          set -euo pipefail
-          python3 scripts/import_spriterrific_raccoon.py \
-            --runs spriterrific-runs \
-            --dest Assets/Generated/sprites/raccoon
-          rm -f Assets/SPRITERRIFIC_ANIMATE Assets/SPRITERRIFIC_ANCHOR_PENDING.json
-      - name: Finalize anchor phase (pending Fire Fox)
-        if: steps.gate.outputs.run == 'true' && steps.gate.outputs.phase == 'anchor'
-        run: |
-          set -euo pipefail
-          # Drop one-shot request so we do not re-spend; keep pending JSON for review.
-          rm -f Assets/SPRITERRIFIC_REQUEST
-          test -f Assets/SPRITERRIFIC_ANCHOR_PENDING.json
-          echo "Anchor pending Fire Fox approval:"
-          cat Assets/SPRITERRIFIC_ANCHOR_PENDING.json
-      - name: Upload spriterrific-runs
-        if: always() && steps.gate.outputs.run == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: spriterrific-raccoon
-          path: spriterrific-runs/
-          if-no-files-found: warn
-      - name: Commit Spriterrific outputs
-        if: steps.gate.outputs.run == 'true'
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add spriterrific-runs Assets/SPRITERRIFIC_ANCHOR_PENDING.json Assets/LICENSES.md ASSETS_LICENSES.md Assets/Generated/sprites/raccoon || true
-          git add -u Assets/SPRITERRIFIC_REQUEST Assets/SPRITERRIFIC_ANIMATE Assets/SPRITERRIFIC_ANCHOR_PENDING.json || true
-          if git diff --cached --quiet; then
-            echo "No asset changes to commit"
-          else
-            if [ "${{ steps.gate.outputs.phase }}" = "anchor" ]; then
-              git commit -m "Spriterrific anchor pending Fire Fox approval"
-            else
-              git commit -m "Import Spriterrific raccoon sheets (idle/run/jump/attack)"
-            fi
-            git push
-          fi
+  # Spriterrific credit spend is DISABLED in CI.
+  # Fire Fox runs anchor/animate locally and hands sheets to the agent.
+  # Do not re-add an auto-spend job or Assets/SPRITERRIFIC_REQUEST.
 
   scripts:
     name: Scripts

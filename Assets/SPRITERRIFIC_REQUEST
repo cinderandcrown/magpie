@@ -1,5 +1,0 @@
-Generate Neon City Bandit raccoon via Spriterrific — ANCHOR ONLY.
-Plan: preserve-reference-v1 anchor (30). Stop for Fire Fox approval before animations.
-If approved, place Assets/SPRITERRIFIC_ANIMATE (idle 100 + run/jump/attack 300; total 430).
-Abort if balance < 460 or a neon-city-bandit character job already exists.
-This file is deleted by CI after the anchor phase.
