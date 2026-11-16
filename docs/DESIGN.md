@@ -76,6 +76,24 @@ Smoke evidence for this increment: combos, medals on the results card, district 
 2. Which crew variants ship in district 1.  
 3. ASC listing name sync with **The Neon City Bandit** (bundle ID stays).
 
+## Backlog (do not start until core slice passes review)
+
+### DISCO NEON LASER SHOW (easter egg) — Nicholas
+
+**Gate:** build only after the next review of the core vertical slice. Not in the current mission pass.
+
+**Secret trigger (pick one / A-B later):** stomp the same hidden neon tile 3 times, **or** find a hidden disco ball in a level.
+
+**On trigger (5–8 seconds, then return to play):**
+
+- Raccoon plays a `disco_dance` loop (sprite sheet delivered by Fire Fox from Spriterrific).
+- Mirror ball drops in; sweeping colored laser beams (additive blend).
+- Pulsing grid floor; brief **original** bass-drop music sting (no licensed music).
+- Haptics on the beat; confetti sparks.
+- Unlocks a cosmetic flag / achievement.
+
+**Constraints:** original art and code only. No licensed music. Keep it a juicy secret — no feature sprawl into the core loop.
+
 ## Unchanged engineering pillars
 
 Gates · Swift/SpriteKit · GameCore determinism · portrait one-thumb · baked glow (no SKEffectNode/shaders) · one mission quality bar at a time.
