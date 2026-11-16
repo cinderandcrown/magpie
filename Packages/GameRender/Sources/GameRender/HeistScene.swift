@@ -591,15 +591,30 @@ public final class HeistScene: SKScene {
         stickKnob.alpha = 0.2
         playHUD.addChild(stickKnob)
 
-        jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime)
+        jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime, large: true)
         playHUD.addChild(jumpBtn)
-        pounceBtn = makeFaceButton(title: "POUNCE", color: ArtCatalog.neonPink)
+        pounceBtn = makeFaceButton(title: "POUNCE", color: ArtCatalog.neonPink, large: true)
         playHUD.addChild(pounceBtn)
     }
 
-    private func makeFaceButton(title: String, color: SKColor) -> SKShapeNode {
-        // Capsule plates — separated neon buttons, not overlapping stock circles.
-        let b = SKShapeNode(rectOf: CGSize(width: 92, height: 56), cornerRadius: 16)
+    private func makeFaceButton(title: String, color: SKColor, large: Bool = false) -> SKShapeNode {
+        let edge: CGFloat
+        let pad: CGFloat
+        let font: CGFloat
+        if large {
+            // ≥88 pt face buttons with generous hit pads (GameFeel.faceButtonMinPt).
+            edge = CGFloat(max(88, tuning.feel.faceButtonMinPt))
+            pad = CGFloat(tuning.feel.faceButtonHitPad)
+            font = title.count > 5 ? 14 : 16
+        } else {
+            edge = 92
+            pad = 0
+            font = 13
+        }
+        let b = SKShapeNode(
+            rectOf: CGSize(width: edge + pad, height: (large ? edge * 0.72 : 56) + pad),
+            cornerRadius: large ? 18 : 16
+        )
         b.fillColor = SKColor(red: 0.05, green: 0.04, blue: 0.14, alpha: 0.82)
         b.strokeColor = color
         b.lineWidth = 2.5
@@ -607,7 +622,7 @@ public final class HeistScene: SKScene {
         b.zPosition = 200
         let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         t.text = title
-        t.fontSize = 13
+        t.fontSize = font
         t.fontColor = color
         t.verticalAlignmentMode = .center
         t.name = "btnLabel"
@@ -682,10 +697,11 @@ public final class HeistScene: SKScene {
     private func setupTitle() {
         titleRoot.zPosition = 300
         overlay.addChild(titleRoot)
-        // Opaque title plate — hide the live level (no MOP/shiny peeking through).
+        // Fully opaque title plate — no live level geometry or shinies behind the UI.
         let bg = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
-        bg.fillColor = SKColor(red: 0.04, green: 0.02, blue: 0.12, alpha: 0.94)
+        bg.fillColor = SKColor(red: 0.05, green: 0.03, blue: 0.14, alpha: 1)
         bg.strokeColor = .clear
+        bg.zPosition = -10
         bg.name = "titleWash"
         titleRoot.addChild(bg)
 
@@ -901,7 +917,8 @@ public final class HeistScene: SKScene {
         wash.name = "pauseWash"
         pauseRoot.addChild(wash)
 
-        let card = SKShapeNode(rectOf: CGSize(width: 288, height: 360), cornerRadius: 14)
+        // Tall enough for RESUME / RESTART / volume rows / MUTE / HOME + credit note + padding.
+        let card = SKShapeNode(rectOf: CGSize(width: 300, height: 460), cornerRadius: 14)
         card.fillColor = SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 0.96)
         card.strokeColor = ArtCatalog.neonCyan
         card.lineWidth = 2.5
@@ -914,27 +931,27 @@ public final class HeistScene: SKScene {
         title.text = "PAUSED"
         title.fontSize = 26
         title.fontColor = ArtCatalog.neonCyan
-        title.position = CGPoint(x: 0, y: 148)
+        title.position = CGPoint(x: 0, y: 188)
         card.addChild(title)
 
         let resume = makeOutcomeButton(title: "RESUME", color: ArtCatalog.neonLime, name: "pauseResume", wide: true)
-        resume.position = CGPoint(x: 0, y: 92)
+        resume.position = CGPoint(x: 0, y: 128)
         card.addChild(resume)
         let restart = makeOutcomeButton(title: "RESTART", color: ArtCatalog.neonOrange, name: "pauseRestart", wide: true)
-        restart.position = CGPoint(x: 0, y: 38)
+        restart.position = CGPoint(x: 0, y: 72)
         card.addChild(restart)
 
         // Music / SFX volume sliders
         card.addChild(makePauseVolumeRow(
             label: "MUSIC",
             namePrefix: "pauseMusic",
-            y: -8,
+            y: 18,
             value: JuiceSound.shared.musicVolume
         ))
         card.addChild(makePauseVolumeRow(
             label: "SFX",
             namePrefix: "pauseSfx",
-            y: -48,
+            y: -22,
             value: JuiceSound.shared.sfxVolume
         ))
 
@@ -944,10 +961,10 @@ public final class HeistScene: SKScene {
             name: "pauseMute",
             wide: true
         )
-        mute.position = CGPoint(x: 0, y: -100)
+        mute.position = CGPoint(x: 0, y: -78)
         card.addChild(mute)
         let home = makeOutcomeButton(title: "HOME", color: ArtCatalog.neonPink, name: "pauseHome", wide: true)
-        home.position = CGPoint(x: 0, y: -152)
+        home.position = CGPoint(x: 0, y: -134)
         card.addChild(home)
 
         let note = SKLabelNode(fontNamed: "AvenirNext-Medium")
@@ -1247,9 +1264,10 @@ public final class HeistScene: SKScene {
             stickBase.alpha = 0.22
             stickKnob.alpha = 0.22
         }
-        // Separated capsule buttons — right half, inside safe area (no island/home clip).
-        jumpBtn.position = CGPoint(x: hw - 64 - rightSafe, y: -hh + 118 + bottomSafe * 0.4)
-        pounceBtn.position = CGPoint(x: hw - 64 - rightSafe, y: -hh + 52 + bottomSafe * 0.4)
+        // Separated ≥88pt face buttons — right half, inside safe area.
+        let btnX = hw - 70 - rightSafe
+        jumpBtn.position = CGPoint(x: btnX, y: -hh + 148 + bottomSafe * 0.35)
+        pounceBtn.position = CGPoint(x: btnX, y: -hh + 58 + bottomSafe * 0.35)
         let hudTop = hh - topSafe - 6
         let hudX = -hw + 16 + leftSafe
         hudCarried.position = CGPoint(x: hudX, y: hudTop)
@@ -1292,7 +1310,11 @@ public final class HeistScene: SKScene {
             if case .playing = sim.state.phase { return true }
             return false
         }()
-        let showPlayHUD = playing && resumeCountdown <= 0
+        let onTitle = !titleRoot.isHidden
+        // Title owns the screen — hide live level so geometry/shinies can't peek under UI.
+        stage.isHidden = onTitle
+        skyFill.isHidden = onTitle
+        let showPlayHUD = playing && resumeCountdown <= 0 && !onTitle
         playHUD.isHidden = !showPlayHUD
         pauseBtn?.isHidden = !showPlayHUD
         if !showPlayHUD || runPaused {
@@ -1627,13 +1649,25 @@ public final class HeistScene: SKScene {
 
     private func updateStick(_ p: CGPoint) {
         let delta = CGPoint(x: p.x - stickOrigin.x, y: p.y - stickOrigin.y)
-        let maxR: CGFloat = 48
+        let maxR = CGFloat(tuning.feel.stickMaxRadius)
+        let dead = tuning.feel.stickDeadZone
         var dx = delta.x, dy = delta.y
-        let len = sqrt(dx * dx + dy * dy)
-        if len > maxR { dx = dx / len * maxR; dy = dy / len * maxR }
+        let len = hypot(dx, dy)
+        if len > maxR {
+            dx = dx / len * maxR
+            dy = dy / len * maxR
+        }
         stickKnob.position = CGPoint(x: stickOrigin.x + dx, y: stickOrigin.y + dy)
-        moveX = Double(dx / maxR)
-        if dy > 36 && !jumpHeld {
+        // Radial dead zone + analog ramp on the X axis (touch-anywhere-left stick).
+        let nx = Double(dx / maxR)
+        let ax = abs(nx)
+        if ax <= dead {
+            moveX = 0
+        } else {
+            let remapped = (ax - dead) / max(0.05, 1 - dead)
+            moveX = (nx < 0 ? -1 : 1) * min(1, remapped)
+        }
+        if dy > maxR * 0.72 && !jumpHeld {
             jumpPressed = true
             jumpHeld = true
         }
@@ -1898,7 +1932,7 @@ public final class HeistScene: SKScene {
                 JuiceSound.shared.playStomp()
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
                 // Hit-stop pop: 90ms normal, 150ms at combo ≥3 — then debris, not a sideways slide.
-                hitStop = sim.state.bandit.combo >= 3 ? 0.15 : 0.09
+                hitStop = max(tuning.feel.stompHitstop, sim.state.bandit.combo >= 3 ? 0.10 : tuning.feel.stompHitstop)
                 shake(0.95)
                 squash(1.42, 0.48)
                 neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 14)
@@ -2189,7 +2223,8 @@ public final class HeistScene: SKScene {
             bandit.zPosition = 55
         } else if b.invuln > 0 {
             // Stay at least half-visible during i-frames — never a faint ghost.
-            bandit.alpha = Int(b.invuln * 16) % 2 == 0 ? 0.55 : 1
+            let minA = CGFloat(tuning.feel.invulnMinAlpha)
+            bandit.alpha = Int(b.invuln * 16) % 2 == 0 ? minA : 1
             bandit.zPosition = 20
         } else {
             bandit.alpha = 1

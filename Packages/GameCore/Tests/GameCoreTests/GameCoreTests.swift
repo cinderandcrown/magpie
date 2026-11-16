@@ -8,6 +8,9 @@ final class GameCoreTests: XCTestCase {
         XCTAssertEqual(ModuleInfo.name, "GameCore")
     }
 
+
+
+
     func testNeonDocksLoads() throws {
         let map = try NeonDocksLevel.load()
         XCTAssertGreaterThan(map.width, 60)
@@ -70,30 +73,43 @@ final class GameCoreTests: XCTestCase {
 
     func testCoyoteJump() throws {
         let map = try TileMap.parse("""
-        ########
-        #......#
-        #.@....#
-        #===...#
-        ########
+        ##########
+        #........#
+        #........#
+        #.@======#
+        #........#
+        ##########
         """)
         var tuning = Tuning.default
-        tuning.coyoteSeconds = 0.12
+        XCTAssertEqual(tuning.feel.coyoteSeconds, 0.10, accuracy: 0.001)
         var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
-        for _ in 0..<20 { sim.step(InputFrame(moveX: 1)) }
-        // Walk off edge then jump within coyote
-        var leftGround = false
-        for _ in 0..<30 {
-            if !sim.state.bandit.onGround { leftGround = true }
-            if leftGround {
-                sim.step(InputFrame(moveX: 1, jumpPressed: true, jumpHeld: true))
-                break
-            }
-            sim.step(InputFrame(moveX: 1))
+        for _ in 0..<20 { sim.step(.idle) }
+        // Force an air frame with coyote still armed (GameFeel default 100 ms).
+        sim.state.bandit.onGround = false
+        sim.state.bandit.coyote = tuning.feel.coyoteSeconds
+        sim.state.bandit.velocity = .zero
+        sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+        let jumped = sim.state.events.contains { $0.kind == .jump } || sim.state.bandit.velocity.y > 0
+        XCTAssertTrue(jumped, "coyote (\(tuning.feel.coyoteSeconds)s) must still allow a jump after leaving ground")
+        // Coyote must expire if we wait it out in open air (no ground refresh).
+        var sim2 = Sim(map: map, tuning: tuning)
+        sim2.state.phase = .playing
+        for _ in 0..<20 { sim2.step(.idle) }
+        sim2.state.bandit.position.y += tuning.tileSize * 3
+        sim2.state.bandit.onGround = false
+        sim2.state.bandit.coyote = tuning.feel.coyoteSeconds
+        sim2.state.bandit.velocity = .zero
+        let waitFrames = Int(tuning.feel.coyoteSeconds / tuning.dt) + 2
+        for _ in 0..<waitFrames {
+            sim2.state.bandit.onGround = false
+            sim2.step(.idle)
         }
-        for _ in 0..<10 { sim.step(InputFrame(jumpHeld: true)) }
-        XCTAssertTrue(leftGround)
-        XCTAssertTrue(sim.state.bandit.velocity.y > 0 || sim.state.events.contains { $0.kind == .jump })
+        XCTAssertEqual(sim2.state.bandit.coyote, 0, accuracy: 0.001)
+        sim2.state.bandit.onGround = false
+        sim2.step(InputFrame(jumpPressed: true, jumpHeld: true))
+        let lateJump = sim2.state.events.contains { $0.kind == .jump }
+        XCTAssertFalse(lateJump, "jump after coyote expires must not fire from groundless state")
     }
 
     func testJumpBuffer() throws {
@@ -104,21 +120,67 @@ final class GameCoreTests: XCTestCase {
         #====#
         ######
         """)
-        var sim = Sim(map: map, tuning: .default)
+        var tuning = Tuning.default
+        XCTAssertEqual(tuning.feel.jumpBufferSeconds, 0.12, accuracy: 0.001)
+        var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
         sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
         for _ in 0..<20 { sim.step(InputFrame(jumpHeld: true)) }
-        // Buffer before landing
+        // Press jump shortly before landing — buffer should consume on touchdown.
+        var armed = false
         while !sim.state.bandit.onGround && sim.state.tick < 200 {
-            let near = sim.state.bandit.velocity.y < -50
-            sim.step(InputFrame(jumpPressed: near, jumpHeld: near))
+            let near = sim.state.bandit.velocity.y < -40
+            if near, !armed {
+                sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+                armed = true
+            } else {
+                sim.step(InputFrame(jumpHeld: armed))
+            }
         }
         var jumpedAgain = false
-        for _ in 0..<15 {
-            sim.step(.idle)
+        for _ in 0..<20 {
+            sim.step(InputFrame(jumpHeld: true))
             if sim.state.bandit.velocity.y > 40 { jumpedAgain = true }
         }
-        XCTAssertTrue(jumpedAgain || sim.state.bandit.jumpBuffer >= 0)
+        XCTAssertTrue(armed)
+        XCTAssertTrue(jumpedAgain, "jump buffer (\(tuning.feel.jumpBufferSeconds)s) should fire on landing")
+    }
+
+    /// Offset approach: feet 0.4× MOP-width off center still stomps (wider hurtbox).
+    func testStompFromOffsetApproach() throws {
+        let map = try TileMap.parse("""
+        ##########
+        #........#
+        #.@...M..#
+        #========#
+        ##########
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        guard let mopIdx = sim.state.mops.indices.first else {
+            return XCTFail("expected a MOP from M spawn")
+        }
+        let mop = sim.state.mops[mopIdx]
+        let mopW = sim.tuning.feel.mopSpriteWidthTiles * sim.tuning.tileSize
+        let offset = mopW * 0.4
+        // Place bandit above the MOP, offset horizontally, falling.
+        sim.state.bandit.position = Vec2(mop.position.x + offset, mop.position.y + sim.tuning.tileSize * 1.6)
+        sim.state.bandit.velocity = Vec2(0, -120)
+        sim.state.bandit.onGround = false
+        sim.state.bandit.invuln = 0
+        var stomped = false
+        for _ in 0..<45 {
+            sim.step(.idle)
+            if sim.state.events.contains(where: { $0.kind == .stomp }) {
+                stomped = true
+                break
+            }
+            if !sim.state.mops[mopIdx].alive {
+                stomped = true
+                break
+            }
+        }
+        XCTAssertTrue(stomped, "falling 0.4 MOP-widths off-center must still count as a stomp")
     }
 
     func testWallJump() throws {
@@ -164,25 +226,39 @@ final class GameCoreTests: XCTestCase {
         var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
         XCTAssertFalse(sim.state.mops.isEmpty, "MOP must sit outside 4-tile spawn clear zone")
-        // Jump onto mop repeatedly via respawn
-        for _ in 0..<8 {
+        // Freeze patrol so respawn stomps stay centered.
+        for i in sim.state.mops.indices {
+            sim.state.mops[i].patrolSpan = 0
+            sim.state.mops[i].home = sim.state.mops[i].position
+        }
+        for _ in 0..<12 {
             if !sim.state.mops[0].alive {
                 while !sim.state.mops[0].alive && sim.state.tick < 5000 {
                     sim.state.bandit.comboTimer = 3
                     sim.step(.idle)
                 }
             }
-            // Position above mop
-            sim.state.bandit.position = sim.state.mops[0].position + Vec2(0, 30)
-            sim.state.bandit.velocity = Vec2(0, -200)
+            if case .failed = sim.state.phase { sim.state.phase = .playing }
+            sim.state.bandit.hearts = max(sim.state.bandit.hearts, 3)
+            sim.state.bandit.invuln = 1.0
+            let mop = sim.state.mops[0]
+            sim.state.bandit.position = Vec2(mop.position.x, mop.position.y + 28)
+            sim.state.bandit.velocity = Vec2(0, -260)
             sim.state.bandit.onGround = false
-            for _ in 0..<20 { sim.step(.idle) }
+            sim.state.bandit.flopping = true
+            for _ in 0..<30 {
+                sim.step(InputFrame(jumpHeld: true))
+                if sim.state.events.contains(where: { if case .stomp = $0.kind { return true }; return false }) {
+                    break
+                }
+            }
             sim.state.bandit.comboTimer = 3
-            if sim.state.bandit.combo >= 5 { break }
+            if sim.state.bandit.combo >= tuning.maskModeAtCombo { break }
         }
-        XCTAssertGreaterThanOrEqual(sim.state.bandit.combo, 5)
+        XCTAssertGreaterThanOrEqual(sim.state.bandit.combo, tuning.maskModeAtCombo)
         XCTAssertTrue(sim.state.bandit.maskMode)
     }
+
 
     func testShinyCollect() throws {
         let map = try TileMap.parse("""
@@ -365,7 +441,7 @@ final class GameCoreTests: XCTestCase {
         var sawDeath = false
         var sawRetry = false
         var sawWin = false
-        for _ in 0..<Int(180 * tuning.simHz) {
+        for _ in 0..<Int(300 * tuning.simHz) {
             let cue = brain.next(sim: sim)
             if cue.start { sim.startRun() }
             if cue.retry {

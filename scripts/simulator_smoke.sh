@@ -234,6 +234,10 @@ write_flag "smoke_midrun_ok.txt"
 wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 120
 shot "$OUT_DIR/03-mop-stomp.png"
 
+# 03b — three consecutive chained stomps (Nick feel pass)
+wait_status "stomp-chain" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); c=re.search(r"combo=([0-9]+)", s); sys.exit(0 if (m and int(m.group(1))>=3 and "phase=playing" in s) else 1)' 120
+shot "$OUT_DIR/03b-stomp-chain.png"
+
 # 04 — Mask Mode while still playing (requires live maskOn=1, not sticky mask=).
 # Capture BEFORE pause/bg beats — those burn wall-clock while the sim keeps draining maskTimer.
 wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=1" in s and "phase=playing" in s) else 1)' 120
@@ -736,7 +740,9 @@ REQUIRED=(
   02b-pause-menu.png
   02c-background.png
   03-mop-stomp.png
+  03b-stomp-chain.png
   04-mask-mode.png
+  04b-mask-mode-2.png
   05-death-retry.png
   06-results.png
   07-district-map.png

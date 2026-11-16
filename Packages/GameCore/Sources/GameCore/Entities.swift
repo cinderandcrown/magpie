@@ -32,6 +32,10 @@ public struct BanditState: Equatable, Sendable {
     public var animHold: Double
     /// Suppress duplicate land events (pounce whoosh → land → land).
     public var landCooldown: Double
+    /// Armed after jump until early release cuts upward vy (or we land).
+    public var jumpCutArmed: Bool
+    /// Frames remaining where near-apex still counts as a stomp window.
+    public var apexStompFrames: Int
 
     public static func spawn(at position: Vec2, hearts: Int) -> BanditState {
         BanditState(
@@ -56,7 +60,9 @@ public struct BanditState: Equatable, Sendable {
             bankedShinies: 0,
             anim: .idle,
             animHold: 0,
-            landCooldown: 0
+            landCooldown: 0,
+            jumpCutArmed: false,
+            apexStompFrames: 0
         )
     }
 }

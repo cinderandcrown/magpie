@@ -215,19 +215,24 @@ public struct SmokeBrain: Equatable, Sendable {
         // Beat 2 — hunt MOPs for stomp → Mask Mode (ship combo 5 on Neon Docks).
         if let mop = nearestMop(sim: sim), !sawMask {
             let dx = mop.position.x - b.position.x
+            let dy = mop.position.y - b.position.y
             // Keep rightward pressure; only ease if we clearly overshot a same-deck MOP.
             var moveX: Double = 1.0
-            if dx < -8 { moveX = -0.2 }
+            if dx < -8 { moveX = -0.35 }
+            else if abs(dx) < tile * 1.2 { moveX = dx >= 0 ? 0.55 : -0.35 }
             var jumpPressed = false
             var jumpHeld = false
             var pouncePressed = false
 
             if b.onGround || b.coyote > 0 {
-                if dx < tile * 5.0 { jumpPressed = true; jumpHeld = true }
+                // Jump earlier for chains — bounce into the next patrol.
+                if dx < tile * 6.5, abs(dy) < tile * 2.2 { jumpPressed = true; jumpHeld = true }
             } else if b.velocity.y > 0 {
+                jumpHeld = true // variable-jump + stomp bounce height
+            } else {
+                // Falling: hold jump for higher bounce; pounce for magnet assist.
                 jumpHeld = true
-            } else if !b.flopping {
-                pouncePressed = true
+                if !b.flopping { pouncePressed = true }
             }
 
             // Hard block backing into the left water pit.

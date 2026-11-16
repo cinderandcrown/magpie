@@ -79,7 +79,7 @@ public struct Sim: Equatable, Sendable {
             if abs(p.x - start.x) < tile * 4 { continue }
             if cps.contains(where: { abs(p.x - $0.position.x) < tile * 4 }) { continue }
             // Opening pack: tiny patrol so hop-stomps chain into Mask without side-bags.
-            let span = tile * (mopID < 6 ? 0.35 : 2.2)
+            let span = tile * (mopID < 8 ? 0.25 : 2.2)
             mops.append(MopEnemy(
                 id: mopID, position: p, home: p, patrolSpan: span, phase: Double(i) * 0.85,
                 alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1, stun: 0
@@ -131,6 +131,11 @@ public struct Sim: Equatable, Sendable {
         else if b.jumpBuffer > 0 { b.jumpBuffer = max(0, b.jumpBuffer - dt) }
 
         if b.invuln > 0 { b.invuln = max(0, b.invuln - dt) }
+        // Chain armor: active combo keeps light i-frames so a just-respawned MOP
+        // can't side-bag the run before the next hop (Nick feel pass).
+        if b.combo > 0, b.comboTimer > 0 {
+            b.invuln = max(b.invuln, b.onGround ? 0.2 : 0.15)
+        }
         if b.landCooldown > 0 { b.landCooldown = max(0, b.landCooldown - dt) }
         if b.animHold > 0 {
             b.animHold = max(0, b.animHold - dt)
@@ -143,17 +148,23 @@ public struct Sim: Equatable, Sendable {
         // just because gravity briefly pulls vy negative on solid ground.
         let wasAirborne = !b.onGround || b.flopping
         integrate(input: input, bandit: &b, dt: dt)
-        // Snapshot fall intent before collide zeroes vy on landing — tight stomp
-        // hitboxes still connect on the contact frame.
-        let fallSpeed = -b.velocity.y / max(tuning.tileSize, 1)
+        // Stomp window: falling, OR within a few frames of apex (Nick feel pass).
+        let feel = tuning.feel
+        let apexSpeed = feel.apexHangSpeed * tuning.tileSize / 2.2
+        if wasAirborne, abs(b.velocity.y) <= apexSpeed {
+            b.apexStompFrames = max(b.apexStompFrames, feel.stompApexFrames)
+        } else if b.apexStompFrames > 0 {
+            b.apexStompFrames -= 1
+        }
+        if b.onGround { b.apexStompFrames = 0 }
         let stompFalling = b.flopping
-            || (wasAirborne && b.velocity.y < 0 && fallSpeed >= tuning.stompMinFallSpeed)
+            || (wasAirborne && (b.velocity.y < 0 || b.apexStompFrames > 0))
         collide(bandit: &b)
         updateAnim(bandit: &b)
         collectShinies(bandit: &b)
         updateCheckpoints(bandit: &b)
         bankAndExit(bandit: &b)
-        updateMops(bandit: &b, dt: dt, stompFalling: stompFalling)
+        updateMops(bandit: &b, dt: dt, stompFalling: stompFalling, jumpHeld: input.jumpHeld)
         updateCombo(bandit: &b, dt: dt)
         hazards(bandit: &b)
 
@@ -165,33 +176,39 @@ public struct Sim: Equatable, Sendable {
     // MARK: - Physics
 
     private mutating func integrate(input: InputFrame, bandit: inout BanditState, dt: Double) {
+        let feel = tuning.feel
         let move = max(-1, min(1, input.moveX))
-        if abs(move) > 0.05 { bandit.facing = move >= 0 ? 1 : -1 }
+        if abs(move) > feel.stickDeadZone { bandit.facing = move >= 0 ? 1 : -1 }
 
-        let accel = bandit.onGround ? tuning.accelGround : tuning.accelAir
-        // Slight stick = walk, full stick = run (placement-insensitive virtual stick).
+        // Accel from time-to-speed: reach runPx in groundAccelTime; stop in groundStopTime.
+        let walkPx = feel.walkSpeed * tuning.tileSize
+        let runPx = feel.runSpeed * tuning.tileSize
+        let groundAccel = runPx / max(0.04, feel.groundAccelTime)
+        let groundDecel = runPx / max(0.04, feel.groundStopTime)
+        let accelBase = bandit.onGround ? groundAccel : groundAccel * feel.airControlMul
         let mag = abs(move)
-        let walkPx = tuning.walkSpeed * tuning.tileSize
-        let runPx = tuning.runSpeed * tuning.tileSize
-        let thresh = max(0.15, min(0.9, tuning.walkRunStickThreshold))
+        let thresh = max(feel.stickDeadZone + 0.01, min(0.9, feel.walkRunStickThreshold))
         let speedPx: Double
-        if mag <= 0.05 {
+        if mag <= feel.stickDeadZone {
             speedPx = 0
         } else if mag < thresh {
-            speedPx = walkPx * (mag / thresh)
+            let t = (mag - feel.stickDeadZone) / max(0.05, thresh - feel.stickDeadZone)
+            speedPx = walkPx * min(1, t)
         } else {
             let u = (mag - thresh) / max(0.05, 1 - thresh)
             speedPx = walkPx + (runPx - walkPx) * min(1, u)
         }
         let targetVx = (move >= 0 ? 1.0 : -1.0) * speedPx
-        if mag > 0.05 {
+        if mag > feel.stickDeadZone {
+            let reversing = bandit.velocity.x * targetVx < 0
+            let accel = accelBase * (reversing ? feel.turnAccelMul : 1)
             if bandit.velocity.x < targetVx {
-                bandit.velocity.x = min(targetVx, bandit.velocity.x + accel * tuning.tileSize * dt)
+                bandit.velocity.x = min(targetVx, bandit.velocity.x + accel * dt)
             } else if bandit.velocity.x > targetVx {
-                bandit.velocity.x = max(targetVx, bandit.velocity.x - accel * tuning.tileSize * dt)
+                bandit.velocity.x = max(targetVx, bandit.velocity.x - accel * dt)
             }
         } else if bandit.onGround {
-            let fr = tuning.frictionGround * tuning.tileSize * dt
+            let fr = groundDecel * dt
             if bandit.velocity.x > 0 { bandit.velocity.x = max(0, bandit.velocity.x - fr) }
             else { bandit.velocity.x = min(0, bandit.velocity.x + fr) }
         }
@@ -202,75 +219,112 @@ public struct Sim: Equatable, Sendable {
         if bandit.jumpBuffer > 0 && (bandit.onGround || canCoyote || canWall) {
             if canWall && !bandit.onGround {
                 let dir: Double = bandit.onWallLeft ? 1 : -1
-                bandit.velocity.x = dir * tuning.wallJumpVelocityX * tuning.tileSize / 2.2
-                bandit.velocity.y = tuning.wallJumpVelocityY * tuning.tileSize / 2.2
+                bandit.velocity.x = dir * feel.wallJumpVelocityX * tuning.tileSize / 2.2
+                bandit.velocity.y = feel.wallJumpVelocityY * tuning.tileSize / 2.2
                 bandit.facing = dir
                 bandit.wallCling = 0
             } else {
-                bandit.velocity.y = tuning.jumpVelocity * tuning.tileSize / 2.2
+                bandit.velocity.y = feel.jumpVelocity * tuning.tileSize / 2.2
             }
             bandit.onGround = false
             bandit.coyote = 0
             bandit.jumpBuffer = 0
             bandit.pouncing = false
             bandit.flopping = false
+            bandit.jumpCutArmed = true
             state.events.append(SimEvent(kind: .jump, position: bandit.position))
             state.events.append(SimEvent(kind: .dust, position: bandit.position))
         }
 
-        // Variable jump + snappy fall: hold softens ascent; release cuts; falling uses fallGravity.
+        // Variable jump: early release cuts upward velocity once by jumpCutFraction.
+        if bandit.jumpCutArmed, !input.jumpHeld, bandit.velocity.y > 0 {
+            bandit.velocity.y *= feel.jumpCutFraction
+            bandit.jumpCutArmed = false
+        }
+
+        // Asymmetric gravity: rise → fall×1.8, apex hang when |vy| is small.
         let scale = tuning.tileSize / 2.2
-        var g = tuning.gravity * scale
-        if bandit.velocity.y > 0 {
-            if input.jumpHeld {
-                g = tuning.gravity * scale * (1.0 - tuning.variableJumpHoldBoost * 0.4)
-            } else {
-                g = tuning.jumpCutGravity * scale
-            }
-        } else if bandit.velocity.y < 0 {
-            g = tuning.fallGravity * scale
+        let riseG = feel.gravity * scale
+        let fallG = feel.gravity * feel.fallGravityMul * scale
+        let apexSpeed = feel.apexHangSpeed * scale
+        let g: Double
+        if abs(bandit.velocity.y) <= apexSpeed, !bandit.onGround {
+            g = riseG * feel.apexHangMul
+        } else if bandit.velocity.y > 0 {
+            g = riseG
+        } else {
+            g = fallG
         }
 
         // Pounce (forward boost) / Belly Flop (fast fall) while airborne.
         // Only arm once per aerial — re-pressing must not keep boosting or we soft-float.
         if input.pouncePressed && !bandit.onGround && !bandit.pouncing && !bandit.flopping {
             bandit.pouncing = true
-            bandit.velocity.x += bandit.facing * tuning.pounceBoostX * tuning.tileSize / 2
-            bandit.velocity.y += tuning.pounceBoostY * tuning.tileSize / 3
+            bandit.velocity.x += bandit.facing * feel.pounceBoostX * tuning.tileSize / 2
+            bandit.velocity.y += feel.pounceBoostY * tuning.tileSize / 3
+            applyPounceMagnet(bandit: &bandit)
             state.events.append(SimEvent(kind: .pounce, position: bandit.position))
             state.events.append(SimEvent(kind: .shake, position: bandit.position))
             if bandit.velocity.y < 2 {
                 bandit.flopping = true
-                bandit.velocity.y = -tuning.bellyFlopFallBoost * tuning.tileSize / 2.5
+                bandit.velocity.y = -feel.bellyFlopFallBoost * tuning.tileSize / 2.5
                 state.events.append(SimEvent(kind: .flop, position: bandit.position))
             }
         } else if input.pouncePressed && !bandit.onGround && bandit.pouncing && !bandit.flopping && bandit.velocity.y < 2 {
             bandit.flopping = true
-            bandit.velocity.y = -tuning.bellyFlopFallBoost * tuning.tileSize / 2.5
+            bandit.velocity.y = -feel.bellyFlopFallBoost * tuning.tileSize / 2.5
             state.events.append(SimEvent(kind: .flop, position: bandit.position))
+        } else if bandit.pouncing || bandit.flopping {
+            applyPounceMagnet(bandit: &bandit)
         }
 
         // Wall slide
         if !bandit.onGround && (bandit.onWallLeft || bandit.onWallRight) && bandit.velocity.y < 0 {
-            let slide = -tuning.wallSlideSpeed * tuning.tileSize / 2
+            let slide = -feel.wallSlideSpeed * tuning.tileSize / 2
             if bandit.velocity.y < slide { bandit.velocity.y = slide }
-            bandit.wallCling = tuning.wallClingSeconds
+            bandit.wallCling = feel.wallClingSeconds
         } else if bandit.wallCling > 0 {
             bandit.wallCling = max(0, bandit.wallCling - dt)
         }
 
         bandit.velocity.y -= g * dt
-        let maxFall = -tuning.maxFall * tuning.tileSize / 2.2
+        let maxFall = -feel.maxFall * tuning.tileSize / 2.2
         if bandit.velocity.y < maxFall { bandit.velocity.y = maxFall }
 
         bandit.position.x += bandit.velocity.x * dt
         bandit.position.y += bandit.velocity.y * dt
 
         if bandit.onGround {
-            bandit.coyote = tuning.coyoteSeconds
+            bandit.coyote = feel.coyoteSeconds
+            bandit.jumpCutArmed = false
         } else if bandit.coyote > 0 {
             bandit.coyote = max(0, bandit.coyote - dt)
         }
+    }
+
+    /// Soft homing toward the nearest MOP within ~2 tiles ahead and below while pouncing.
+    private mutating func applyPounceMagnet(bandit: inout BanditState) {
+        let feel = tuning.feel
+        let reach = feel.pounceMagnetTiles * tuning.tileSize
+        var best: (idx: Int, dist: Double)?
+        for (i, mop) in state.mops.enumerated() where mop.alive {
+            let dx = mop.position.x - bandit.position.x
+            let dy = mop.position.y - bandit.position.y
+            // Ahead (facing) and at/below the bandit.
+            if dx * bandit.facing < 0 { continue }
+            if dy > halfH { continue }
+            let d = hypot(dx, dy)
+            if d > reach { continue }
+            if best == nil || d < best!.dist { best = (i, d) }
+        }
+        guard let best else { return }
+        let mop = state.mops[best.idx]
+        let dx = mop.position.x - bandit.position.x
+        let dy = mop.position.y - bandit.position.y
+        let d = max(1, hypot(dx, dy))
+        let pull = feel.pounceMagnetAccel * tuning.tileSize * tuning.dt
+        bandit.velocity.x += (dx / d) * pull
+        bandit.velocity.y += (dy / d) * pull * 0.65
     }
 
     private mutating func collide(bandit: inout BanditState) {
@@ -308,9 +362,23 @@ public struct Sim: Equatable, Sendable {
         }
 
         // Vertical
+        let corner = tuning.feel.cornerCorrectPx
         if bandit.velocity.y <= 0 {
             let feet = bandit.position.y - halfH
-            if solidAt(bandit.position.x - halfW * 0.6, feet) || solidAt(bandit.position.x + halfW * 0.6, feet) {
+            let footL = solidAt(bandit.position.x - halfW * 0.6, feet)
+            let footR = solidAt(bandit.position.x + halfW * 0.6, feet)
+            if footL || footR {
+                // Near-miss landing: only one foot catches a ledge — nudge onto the solid.
+                if footL != footR, corner > 0 {
+                    let dir: Double = footR ? 1 : -1
+                    for step in stride(from: 1.0, through: corner, by: 1.0) {
+                        let nx = bandit.position.x + dir * step
+                        if solidAt(nx - halfW * 0.6, feet), solidAt(nx + halfW * 0.6, feet) {
+                            bandit.position.x = nx
+                            break
+                        }
+                    }
+                }
                 let ty = Int(floor(feet / tile))
                 bandit.position.y = Double(ty + 1) * tile + halfH
                 // Fire land/dust only on the air → ground transition, with a short cooldown
@@ -327,13 +395,36 @@ public struct Sim: Equatable, Sendable {
                 bandit.onGround = true
                 bandit.pouncing = false
                 bandit.flopping = false
+                bandit.jumpCutArmed = false
+                // Landing during a combo keeps brief i-frames so the next hop isn't a side-bag.
+                if bandit.combo > 0, bandit.comboTimer > 0 {
+                    bandit.invuln = max(bandit.invuln, 0.45)
+                }
             }
         } else {
             let head = bandit.position.y + halfH
-            if solidAt(bandit.position.x - halfW * 0.5, head) || solidAt(bandit.position.x + halfW * 0.5, head) {
-                let ty = Int(floor(head / tile))
-                bandit.position.y = Double(ty) * tile - halfH - 0.01
-                bandit.velocity.y = 0
+            let headHit = solidAt(bandit.position.x - halfW * 0.5, head) || solidAt(bandit.position.x + halfW * 0.5, head)
+            if headHit {
+                // Corner correction: nudge sideways up to cornerCorrectPx to slip past a ledge lip.
+                var cleared = false
+                if corner > 0 {
+                    for step in stride(from: 1.0, through: corner, by: 1.0) {
+                        for dir: Double in [1, -1] {
+                            let nx = bandit.position.x + dir * step
+                            if !solidAt(nx - halfW * 0.5, head), !solidAt(nx + halfW * 0.5, head) {
+                                bandit.position.x = nx
+                                cleared = true
+                                break
+                            }
+                        }
+                        if cleared { break }
+                    }
+                }
+                if !cleared {
+                    let ty = Int(floor(head / tile))
+                    bandit.position.y = Double(ty) * tile - halfH - 0.01
+                    bandit.velocity.y = 0
+                }
             }
         }
 
@@ -430,7 +521,14 @@ public struct Sim: Equatable, Sendable {
         return p.distance(to: bandit.position) < tuning.tileSize * 1.2
     }
 
-    private mutating func updateMops(bandit: inout BanditState, dt: Double, stompFalling: Bool) {
+    private mutating func updateMops(bandit: inout BanditState, dt: Double, stompFalling: Bool, jumpHeld: Bool) {
+        let feel = tuning.feel
+        let mopW = feel.mopSpriteWidthTiles * tuning.tileSize
+        let stompHalfW = mopW * feel.stompWidthMul * 0.5
+        let hurtHalfW = mopW * feel.hurtWidthMul * 0.5
+        let mopHalfH = halfH
+
+        // Respawn + stun clocks before combat so a just-revived MOP can be stomped.
         for i in state.mops.indices {
             if !state.mops[i].alive {
                 state.mops[i].respawn -= dt
@@ -446,6 +544,52 @@ public struct Sim: Equatable, Sendable {
             if state.mops[i].stun > 0 {
                 state.mops[i].stun = max(0, state.mops[i].stun - dt)
             }
+        }
+
+        // Stomp / hurt against the pre-patrol pose so the MOP doesn't slide out from
+        // under the feet on the same frame (patrol used to break chains after combo 3).
+        var didStomp = false
+        if stompFalling {
+            for i in state.mops.indices where state.mops[i].alive {
+                let dx = abs(bandit.position.x - state.mops[i].position.x)
+                let feetY = bandit.position.y - halfH
+                let mopMidY = state.mops[i].position.y + mopHalfH
+                // Feet above MOP mid, or body still above MOP center (fast-fall contact).
+                let aboveMid = feetY >= mopMidY - 6 || bandit.position.y >= state.mops[i].position.y
+                guard aboveMid, dx <= stompHalfW else { continue }
+                // Don't stomp from far below / deep underground overlaps.
+                guard bandit.position.y >= state.mops[i].position.y - mopHalfH * 0.5 else { continue }
+
+                state.mops[i].alive = false
+                // Longer respawn while chaining so the pack doesn't pop back underfoot.
+                state.mops[i].respawn = bandit.combo >= 2 ? 5.5 : 3.5
+                state.mops[i].anim = .death
+                state.mops[i].animHold = 0.8
+                var bounce = feel.stompBounceVelocity * tuning.tileSize / 2.2
+                if jumpHeld { bounce *= feel.stompBounceHoldMul }
+                bandit.velocity.y = bounce
+                bandit.flopping = false
+                bandit.pouncing = false
+                bandit.jumpCutArmed = jumpHeld
+                bandit.invuln = max(bandit.invuln, max(0.85, feel.invulnSeconds * 0.85))
+                bandit.combo = min(tuning.comboCap, bandit.combo + 1)
+                bandit.comboTimer = tuning.comboGroundGrace
+                if bandit.combo >= tuning.maskModeAtCombo && !bandit.maskMode {
+                    bandit.maskMode = true
+                    bandit.maskTimer = tuning.maskDuration
+                    state.events.append(SimEvent(kind: .maskOn, position: bandit.position))
+                } else if bandit.maskMode {
+                    bandit.maskTimer = max(bandit.maskTimer, tuning.maskDuration * 0.55)
+                }
+                state.events.append(SimEvent(kind: .stomp, position: state.mops[i].position))
+                state.events.append(SimEvent(kind: .shake, position: state.mops[i].position))
+                didStomp = true
+                break // one stomp per frame keeps bounce/combo readable
+            }
+        }
+
+        // Patrol after combat so sin-phase motion doesn't dodge the stomp frame.
+        for i in state.mops.indices where state.mops[i].alive {
             if state.mops[i].stun <= 0 {
                 let prevX = state.mops[i].position.x
                 state.mops[i].phase += dt
@@ -460,46 +604,27 @@ public struct Sim: Equatable, Sendable {
             if state.mops[i].animHold <= 0 {
                 state.mops[i].anim = .walk
             }
+        }
 
-            let d = state.mops[i].position.distance(to: bandit.position)
-            // Stomp on contact: use pre-collide fall intent so landing frames still connect.
-            let aboveMop = bandit.position.y >= state.mops[i].position.y + halfH * 0.25
-            if stompFalling
-                && d <= tuning.stompHitRadius
-                && aboveMop
-            {
-                state.mops[i].alive = false
-                state.mops[i].respawn = 3.5
-                state.mops[i].anim = .death
-                state.mops[i].animHold = 0.8
-                bandit.velocity.y = tuning.stompBounceVelocity * tuning.tileSize / 2.2
-                bandit.flopping = false
-                // I-frames through the bounce so chains don't side-bag the next MOP.
-                bandit.invuln = max(bandit.invuln, 0.55)
-                bandit.combo = min(tuning.comboCap, bandit.combo + 1)
-                bandit.comboTimer = tuning.comboGroundGrace
-                if bandit.combo >= tuning.maskModeAtCombo && !bandit.maskMode {
-                    bandit.maskMode = true
-                    bandit.maskTimer = tuning.maskDuration
-                    state.events.append(SimEvent(kind: .maskOn, position: bandit.position))
-                } else if bandit.maskMode {
-                    // Refresh Mask window on continued stomps.
-                    bandit.maskTimer = max(bandit.maskTimer, tuning.maskDuration * 0.55)
-                }
-                state.events.append(SimEvent(kind: .stomp, position: state.mops[i].position))
-                state.events.append(SimEvent(kind: .shake, position: state.mops[i].position))
-                continue
-            }
-            // Hurt on tight contact; suppress only during a real falling stomp window.
-            if d <= tuning.hurtHitRadius && bandit.invuln <= 0 && !(stompFalling && aboveMop) {
+        if didStomp { return }
+
+        // Never side-bag while descending / flopping / near-apex — those frames are stomp dives.
+        if stompFalling || bandit.velocity.y < 0 || bandit.flopping || bandit.apexStompFrames > 0 {
+            return
+        }
+
+        for i in state.mops.indices where state.mops[i].alive {
+            let dx = abs(bandit.position.x - state.mops[i].position.x)
+            let dy = abs(bandit.position.y - state.mops[i].position.y)
+            // Hurt box stays smaller than the MOP sprite; only when grounded / rising beside them.
+            if dx <= hurtHalfW, dy <= mopHalfH * 1.35, bandit.invuln <= 0 {
                 bandit.hearts -= 1
-                bandit.invuln = tuning.invulnSeconds
+                bandit.invuln = feel.invulnSeconds
                 var away = bandit.position.x >= state.mops[i].position.x ? 1.0 : -1.0
                 let tile = tuning.tileSize
                 let minSafe = tile * 5
                 let maxSafe = Double(map.width) * tile - tile * 5
                 var nx = bandit.position.x + away * tile * 1.2
-                // Never knock into the map lip — that pinned him in the camera clamp / mob pile.
                 if nx < minSafe {
                     away = 1
                     nx = minSafe
@@ -508,8 +633,8 @@ public struct Sim: Equatable, Sendable {
                     nx = maxSafe
                 }
                 bandit.position.x = nx
-                bandit.velocity.y = tuning.jumpVelocity * tile / 3
-                bandit.velocity.x = away * tuning.runSpeed * tile * 0.85
+                bandit.velocity.y = feel.jumpVelocity * tile / 3
+                bandit.velocity.x = away * feel.runSpeed * tile * 0.85
                 state.mops[i].position.x -= away * tile * 0.5
                 state.mops[i].home.x = state.mops[i].position.x
                 state.mops[i].stun = 0.5
@@ -524,6 +649,7 @@ public struct Sim: Equatable, Sendable {
                     bandit.invuln = 0
                     fail(.bagged, at: bandit.position)
                 }
+                break
             }
         }
     }

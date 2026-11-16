@@ -46,7 +46,7 @@ public final class DebugTuningMenu: SKNode {
             ("walkSpeed", \.walkSpeed, 0.2),
             ("runSpeed", \.runSpeed, 0.2),
             ("walkRunStickThreshold", \.walkRunStickThreshold, 0.05),
-            ("stompMinFallSpeed", \.stompMinFallSpeed, 0.2),
+            ("groundAccelTime", \.feel.groundAccelTime, 0.01),
             ("jumpVelocity", \.jumpVelocity, 0.3),
             ("gravity", \.gravity, 2),
             ("coyoteSeconds", \.coyoteSeconds, 0.01),
