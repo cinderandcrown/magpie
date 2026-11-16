@@ -59,7 +59,9 @@ public enum ArtCatalog {
         warmSideAutotiles()
         warmSideProps()
         _ = motionTrailTexture()
+        _ = softCircleTexture()
         _ = perspectiveGridTexture()
+        _ = loadStorefrontSignTextures()
     }
 
     public static func texture(_ key: AssetKey) -> SKTexture? {
@@ -208,6 +210,36 @@ public enum ArtCatalog {
         n.alpha = 0.42
         n.zPosition = -28
         return n
+    }
+
+    private static var softCircleTex: SKTexture?
+
+    /// Soft white circle for particle emitters (land dust, sparks).
+    public static func softCircleTexture() -> SKTexture {
+        if let softCircleTex { return softCircleTex }
+        let size = CGSize(width: 16, height: 16)
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 2
+        let img = UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+            let cg = ctx.cgContext
+            let colors = [
+                UIColor.white.withAlphaComponent(1).cgColor,
+                UIColor.white.withAlphaComponent(0).cgColor,
+            ] as CFArray
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]) {
+                cg.drawRadialGradient(
+                    gradient,
+                    startCenter: CGPoint(x: 8, y: 8), startRadius: 0,
+                    endCenter: CGPoint(x: 8, y: 8), endRadius: 8,
+                    options: []
+                )
+            }
+        }
+        let tex = SKTexture(image: img)
+        tex.filteringMode = .linear
+        softCircleTex = tex
+        return tex
     }
 
     public static func motionTrailTexture() -> SKTexture {
@@ -429,39 +461,103 @@ public enum ArtCatalog {
         return e
     }
 
-    /// Bright neon signage strips for the mid parallax band (palette + skyline read).
+    /// Storefront sign crops from mid_buildings.png (SPOTLESS / GLOW MART / FIZZ / etc.).
+    private static var storefrontSignTextures: [SKTexture]?
+
+    private static func loadStorefrontSignTextures() -> [SKTexture] {
+        if let storefrontSignTextures { return storefrontSignTextures }
+        guard let img = AssetManifest.image(for: .midBuildings, preferScale: 1),
+              let cg = img.cgImage
+        else {
+            storefrontSignTextures = []
+            return []
+        }
+        // Normalized crops covering neon storefront bands in the 2560×1440 plate.
+        let boxes: [(CGFloat, CGFloat, CGFloat, CGFloat)] = [
+            (0.12, 0.42, 0.22, 0.12),
+            (0.38, 0.48, 0.18, 0.10),
+            (0.58, 0.40, 0.20, 0.11),
+            (0.78, 0.46, 0.16, 0.10),
+            (0.22, 0.62, 0.18, 0.09),
+            (0.52, 0.66, 0.20, 0.10),
+        ]
+        var out: [SKTexture] = []
+        let iw = CGFloat(cg.width)
+        let ih = CGFloat(cg.height)
+        for (nx, ny, nw, nh) in boxes {
+            let rect = CGRect(x: nx * iw, y: ny * ih, width: nw * iw, height: nh * ih)
+            guard let slice = cg.cropping(to: rect) else { continue }
+            let tex = SKTexture(cgImage: slice)
+            tex.filteringMode = .linear
+            out.append(tex)
+        }
+        // Fallback solid neon plates if crops failed (still magenta+teal).
+        if out.isEmpty {
+            for color in [neonPink, neonCyan, neonPink, neonCyan] {
+                let size = CGSize(width: 64, height: 24)
+                let format = UIGraphicsImageRendererFormat()
+                format.opaque = false
+                format.scale = 2
+                let baked = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                    color.setFill()
+                    UIBezierPath(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 3).fill()
+                }
+                out.append(SKTexture(image: baked))
+            }
+        }
+        storefrontSignTextures = out
+        return out
+    }
+
+    /// Bright neon storefront signs for the mid parallax band (real art + glow, not flat rectangles).
     public static func neonSignageStrip(width: CGFloat, height: CGFloat) -> SKNode {
         let root = SKNode()
-        // Bias magenta + teal (palette gate); keep a couple lime/orange accents.
-        let colors: [SKColor] = [
-            neonPink,
-            neonCyan,
-            SKColor(red: 1.0, green: 0.15, blue: 0.78, alpha: 1),
-            neonCyan,
-            neonPink,
-            SKColor(red: 0.15, green: 0.95, blue: 1.0, alpha: 1),
-            neonLime,
-            neonPink,
-        ]
+        let textures = loadStorefrontSignTextures()
+        let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
         var x: CGFloat = -width * 0.42
         var i = 0
         while x < width * 0.48 {
-            let w = CGFloat(36 + (i % 5) * 14)
-            let h = CGFloat(14 + (i % 3) * 8)
-            let sign = SKSpriteNode(color: colors[i % colors.count], size: CGSize(width: w, height: h))
-            sign.position = CGPoint(x: x, y: CGFloat((i % 4) * 22) - 12)
-            sign.alpha = 1.0
-            sign.zPosition = 1
-            sign.blendMode = .add
-            root.addChild(sign)
-            // Soft glow twin behind the sign.
-            let glow = SKSpriteNode(color: colors[i % colors.count], size: CGSize(width: w * 1.55, height: h * 2.2))
-            glow.position = sign.position
-            glow.alpha = 0.55
+            let w = CGFloat(52 + (i % 4) * 18)
+            let h = CGFloat(18 + (i % 3) * 8)
+            let accent = accents[i % accents.count]
+            let glow = SKSpriteNode(color: accent, size: CGSize(width: w * 1.7, height: h * 2.4))
+            glow.position = CGPoint(x: x, y: CGFloat((i % 4) * 24) - 8)
+            glow.alpha = 0.65
             glow.blendMode = .add
             glow.zPosition = 0
             root.addChild(glow)
-            x += w + CGFloat(14 + (i % 4) * 6)
+
+            let sign: SKSpriteNode
+            if !textures.isEmpty {
+                let tex = textures[i % textures.count]
+                sign = SKSpriteNode(texture: tex, size: CGSize(width: w, height: h))
+            } else {
+                sign = SKSpriteNode(color: accent, size: CGSize(width: w, height: h))
+            }
+            sign.position = glow.position
+            sign.alpha = 1
+            sign.zPosition = 1
+            // Magenta bias so the palette gate can't pass on teal alone.
+            if i % 2 == 0 {
+                sign.color = neonPink
+                sign.colorBlendFactor = 0.55
+                sign.blendMode = .add
+            } else {
+                sign.color = neonCyan
+                sign.colorBlendFactor = 0.35
+                sign.blendMode = .add
+            }
+            root.addChild(sign)
+
+            if i % 5 == 0 {
+                let flicker = SKAction.sequence([
+                    SKAction.fadeAlpha(to: 0.55, duration: 0.08),
+                    SKAction.fadeAlpha(to: 1.0, duration: 0.12),
+                    SKAction.wait(forDuration: 2.2 + Double(i % 3) * 0.4),
+                ])
+                sign.run(SKAction.repeatForever(flicker))
+            }
+            x += w + CGFloat(12 + (i % 4) * 6)
             i += 1
         }
         root.zPosition = -19
@@ -669,7 +765,8 @@ public final class BanditVisual: SKNode {
     private var trailPool: [SKSpriteNode] = []
     private var trailCursor: Int = 0
     private var trailAcc: CGFloat = 0
-    private let trailPoolSize = 18
+    private let trailPoolSize = 6
+    private var lastTrailWorldX: CGFloat = 0
     private var sheetDriven = false
     /// Manual sheet driver so fps can track |vx| and LEDs can follow the head frame.
     private var driveTextures: [SKTexture] = []
@@ -814,25 +911,28 @@ public final class BanditVisual: SKNode {
         shadow.zPosition = -1
         shadow.position = CGPoint(x: 0, y: -2)
 
-        // LED eye glints for Mask Mode — parented under `body` and moved to the
-        // per-frame head anchor so they never sit on the belly.
-        maskGlow = SKSpriteNode(color: .clear, size: CGSize(width: 32, height: 14))
+        // Mask LED glints — one profile goggle lens by default; twin only for front idle.
+        maskGlow = SKSpriteNode(color: .clear, size: CGSize(width: 28, height: 16))
         maskGlow.alpha = 0
         maskGlow.isHidden = true
         maskGlow.zPosition = 3
-        maskGlow.position = CGPoint(x: 2, y: SpriteCycles.banditDisplaySize.height * 0.48)
-        let eyeL = SKShapeNode(circleOfRadius: 2.8)
+        maskGlow.position = CGPoint(x: 2, y: SpriteCycles.banditDisplaySize.height * 0.52)
+        let eyeL = SKShapeNode(circleOfRadius: 2.2)
+        eyeL.name = "maskEyeL"
         eyeL.fillColor = ArtCatalog.neonCyan
         eyeL.strokeColor = .white
-        eyeL.lineWidth = 0.6
-        eyeL.glowWidth = 1.4
-        eyeL.position = CGPoint(x: -6, y: 0)
-        let eyeR = SKShapeNode(circleOfRadius: 2.8)
+        eyeL.lineWidth = 0.5
+        eyeL.glowWidth = 1.6
+        eyeL.position = CGPoint(x: -5, y: 1)
+        eyeL.isHidden = true
+        let eyeR = SKShapeNode(circleOfRadius: 3.0)
+        eyeR.name = "maskEyeR"
         eyeR.fillColor = ArtCatalog.neonCyan
         eyeR.strokeColor = .white
         eyeR.lineWidth = 0.6
-        eyeR.glowWidth = 1.4
-        eyeR.position = CGPoint(x: 6, y: 0)
+        eyeR.glowWidth = 2.0
+        // Profile: sit on the forward goggle lens, not the muzzle.
+        eyeR.position = CGPoint(x: 5, y: 3)
         maskGlow.addChild(eyeL)
         maskGlow.addChild(eyeR)
 
@@ -1013,12 +1113,16 @@ public final class BanditVisual: SKNode {
         let anchor: HeadAnchor = {
             if driveAnchors.indices.contains(i) { return driveAnchors[i] }
             if let list = headAnchorsByAnim[currentAnim], list.indices.contains(i) { return list[i] }
-            return HeadAnchor(x: 0.02, y: 0.48)
+            return HeadAnchor(x: 0.02, y: 0.52)
         }()
         let w = sprite.size.width
         let h = sprite.size.height
-        // Body already flips for facing; keep LED x in sheet space (no extra facing flip).
-        maskGlow.position = CGPoint(x: anchor.x * w, y: anchor.y * h)
+        // Goggle offset above the muzzle/cheek so the glint sits on the lens in profile.
+        let goggle = CGPoint(x: 0.06 * w, y: 0.06 * h)
+        maskGlow.position = CGPoint(x: anchor.x * w + goggle.x, y: anchor.y * h + goggle.y)
+        // Side-view sheets: one goggle-lens glint (front mascot uses a separate node).
+        maskGlow.childNode(withName: "maskEyeL")?.isHidden = true
+        maskGlow.childNode(withName: "maskEyeR")?.isHidden = false
     }
 
     private func playLoop(_ textures: [SKTexture], action: String, fallbackTPF: TimeInterval) {
@@ -1254,9 +1358,10 @@ public final class BanditVisual: SKNode {
         let moving = maskMode || anim == .run || anim == .walk || anim == .pounce || anim == .jump || anim == .apex
         guard moving else { return }
         trailAcc += dt
+        // Space Mask afterimages by travel (~velocity × 0.05s), not every frame — avoids cyan smear.
         let interval: CGFloat = {
-            if maskMode { return smokeLite ? 0.09 : 0.04 }
-            return smokeLite ? 0.12 : 0.07
+            if maskMode { return smokeLite ? 0.12 : 0.09 }
+            return smokeLite ? 0.14 : 0.09
         }()
         guard trailAcc >= interval else { return }
         trailAcc = 0
@@ -1267,7 +1372,7 @@ public final class BanditVisual: SKNode {
         emitPooledTrail(maskMode: true, dash: false)
     }
 
-    /// Mask Mode entry: LED pulse + 3 afterimage copies (no giant translucent head).
+    /// Mask Mode entry: LED pulse + 3 spaced afterimages (0.45 / 0.25 / 0.12).
     public func flashMaskEntry() {
         maskGlow.isHidden = false
         maskGlow.alpha = 1
@@ -1280,26 +1385,27 @@ public final class BanditVisual: SKNode {
             ]),
             SKAction.scale(to: 1.0, duration: 0.12),
         ]))
+        let alphas: [CGFloat] = [0.45, 0.25, 0.12]
         for i in 0..<3 {
             guard let tex = sprite.texture else { continue }
             let ghost = SKSpriteNode(texture: tex, size: sprite.size)
             ghost.anchorPoint = sprite.anchorPoint
-            ghost.position = CGPoint(x: -facingSign * CGFloat(10 + i * 12), y: 0)
-            ghost.zPosition = -0.4
-            ghost.alpha = 0.45 - CGFloat(i) * 0.12
+            let spacing = CGFloat(22 + i * 28)
+            ghost.position = CGPoint(x: -facingSign * spacing, y: 0)
+            ghost.zPosition = -0.4 - CGFloat(i) * 0.05
+            ghost.alpha = alphas[i]
             ghost.color = ArtCatalog.neonCyan
-            ghost.colorBlendFactor = 0.55
+            ghost.colorBlendFactor = 0.5
             ghost.xScale = bodyFaceScale()
             addChild(ghost)
             ghost.run(SKAction.sequence([
                 SKAction.group([
-                    SKAction.fadeOut(withDuration: 0.28),
-                    SKAction.moveBy(x: -facingSign * 18, y: 0, duration: 0.28),
+                    SKAction.fadeOut(withDuration: 0.34),
+                    SKAction.moveBy(x: -facingSign * 14, y: 0, duration: 0.34),
                 ]),
                 SKAction.removeFromParent(),
             ]))
         }
-        for _ in 0..<3 { emitMaskTrail() }
     }
 
     private func emitPooledTrail(maskMode: Bool, dash: Bool) {
@@ -1314,19 +1420,22 @@ public final class BanditVisual: SKNode {
         speck.anchorPoint = sprite.anchorPoint
         speck.xScale = bodyFaceScale()
         speck.yScale = 1
-        speck.position = CGPoint(x: -face * (maskMode ? 18 : 12), y: dash ? 1 : 0)
+        let slot = (trailCursor - 1) % 3
+        let spacing = maskMode ? CGFloat(24 + slot * 22) : CGFloat(14 + slot * 10)
+        let alphas: [CGFloat] = maskMode ? [0.45, 0.25, 0.12] : [0.28, 0.18, 0.10]
+        speck.position = CGPoint(x: -face * spacing, y: dash ? 1 : 0)
         speck.zRotation = 0
         speck.color = maskMode ? ArtCatalog.neonCyan : ArtCatalog.neonPink
-        speck.colorBlendFactor = maskMode ? 0.9 : 0.75
-        speck.alpha = maskMode ? 0.55 : 0.32
+        speck.colorBlendFactor = maskMode ? 0.75 : 0.65
+        speck.alpha = alphas[slot]
         speck.isHidden = false
-        let drift = -face * (maskMode ? 36 : 22)
-        let life: TimeInterval = maskMode ? 0.28 : 0.18
-        let endScaleX = bodyFaceScale() * (maskMode ? 0.85 : 0.7)
+        let drift = -face * (maskMode ? 28 : 18)
+        let life: TimeInterval = maskMode ? 0.32 : 0.2
+        let endScaleX = bodyFaceScale() * (maskMode ? 0.9 : 0.75)
         speck.run(SKAction.sequence([
             SKAction.group([
                 SKAction.fadeOut(withDuration: life),
-                SKAction.scaleX(to: endScaleX, y: maskMode ? 1.05 : 0.9, duration: life),
+                SKAction.scaleX(to: endScaleX, y: maskMode ? 1.02 : 0.9, duration: life),
                 SKAction.moveBy(x: drift, y: 0, duration: life),
             ]),
             SKAction.run { speck.isHidden = true; speck.alpha = 0 },
