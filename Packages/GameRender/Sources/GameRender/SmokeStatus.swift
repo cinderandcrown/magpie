@@ -32,10 +32,17 @@ public struct SmokeStatus: Equatable, Sendable {
     /// Pause sheet visible (manual or system).
     public var paused: Bool
     /// Current hero screen-x as a fraction of scene width (0 = left edge).
+    /// NOTE: with right-facing look-ahead this settles near ~0.32 — it is NOT world progress.
     public var heroX: Double
     /// Min/max heroX sampled during live play (framing gate).
     public var heroXMin: Double
     public var heroXMax: Double
+    /// Bandit world tile X (map column) — use this for soft-lock / progress, not heroX.
+    public var worldTX: Int
+    /// Bandit world tile Y (map row).
+    public var worldTY: Int
+    /// Max worldTX reached during the run (sticky).
+    public var worldTXMax: Int
     /// Title chrome layout OK: logo in safe area + no overlapping button frames.
     public var titleOk: Bool
     /// Bandit is on the rooftop route (above street deck).
@@ -64,6 +71,9 @@ public struct SmokeStatus: Equatable, Sendable {
         heroX: Double = 0.5,
         heroXMin: Double = 1,
         heroXMax: Double = 0,
+        worldTX: Int = 0,
+        worldTY: Int = 0,
+        worldTXMax: Int = 0,
         titleOk: Bool = false,
         roof: Bool = false
     ) {
@@ -89,17 +99,20 @@ public struct SmokeStatus: Equatable, Sendable {
         self.heroX = heroX
         self.heroXMin = heroXMin
         self.heroXMax = heroXMax
+        self.worldTX = worldTX
+        self.worldTY = worldTY
+        self.worldTXMax = worldTXMax
         self.titleOk = titleOk
         self.roof = roof
     }
 
     public var line: String {
         String(
-            format: "phase=%@ boot=%@ fps=%.1f samples=%d maxFrameMs=%.0f stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d paused=%d heroX=%.3f heroXMin=%.3f heroXMax=%.3f titleOk=%d roof=%d",
+            format: "phase=%@ boot=%@ fps=%.1f samples=%d maxFrameMs=%.0f stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d paused=%d heroX=%.3f heroXMin=%.3f heroXMax=%.3f worldTX=%d worldTY=%d worldTXMax=%d titleOk=%d roof=%d",
             phase, boot, fpsAvg, fpsSamples, maxFrameMs, stomps, shinies,
             mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed, wallElapsed, debugLabels,
             combo, medals, map ? 1 : 0, daily ? 1 : 0, paused ? 1 : 0,
-            heroX, heroXMin, heroXMax, titleOk ? 1 : 0, roof ? 1 : 0
+            heroX, heroXMin, heroXMax, worldTX, worldTY, worldTXMax, titleOk ? 1 : 0, roof ? 1 : 0
         )
     }
 

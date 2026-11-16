@@ -710,23 +710,26 @@ print(f"OK video size {size/1024/1024:.1f} MB + 540p copy")
 PY
 
 # Palette gate: midrun must contain bright magenta + teal neon (not dim gray placeholders).
-# Homebrew Python is PEP 668 externally-managed — prefer a throwaway venv for Pillow.
-PALETTE_PY=""
+# Install Pillow into the same python3 that runs smoke checks (intro panels, gates, predicates).
+PALETTE_PY="$(command -v python3)"
 PALETTE_VENV="${TMPDIR:-/tmp}/magpie-smoke-palette-venv"
-if python3 -c 'import PIL' 2>/dev/null; then
-  PALETTE_PY="$(command -v python3)"
-elif [[ -x "$PALETTE_VENV/bin/python" ]] && "$PALETTE_VENV/bin/python" -c 'import PIL' 2>/dev/null; then
-  PALETTE_PY="$PALETTE_VENV/bin/python"
-else
-  if python3 -m venv "$PALETTE_VENV" 2>/tmp/magpie-venv.err; then
+if ! "$PALETTE_PY" -c 'import PIL' 2>/dev/null; then
+  if "$PALETTE_PY" -m pip install -q --user --break-system-packages pillow 2>/tmp/magpie-pillow.err; then
+    :
+  elif python3 -m venv "$PALETTE_VENV" 2>/tmp/magpie-venv.err; then
     "$PALETTE_VENV/bin/pip" install -q pillow
     PALETTE_PY="$PALETTE_VENV/bin/python"
   else
-    # Last resort on locked-down runners.
-    python3 -m pip install -q --user --break-system-packages pillow
-    PALETTE_PY="$(command -v python3)"
+    echo "FAIL: could not install Pillow for $($PALETTE_PY -V 2>&1)" >&2
+    cat /tmp/magpie-pillow.err /tmp/magpie-venv.err 2>/dev/null || true
+    exit 1
   fi
 fi
+if ! "$PALETTE_PY" -c 'import PIL' 2>/dev/null; then
+  echo "FAIL: Pillow still missing for $PALETTE_PY" >&2
+  exit 1
+fi
+echo "OK Pillow via $PALETTE_PY ($("$PALETTE_PY" -V 2>&1))"
 "$PALETTE_PY" - "$OUT_DIR/02-midrun.png" "Assets/Generated/backgrounds/mid_buildings.png" "$OUT_DIR/palette-side-by-side.png" "$OUT_DIR/03-mop-stomp.png" "$OUT_DIR/04-mask-mode.png" <<'PY'
 import sys
 from PIL import Image

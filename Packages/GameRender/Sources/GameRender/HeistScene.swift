@@ -3203,6 +3203,12 @@ public final class HeistScene: SKScene {
         if retentionMode == "daily" { smokeStatus.daily = true }
         let streetY = sim.map.findFirst(.start).map { Double($0.1) * tuning.tileSize } ?? 0
         smokeStatus.roof = sim.state.bandit.position.y > streetY + tuning.tileSize * 2.5
+        let tile = tuning.tileSize
+        let wtx = Int(floor(sim.state.bandit.position.x / tile))
+        let wty = Int(floor(sim.state.bandit.position.y / tile))
+        smokeStatus.worldTX = wtx
+        smokeStatus.worldTY = wty
+        smokeStatus.worldTXMax = max(smokeStatus.worldTXMax, wtx)
         smokeStatus.write()
     }
 

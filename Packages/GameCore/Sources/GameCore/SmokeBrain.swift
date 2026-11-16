@@ -26,6 +26,9 @@ public struct SmokeBrain: Equatable, Sendable {
     public var stompCount: Int = 0
     public var maskShowcaseFrames: Int = 0
     public var seekDeathFrames: Int = 0
+    /// Frames spent on the same world tile during mask hunt / street run (unstick).
+    public var huntIdleFrames: Int = 0
+    public var huntIdleTX: Int = -1
 
     public init() {}
 
@@ -309,11 +312,13 @@ public struct SmokeBrain: Equatable, Sendable {
                 jumpHeld = b.velocity.y > 0
             }
         }
-        // Softly keep clear of MOPs without pinning to a wall.
+        // Before midrun: hop past street MOPs — do NOT crawl at 0.15 (that pinned CI at pack x≈17).
         if let mop = nearestMop(sim: sim) {
             let dx = mop.position.x - b.position.x
-            if dx > 0, dx < tile * 3.5 {
-                moveX = min(moveX, 0.15)
+            if dx > 0, dx < tile * 4.0, b.onGround || b.coyote > 0 {
+                jumpPressed = true
+                jumpHeld = true
+                moveX = max(moveX, 0.95)
             }
         }
         if gapAhead(sim: sim, tx: tx, ty: ty), !hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
@@ -350,7 +355,7 @@ public struct SmokeBrain: Equatable, Sendable {
     }
 
     /// Drop from rooftops / mid ledges, then stomp-hunt street MOPs for Mask re-entry.
-    private func maskReentryHuntInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
+    private mutating func maskReentryHuntInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
         let halfH = 14.0
@@ -408,11 +413,34 @@ public struct SmokeBrain: Equatable, Sendable {
             return InputFrame(moveX: moveX, moveY: -1, jumpPressed: false, jumpHeld: false)
         }
 
+        // Unstick: same tile + low speed for ~0.75s → hop hard right (mask-2 CI hang).
+        if tx == huntIdleTX, abs(b.velocity.x) < 4 {
+            huntIdleFrames += 1
+        } else {
+            huntIdleTX = tx
+            huntIdleFrames = 0
+        }
+        if huntIdleFrames > 45 {
+            huntIdleFrames = 0
+            return InputFrame(
+                moveX: 1.0,
+                jumpPressed: b.onGround || b.coyote > 0,
+                jumpHeld: true,
+                pouncePressed: !b.onGround && !b.flopping
+            )
+        }
+
         guard let mop else {
-            return InputFrame(moveX: 1.0)
+            // No living street MOP nearby — sprint right toward later packs / exit approach.
+            return InputFrame(
+                moveX: 1.0,
+                jumpPressed: (b.onGround || b.coyote > 0) && (gapAhead(sim: sim, tx: tx, ty: ty) || tick % 24 == 0),
+                jumpHeld: !b.onGround && b.velocity.y > 0
+            )
         }
         let dx = mop.position.x - b.position.x
-        var moveX: Double = dx < -8 ? -0.35 : 1.0
+        // Prefer approaching from the left; only ease left briefly if we overshot.
+        var moveX: Double = dx < -tile * 1.2 ? -0.55 : 1.0
         var jumpPressed = false
         var jumpHeld = false
         var pouncePressed = false

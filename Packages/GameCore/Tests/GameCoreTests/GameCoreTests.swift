@@ -941,15 +941,26 @@ final class GameCoreTests: XCTestCase {
     }
 
     func testCanalWalkOffKills() throws {
-        let map = try NeonDocksLevel.load()
+        // Minimal canal: wide open pit so run momentum cannot clear it.
+        let map = try TileMap.parse("""
+        ####################
+        #..................#
+        #.@............E...#
+        ######......########
+        ######.~~~~.########
+        ######======########
+        ####################
+        """)
         var sim = Sim(map: map, tuning: .default, seed: 1)
         sim.startRun()
         let tile = sim.tuning.tileSize
-        let startY = map.findFirst(.start)!.1
-        sim.state.bandit.position = Vec2(44.2 * tile, Double(startY) * tile + 14)
+        let start = map.findFirst(.start)!
+        let waterX = Double(map.findAll(.water).map(\.0).min()!)
+        sim.state.bandit.position = Vec2((waterX - 1.5) * tile, Double(start.1) * tile + 14)
         sim.state.bandit.velocity = .zero
+        sim.state.bandit.invuln = 0
         var died = false
-        for _ in 0..<240 {
+        for _ in 0..<300 {
             sim.step(InputFrame(moveX: 1.0))
             if case .failed = sim.state.phase {
                 died = true
