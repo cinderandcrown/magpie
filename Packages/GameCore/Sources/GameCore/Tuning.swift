@@ -50,6 +50,8 @@ public struct Tuning: Equatable, Sendable {
     public var comboGroundGrace: Double = 4.5
     public var comboCap: Int = 10
     public var maskModeAtCombo: Int = 5
+    /// How long Mask Mode stays on after it's earned (screenshot + power fantasy window).
+    public var maskDuration: Double = 14
     public var hearts: Int = 3
     public var invulnSeconds: Double = 1.0
     public var shiniesToHint: Int = 12

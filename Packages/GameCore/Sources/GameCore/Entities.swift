@@ -21,6 +21,8 @@ public struct BanditState: Equatable, Sendable {
     public var combo: Int
     public var comboTimer: Double
     public var maskMode: Bool
+    /// Remaining Mask Mode duration (independent of combo grace).
+    public var maskTimer: Double
     public var hearts: Int
     public var invuln: Double
     public var carriedShinies: Int
@@ -45,6 +47,7 @@ public struct BanditState: Equatable, Sendable {
             combo: 0,
             comboTimer: 0,
             maskMode: false,
+            maskTimer: 0,
             hearts: hearts,
             invuln: 0,
             carriedShinies: 0,

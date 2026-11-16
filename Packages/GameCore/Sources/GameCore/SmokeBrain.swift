@@ -157,14 +157,14 @@ public struct SmokeBrain: Equatable, Sendable {
         }
 
         if act == .showcaseMask {
-            // Hold still for the Mask Mode screenshot — keep the raccoon on deck with LED glow
-            // visible. Hard-stop well before the canal so 04 never races into SPLASHED.
-            var moveX: Double = 0.12
+            // Hold on deck for Mask screenshot — maskTimer keeps maskOn=1 while we wait.
+            var moveX: Double = 0.08
             if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 6) {
                 moveX = -0.35
             } else if b.onWallLeft || b.onWallRight, !b.onGround {
                 moveX = b.onWallRight ? -0.5 : 0.4
             }
+            if b.maskMode { moveX = min(abs(moveX), 0.12) * (moveX < 0 ? -1 : 1) }
             return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false)
         }
 

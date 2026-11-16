@@ -453,7 +453,11 @@ public struct Sim: Equatable, Sendable {
                 bandit.comboTimer = tuning.comboGroundGrace
                 if bandit.combo >= tuning.maskModeAtCombo && !bandit.maskMode {
                     bandit.maskMode = true
+                    bandit.maskTimer = tuning.maskDuration
                     state.events.append(SimEvent(kind: .maskOn, position: bandit.position))
+                } else if bandit.maskMode {
+                    // Refresh Mask window on continued stomps.
+                    bandit.maskTimer = max(bandit.maskTimer, tuning.maskDuration * 0.55)
                 }
                 state.events.append(SimEvent(kind: .stomp, position: state.mops[i].position))
                 state.events.append(SimEvent(kind: .shake, position: state.mops[i].position))
@@ -484,6 +488,11 @@ public struct Sim: Equatable, Sendable {
             bandit.comboTimer -= dt
             if bandit.comboTimer <= 0 {
                 bandit.combo = 0
+            }
+        }
+        if bandit.maskMode {
+            bandit.maskTimer = max(0, bandit.maskTimer - dt)
+            if bandit.maskTimer <= 0 {
                 bandit.maskMode = false
             }
         }

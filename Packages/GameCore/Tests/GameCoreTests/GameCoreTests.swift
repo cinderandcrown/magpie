@@ -425,6 +425,7 @@ final class GameCoreTests: XCTestCase {
         var sim = Sim(map: map, tuning: .default)
         sim.state.phase = .playing
         sim.state.bandit.maskMode = true
+        sim.state.bandit.maskTimer = 10
         sim.state.bandit.combo = 5
         sim.state.bandit.comboTimer = 10
         for _ in 0..<50 { sim.step(InputFrame(moveX: 1)) }
