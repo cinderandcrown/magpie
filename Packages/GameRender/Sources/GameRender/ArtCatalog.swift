@@ -107,6 +107,22 @@ public enum ArtCatalog {
         )
     }
 
+    /// Prefer CC-BY licensed cycle folders under `sprites/raccoon/licensed_ccby/<name>/01.png`…
+    /// Falls back to empty if missing (BanditVisual then uses AssetManifest keys).
+    public static func licensedCycleTextures(_ name: String, maxFrames: Int = 16) -> [SKTexture] {
+        var out: [SKTexture] = []
+        for i in 1...maxFrames {
+            let rel = String(format: "sprites/raccoon/licensed_ccby/%@/%02d", name, i)
+            guard let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["png"]),
+                  let data = try? Data(contentsOf: url),
+                  let img = UIImage(data: data) else { break }
+            let tex = SKTexture(image: img)
+            tex.filteringMode = .nearest
+            out.append(tex)
+        }
+        return out
+    }
+
     public static func makeMopNode() -> SKSpriteNode {
         let tex = texture(.mopPatrol) ?? texture(.mopIdle)
         let n = SKSpriteNode(texture: tex, size: CGSize(width: 72, height: 48))
@@ -465,13 +481,14 @@ public enum TitleArt {
     public static let displayTitle = "The Neon City Bandit"
     public static let fallbackWordmark = "THE NEON CITY\nBANDIT"
     public static let workingSubtitle = "Free the crew · Stomp MOPs"
+    /// In-game CC-BY credit line (required when licensed_ccby raccoon pack is shipped).
+    public static let assetCredits = "Raccoon art: null-painter-error (CC-BY 4.0)"
 }
 
-/// Bandit raccoon — living motion with zero new art budget (see `Assets/LICENSES.md`).
+/// Bandit raccoon — living motion (see `Assets/LICENSES.md`).
 ///
-/// Primary silhouette: project run / jump / fall / idle sheets (frame-animated).
-/// Procedural layer: idle-sheet crops (head, torso, 2 arms, 2 legs, tail) driven with
-/// SKAction run cycle, jump/fall/land poses, and squash-stretch so the character never freezes.
+/// Prefers CC-BY licensed side-view cycles (`licensed_ccby/`) when present; otherwise
+/// project sheets + procedural limb/tail SKActions. Squash-stretch always on.
 @MainActor
 public final class BanditVisual: SKNode {
     public let sprite: SKSpriteNode
@@ -487,6 +504,8 @@ public final class BanditVisual: SKNode {
     private let shadow: SKShapeNode
     private let maskGlow: SKSpriteNode
     private var runTextures: [SKTexture] = []
+    private var idleTextures: [SKTexture] = []
+    private var jumpTextures: [SKTexture] = []
     private var idleTex: SKTexture?
     private var jumpTex: SKTexture?
     private var fallTex: SKTexture?
@@ -504,7 +523,10 @@ public final class BanditVisual: SKNode {
     public override init() {
         ArtCatalog.warmAtlases()
         idleTex = ArtCatalog.texture(.raccoonIdle)
-        runTextures = ArtCatalog.textures(AssetManifest.runCycle)
+        let licensedRun = ArtCatalog.licensedCycleTextures("run", maxFrames: 12)
+        runTextures = licensedRun.count >= 6 ? licensedRun : ArtCatalog.textures(AssetManifest.runCycle)
+        idleTextures = ArtCatalog.licensedCycleTextures("idle", maxFrames: 8)
+        jumpTextures = ArtCatalog.licensedCycleTextures("jump", maxFrames: 8)
         jumpTex = ArtCatalog.texture(.raccoonJump)
         fallTex = ArtCatalog.texture(.raccoonFall)
         pounceTex = ArtCatalog.texture(.raccoonPounce)
@@ -518,9 +540,8 @@ public final class BanditVisual: SKNode {
         rig = SKNode()
         rig.name = "rig"
 
-        // Primary silhouette = project sheets (run/jump/fall). Procedural limbs amplify
-        // motion without replacing the readable character art (zero new art budget).
-        sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 72, height: 72))
+        // Primary silhouette = licensed / project sheets (frame-animated).
+        sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 78, height: 78))
         sprite.name = "sprite"
         sprite.zPosition = 1
         ArtCatalog.applyDespill(sprite)
@@ -566,12 +587,13 @@ public final class BanditVisual: SKNode {
         legF.alpha = 0
         ArtCatalog.applyDespill(legF)
 
-        // Visible procedural tail — clear living cue behind the sheet.
+        // Procedural tail overlay only when sheet cycle is thin; licensed sheet already has a tail.
         tail = SKSpriteNode(texture: parts.tail, size: CGSize(width: 36, height: 24))
         tail.name = "tail"
         tail.anchorPoint = CGPoint(x: 0.9, y: 0.5)
         tail.position = CGPoint(x: -16, y: -2)
         tail.zPosition = -0.3
+        tail.alpha = licensedRun.count >= 6 ? 0 : 1
         ArtCatalog.applyDespill(tail)
 
         shadow = SKShapeNode(ellipseOf: CGSize(width: 40, height: 10))
@@ -692,24 +714,42 @@ public final class BanditVisual: SKNode {
             startRunCycle()
             if runTextures.count > 1 {
                 sprite.run(SKAction.repeatForever(
-                    SKAction.animate(with: runTextures, timePerFrame: 0.065)
+                    SKAction.animate(with: runTextures, timePerFrame: 0.055)
                 ), withKey: "frames")
             }
         case .jump:
             poseJump()
-            sprite.texture = jumpTex ?? idleTex
+            if jumpTextures.count > 2 {
+                let ascent = Array(jumpTextures.prefix(max(2, jumpTextures.count / 2)))
+                sprite.run(SKAction.animate(with: ascent, timePerFrame: 0.06), withKey: "frames")
+            } else {
+                sprite.texture = jumpTex ?? idleTex
+            }
         case .apex:
             poseApex()
-            sprite.texture = jumpTex ?? idleTex
+            sprite.texture = jumpTextures.dropFirst(jumpTextures.count / 2).first ?? jumpTex ?? idleTex
         case .fall, .wallSlide:
             poseFall()
-            sprite.texture = fallTex ?? idleTex
+            if jumpTextures.count > 2 {
+                let descent = Array(jumpTextures.suffix(max(2, jumpTextures.count / 2)))
+                sprite.run(SKAction.repeatForever(
+                    SKAction.animate(with: descent, timePerFrame: 0.08)
+                ), withKey: "frames")
+            } else {
+                sprite.texture = fallTex ?? idleTex
+            }
         case .pounce:
             posePounce()
             sprite.texture = (flopTex ?? pounceTex) ?? idleTex
         case .idle:
             startIdleMotion()
-            sprite.texture = idleTex
+            if idleTextures.count > 1 {
+                sprite.run(SKAction.repeatForever(
+                    SKAction.animate(with: idleTextures, timePerFrame: 0.12)
+                ), withKey: "frames")
+            } else {
+                sprite.texture = idleTex
+            }
         }
     }
 

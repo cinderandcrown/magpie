@@ -1,0 +1,10 @@
+Cute raccoon 2d game sprite and animations
+Author: null-painter-error
+Source: https://opengameart.org/content/cute-raccoon-2d-game-sprite-and-animations
+License: Creative Commons Attribution 4.0 International (CC-BY 4.0)
+Downloaded: 2026-11-16
+In-game credit: "Raccoon art: null-painter-error (CC-BY 4.0)"
+
+Frames under idle/, run/, jump/, walk/, ko/, crouch/ are content-cropped,
+downsampled to 256², and lightly neon-rim graded for SpriteKit. Original
+pack remains CC-BY 4.0; attribution required.

@@ -654,6 +654,14 @@ public final class HeistScene: SKScene {
         dailyBtn.position = CGPoint(x: 78, y: -150)
         titleRoot.addChild(dailyBtn)
 
+        let credits = SKLabelNode(fontNamed: "AvenirNext-Medium")
+        credits.name = "titleCredits"
+        credits.text = TitleArt.assetCredits
+        credits.fontSize = 10
+        credits.fontColor = SKColor(white: 1, alpha: 0.55)
+        credits.verticalAlignmentMode = .center
+        titleRoot.addChild(credits)
+
         layoutTitleChrome()
     }
 
@@ -737,6 +745,7 @@ public final class HeistScene: SKScene {
         titleRoot.childNode(withName: "hintPlate")?.position = CGPoint(x: 0, y: -78)
         titleRoot.childNode(withName: "titleMap")?.position = CGPoint(x: -78, y: -150)
         titleRoot.childNode(withName: "titleDaily")?.position = CGPoint(x: 78, y: -150)
+        titleRoot.childNode(withName: "titleCredits")?.position = CGPoint(x: 0, y: -hh + bottomSafe + 18)
 
         // Runtime + unit-testable gate: logo frame must sit inside safe area.
         let frame = logo.calculateAccumulatedFrame()
