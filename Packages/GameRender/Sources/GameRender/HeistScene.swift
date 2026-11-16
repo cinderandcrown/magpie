@@ -1511,6 +1511,15 @@ public final class HeistScene: SKScene {
 
     private func cg(_ v: Vec2) -> CGPoint { CGPoint(x: v.x, y: v.y) }
 
+    private func showTitleScreen() {
+        titleRoot.isHidden = false
+        if let rain = titleRoot.childNode(withName: "//titleRain") as? SKEmitterNode {
+            rain.isPaused = false
+            rain.particleBirthRate = 22
+        }
+        layoutTitleChrome()
+    }
+
     private func beginPlay() {
         // Start audio here (not in didMove) so smoke video has a soundtrack without launch jetsam.
         // simctl recordVideo has no app-audio track — smoke also writes smoke_audio_events.txt for mux.
@@ -1528,7 +1537,14 @@ public final class HeistScene: SKScene {
         mopAlerted.removeAll()
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
+        // Title → play coincides with smoke recordVideo warm-up; skip that I/O gap (same as pause).
+        skipFreezeSample = true
         titleRoot.isHidden = true
+        // Stop title rain so hidden emitters do not keep burning GPU during play.
+        if let rain = titleRoot.childNode(withName: "//titleRain") as? SKEmitterNode {
+            rain.isPaused = true
+            rain.particleBirthRate = 0
+        }
         layoutUI()
         snapCameraToHero()
         resetHeroFramingSamples()
@@ -1723,8 +1739,7 @@ public final class HeistScene: SKScene {
                     JuiceSound.shared.playUIBack()
                     JuiceSound.shared.playTitleSting()
                     sim = Sim(map: sim.map, tuning: tuning, seed: smokeEnabled ? 7 : 11)
-                    titleRoot.isHidden = false
-                    layoutTitleChrome()
+                    showTitleScreen()
                     writeSmokeStatus()
                     updateHUDVisibility()
                     return
@@ -1748,8 +1763,7 @@ public final class HeistScene: SKScene {
                     JuiceSound.shared.playUIBack()
                     JuiceSound.shared.playTitleSting()
                     sim = Sim(map: sim.map, tuning: tuning, seed: smokeEnabled ? 7 : 11)
-                    titleRoot.isHidden = false
-                    layoutTitleChrome()
+                    showTitleScreen()
                     writeSmokeStatus()
                     updateHUDVisibility()
                     return
@@ -1872,7 +1886,8 @@ public final class HeistScene: SKScene {
         let rawDt = max(0, currentTime - lastTime)
         lastTime = currentTime
         // Freeze gate: only sample live gameplay. Ignore pause/resume gaps, death-hold,
-        // and retention screens — simctl screenshots / I/O there inflate rawDt.
+        // retention screens, and the first 0.5s after beginPlay — simctl screenshots /
+        // recordVideo warm-up inflate rawDt (title→play especially).
         let livePlay: Bool = {
             if case .playing = sim.state.phase {
                 return !runPaused && resumeCountdown <= 0 && failOutcomeHold <= 0
@@ -1881,7 +1896,7 @@ public final class HeistScene: SKScene {
         }()
         if skipFreezeSample {
             skipFreezeSample = false
-        } else if livePlay, smokeEnabled || sim.state.elapsed > 0.5 {
+        } else if livePlay, sim.state.elapsed > 0.5 {
             maxFrameMs = max(maxFrameMs, rawDt * 1000)
         }
         var dt = rawDt
