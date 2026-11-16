@@ -1,3 +1,5 @@
 Generate Neon City Bandit raccoon via Spriterrific (one-shot flag).
-Budget: 60 (image anchor) + 100 idle + 300 run/jump/attack = 460 credits.
+Plan: preserve-reference-v1 anchor (30) + idle (100) + run/jump/attack (300) = 430.
+Abort if balance < 460 or a neon-city-bandit job already exists.
+Anchor First: generate anchor, automated check, then animate.
 This file is deleted by CI after a successful run.

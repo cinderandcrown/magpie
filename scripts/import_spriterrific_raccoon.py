@@ -100,8 +100,10 @@ def update_licenses(ledger: dict, dest_root: Path) -> None:
 
 Generation ledger:
 - Anchor brief: {ledger.get('anchorBrief')}
+- Preset: `{ledger.get('candidatePromptPreset')}`
 - Reference: `{ledger.get('referenceImage')}`
 - Character job id: `{ledger.get('characterJobId')}`
+- Idle job id: `{ledger.get('idleJobId')}`
 - Action job id: `{ledger.get('actionJobId')}`
 - Credits debited: {ledger.get('creditsDebited')} (refunded {ledger.get('creditsRefunded')}; net {ledger.get('creditsNet')})
 - Actions: {', '.join(ledger.get('actions') or [])}

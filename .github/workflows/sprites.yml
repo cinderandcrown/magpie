@@ -1,6 +1,6 @@
-# Generate Neon City Bandit raccoon sprites via Spriterrific (hard 500-credit budget).
+# Optional workflow_dispatch (must live on default branch to appear in Actions UI).
+# Prefer the one-shot CI job gated by Assets/SPRITERRIFIC_REQUEST on the mission branch.
 # Secret: SPRITERRIFIC_API_KEY (never echoed).
-# Spend plan: 60 (image-anchor redesign) + 4×100 (idle/run/jump/attack) = 460.
 name: Spriterrific Raccoon Sprites
 
 on:
@@ -9,11 +9,15 @@ on:
       dry_run:
         description: "If true, only print plan / balance (no spend)"
         type: boolean
-        default: false
-      commit_assets:
-        description: "Commit downloaded sheets into the branch"
-        type: boolean
         default: true
+      asset_ref:
+        description: "Git ref that holds the raccoon reference image + scripts"
+        type: string
+        default: cursor/mission-1-raccoon-toy-0c7d
+
+concurrency:
+  group: spriterrific-raccoon-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -25,19 +29,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.asset_ref }}
+          fetch-depth: 0
+
+      - name: Install Pillow
+        run: python3 -m pip install --quiet pillow numpy
 
       - name: Generate sprites (Spriterrific)
         env:
           SPRITERRIFIC_API_KEY: ${{ secrets.SPRITERRIFIC_API_KEY }}
           DRY_RUN: ${{ inputs.dry_run }}
-          COMMIT_ASSETS: ${{ inputs.commit_assets }}
         run: |
           set -euo pipefail
-          if [ -z "${SPRITERRIFIC_API_KEY:-}" ]; then
-            echo "SPRITERRIFIC_API_KEY secret is missing"
-            exit 1
-          fi
-          # Never print the key
+          test -n "${SPRITERRIFIC_API_KEY:-}" || { echo "SPRITERRIFIC_API_KEY secret is missing"; exit 1; }
           python3 scripts/spriterrific_raccoon.py \
             --ref Assets/Generated/sprites/raccoon/idle.png \
             --out spriterrific-runs \
@@ -51,24 +56,21 @@ jobs:
           path: spriterrific-runs/
           if-no-files-found: warn
 
-      - name: Import sheets into Assets/Generated
+      - name: Import + commit
         if: ${{ inputs.dry_run == false }}
         run: |
           set -euo pipefail
           python3 scripts/import_spriterrific_raccoon.py \
             --runs spriterrific-runs \
             --dest Assets/Generated/sprites/raccoon
-
-      - name: Commit imported sprites
-        if: ${{ inputs.dry_run == false && inputs.commit_assets == true }}
-        run: |
-          set -euo pipefail
+          rm -f Assets/SPRITERRIFIC_REQUEST
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Assets/Generated/sprites/raccoon Assets/LICENSES.md ASSETS_LICENSES.md spriterrific-runs || true
+          git add -u Assets/SPRITERRIFIC_REQUEST || true
           if git diff --cached --quiet; then
             echo "No asset changes to commit"
           else
             git commit -m "Import Spriterrific raccoon sheets (idle/run/jump/attack)"
-            git push
+            git push origin HEAD:${{ inputs.asset_ref }}
           fi

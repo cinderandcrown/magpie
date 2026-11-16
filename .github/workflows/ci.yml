@@ -9,24 +9,43 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# contents:write so the one-shot Spriterrific job can push imported sheets.
+# Default read for normal CI jobs. Spriterrific job elevates to write to push sheets.
+# (Job permissions may only narrow a workflow grant — so write must be allowed here.)
 permissions:
   contents: write
 
 jobs:
-  # One-shot Spriterrific spend: present Assets/SPRITERRIFIC_REQUEST, job runs once,
-  # imports sheets, removes the flag, and pushes. Secret: SPRITERRIFIC_API_KEY (never logged).
+  # One-shot Spriterrific spend. Gate is a STEP check (hashFiles is illegal in jobs.*.if
+  # and was failing the whole workflow file with zero jobs). Own concurrency group never
+  # cancels an in-flight spend. Secret: SPRITERRIFIC_API_KEY (never logged).
   spriterrific:
     name: Spriterrific raccoon (credit spend)
-    if: hashFiles('Assets/SPRITERRIFIC_REQUEST') != ''
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    concurrency:
+      group: spriterrific-raccoon-${{ github.repository }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
-      - name: Generate + import (≤460 credits)
+      - name: Gate on request flag
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ -f Assets/SPRITERRIFIC_REQUEST ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Spriterrific request flag present"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No Assets/SPRITERRIFIC_REQUEST — skipping spend"
+          fi
+      - name: Install Pillow
+        if: steps.gate.outputs.run == 'true'
+        run: python3 -m pip install --quiet pillow numpy
+      - name: Generate (Anchor First, preserve-reference, ≤430 / abort if bal<460)
+        if: steps.gate.outputs.run == 'true'
         env:
           SPRITERRIFIC_API_KEY: ${{ secrets.SPRITERRIFIC_API_KEY }}
         run: |
@@ -36,18 +55,23 @@ jobs:
             --ref Assets/Generated/sprites/raccoon/idle.png \
             --out spriterrific-runs \
             --dry-run=false
+      - name: Import sheets into Assets/Generated
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
           python3 scripts/import_spriterrific_raccoon.py \
             --runs spriterrific-runs \
             --dest Assets/Generated/sprites/raccoon
           rm -f Assets/SPRITERRIFIC_REQUEST
       - name: Upload spriterrific-runs
-        if: always()
+        if: always() && steps.gate.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: spriterrific-raccoon
           path: spriterrific-runs/
           if-no-files-found: warn
       - name: Commit imported sprites
+        if: steps.gate.outputs.run == 'true'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -65,8 +89,10 @@ jobs:
     name: Scripts
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Script unit tests
@@ -78,8 +104,10 @@ jobs:
     # and lacks libxml2.so.2 SONAME expected by that toolchain.
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Install Swift 6.2
@@ -111,8 +139,10 @@ jobs:
     name: Build and test (iPhone)
     runs-on: xcode-27
     timeout-minutes: 60
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
@@ -182,7 +212,7 @@ jobs:
 
       - name: Upload smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: smoke-artifacts
           path: smoke-artifacts/
@@ -190,7 +220,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: xcodebuild-logs
           path: |
