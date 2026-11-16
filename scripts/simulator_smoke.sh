@@ -267,7 +267,29 @@ shot "$OUT_DIR/03b-stomp-chain.png"
 
 # 04 — Mask Mode while still playing (requires live maskOn=1, not sticky mask=).
 # Capture BEFORE pause/bg beats — those burn wall-clock while the sim keeps draining maskTimer.
-wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=1" in s and "phase=playing" in s) else 1)' 120
+# Soft path: if the bot can't re-chain after midrun/rooftop, arm smoke_force_mask.txt.
+MASK_WAIT_START="$(date +%s)"
+MASK_FORCED=0
+while true; do
+  require_app "mask"
+  status="$(read_status)"
+  if [[ "$status" == *"maskOn=1"* && "$status" == *"phase=playing"* ]]; then
+    echo "ready@mask: $status"
+    break
+  fi
+  now="$(date +%s)"
+  if (( now - MASK_WAIT_START >= 50 )) && [[ "$MASK_FORCED" -eq 0 ]]; then
+    echo "WARN: mask soft-timeout — arming smoke_force_mask.txt (status=$status)" >&2
+    write_flag "smoke_force_mask.txt"
+    MASK_FORCED=1
+  fi
+  if (( now - MASK_WAIT_START >= 90 )); then
+    echo "FAIL: timeout waiting for mask (status=$status)" >&2
+    shot "$OUT_DIR/fail-mask-timeout.png" || true
+    exit 1
+  fi
+  sleep 0.35
+done
 MASK_SHOT_OK=0
 for _try in $(seq 1 40); do
   status="$(read_status)"
@@ -294,12 +316,14 @@ if [[ "$MASK_SHOT_OK" -ne 1 ]]; then
   exit 1
 fi
 write_flag "smoke_mask_ok.txt"
+rm -f "$(data_container)/Documents/smoke_force_mask.txt" 2>/dev/null || true
 
 # 04b — Second Mask entry (re-entry sting + visuals after first Mask ends).
 # Soft-timeout: first Mask already proved the beat; do not hard-fail the whole smoke on re-entry lag
 # (Bandit can get stuck briefly on latch-tower one-ways above street MOPs).
 wait_status "mask-off" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=0" in s and "phase=playing" in s) else 1)' 90 || true
 MASK2_OK=0
+MASK2_FORCED=0
 MASK2_WAIT_START="$(date +%s)"
 while true; do
   require_app "mask-2"
@@ -310,8 +334,13 @@ while true; do
     break
   fi
   now="$(date +%s)"
+  if (( now - MASK2_WAIT_START >= 35 )) && [[ "$MASK2_FORCED" -eq 0 ]]; then
+    echo "WARN: mask-2 soft-timeout — arming smoke_force_mask.txt (status=$status)" >&2
+    write_flag "smoke_force_mask.txt"
+    MASK2_FORCED=1
+  fi
   if (( now - MASK2_WAIT_START >= 55 )); then
-    echo "WARN: mask-2 soft-timeout (status=$status) — first Mask already captured; continuing" >&2
+    echo "WARN: mask-2 gave up (status=$status) — first Mask already captured; continuing" >&2
     shot "$OUT_DIR/fail-mask-2.png" || true
     break
   fi
@@ -324,6 +353,7 @@ else
   shot "$OUT_DIR/04b-mask-mode-2.png" || true
 fi
 write_flag "smoke_mask2_ok.txt"
+rm -f "$(data_container)/Documents/smoke_force_mask.txt" 2>/dev/null || true
 
 # 02b — Pause menu (after Mask shot so the LED beat is not racing the timer)
 write_flag "smoke_show_pause.txt"

@@ -56,7 +56,7 @@ public struct SmokeBrain: Equatable, Sendable {
             "smoke_show_pause.txt", "smoke_pause_ok.txt",
             "smoke_background.txt", "smoke_foreground.txt",
             "smoke_show_map.txt", "smoke_map_ok.txt", "smoke_show_daily.txt", "smoke_daily_ok.txt",
-            "smoke_prefer_roof.txt",
+            "smoke_prefer_roof.txt", "smoke_force_mask.txt",
         ] {
             setSmokeFlag(name, present: false)
         }
@@ -210,38 +210,10 @@ public struct SmokeBrain: Equatable, Sendable {
             return finishPushInput(sim: sim, tx: tx, ty: ty)
         }
 
-        // Beat 2 — hunt MOPs for stomp → Mask Mode (ship combo 5 on Neon Docks).
-        if let mop = nearestMop(sim: sim), !sawMask {
-            let dx = mop.position.x - b.position.x
-            let dy = mop.position.y - b.position.y
-            // Keep rightward pressure; only ease if we clearly overshot a same-deck MOP.
-            var moveX: Double = 1.0
-            if dx < -8 { moveX = -0.35 }
-            else if abs(dx) < tile * 1.2 { moveX = dx >= 0 ? 0.55 : -0.35 }
-            var jumpPressed = false
-            var jumpHeld = false
-            var pouncePressed = false
-
-            if b.onGround || b.coyote > 0 {
-                // Jump earlier for chains — bounce into the next patrol.
-                if dx < tile * 6.5, abs(dy) < tile * 2.2 { jumpPressed = true; jumpHeld = true }
-            } else if b.velocity.y > 0 {
-                jumpHeld = true // variable-jump + stomp bounce height
-            } else {
-                // Falling: hold jump for higher bounce; pounce for magnet assist.
-                jumpHeld = true
-                if !b.flopping { pouncePressed = true }
-            }
-
-            // Hard block backing into the left water pit.
-            if tx <= 5 { moveX = max(moveX, 0.85) }
-
-            return InputFrame(
-                moveX: moveX,
-                jumpPressed: jumpPressed,
-                jumpHeld: jumpHeld || jumpPressed,
-                pouncePressed: pouncePressed
-            )
+        // Beat 2 — drop mid ledges / one-ways, then stomp-hunt street MOPs into Mask.
+        // (Plain jump-at-mop used to bounce forever on pink one-ways above the street pack.)
+        if !sawMask {
+            return maskReentryHuntInput(sim: sim, tx: tx, ty: ty)
         }
 
         return showcaseRunInput(sim: sim, tx: tx, ty: ty)

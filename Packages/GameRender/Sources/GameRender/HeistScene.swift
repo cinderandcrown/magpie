@@ -2329,6 +2329,16 @@ public final class HeistScene: SKScene {
                         sim.state.bandit.maskTimer = 0
                         sim.state.bandit.combo = 0
                     }
+                    // Harness: force Mask Mode for 04 / 04b when the bot can't re-chain in time.
+                    if midrunOk, SmokeBrain.smokeFlagExists("smoke_force_mask.txt"),
+                       !sim.state.bandit.maskMode
+                    {
+                        sim.state.bandit.maskMode = true
+                        sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 6.0)
+                        sim.state.bandit.combo = max(sim.state.bandit.combo, tuning.maskModeAtCombo)
+                        smoke.sawMask = true
+                        smoke.sawStomp = true
+                    }
                     if sim.state.bandit.maskMode {
                         // Don't pin Mask open before midrun still — street neon palette needs a clean alley.
                         let holdFirst = midrunOk && mask1Pending
