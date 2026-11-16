@@ -1,93 +1,27 @@
-# Optional workflow_dispatch (must live on default branch to appear in Actions UI).
-# Prefer CI flags on the mission branch:
-#   Assets/SPRITERRIFIC_REQUEST  → anchor only (Fire Fox approves)
-#   Assets/SPRITERRIFIC_ANIMATE  → idle + run/jump/attack after approval
-# Secret: SPRITERRIFIC_API_KEY (never echoed).
-name: Spriterrific Raccoon Sprites
+# Spriterrific credit spend is DISABLED in CI / Actions.
+# Fire Fox runs anchor + animate locally and hands sheets to the agent.
+# This workflow is retained only as a dry documentation stub so nobody
+# re-enables auto-spend by accident. It always no-ops.
+name: Spriterrific Raccoon Sprites (disabled)
 
 on:
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: "If true, only print plan / balance (no spend)"
-        type: boolean
-        default: true
-      phase:
-        description: "anchor (stop for Fire Fox) or animate (after approval)"
-        type: choice
-        options: [anchor, animate]
-        default: anchor
-      asset_ref:
-        description: "Git ref that holds the raccoon reference image + scripts"
+      note:
+        description: "Spend is disabled — Fire Fox runs locally"
         type: string
-        default: cursor/mission-1-raccoon-toy-0c7d
-
-concurrency:
-  group: spriterrific-raccoon-${{ github.repository }}
-  cancel-in-progress: false
+        default: "noop"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  generate:
+  disabled:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.asset_ref }}
-          fetch-depth: 0
-
-      - name: Install Pillow
-        run: python3 -m pip install --quiet pillow numpy
-
-      - name: Generate sprites (Spriterrific)
-        env:
-          SPRITERRIFIC_API_KEY: ${{ secrets.SPRITERRIFIC_API_KEY }}
-          DRY_RUN: ${{ inputs.dry_run }}
-          PHASE: ${{ inputs.phase }}
+      - name: Spend disabled
         run: |
-          set -euo pipefail
-          test -n "${SPRITERRIFIC_API_KEY:-}" || { echo "SPRITERRIFIC_API_KEY secret is missing"; exit 1; }
-          python3 scripts/spriterrific_raccoon.py \
-            --phase="$PHASE" \
-            --ref Assets/Generated/sprites/raccoon/idle.png \
-            --out spriterrific-runs \
-            --dry-run="$DRY_RUN"
-
-      - name: Upload spriterrific-runs artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: spriterrific-raccoon
-          path: spriterrific-runs/
-          if-no-files-found: warn
-
-      - name: Commit outputs
-        if: ${{ inputs.dry_run == false }}
-        run: |
-          set -euo pipefail
-          if [ "${{ inputs.phase }}" = "animate" ]; then
-            python3 scripts/import_spriterrific_raccoon.py \
-              --runs spriterrific-runs \
-              --dest Assets/Generated/sprites/raccoon
-            rm -f Assets/SPRITERRIFIC_ANIMATE Assets/SPRITERRIFIC_ANCHOR_PENDING.json
-          else
-            rm -f Assets/SPRITERRIFIC_REQUEST
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add spriterrific-runs Assets/SPRITERRIFIC_ANCHOR_PENDING.json Assets/Generated/sprites/raccoon Assets/LICENSES.md ASSETS_LICENSES.md || true
-          git add -u Assets/SPRITERRIFIC_REQUEST Assets/SPRITERRIFIC_ANIMATE Assets/SPRITERRIFIC_ANCHOR_PENDING.json || true
-          if git diff --cached --quiet; then
-            echo "No asset changes to commit"
-          else
-            if [ "${{ inputs.phase }}" = "anchor" ]; then
-              git commit -m "Spriterrific anchor pending Fire Fox approval"
-            else
-              git commit -m "Import Spriterrific raccoon sheets (idle/run/jump/attack)"
-            fi
-            git push origin HEAD:${{ inputs.asset_ref }}
-          fi
+          echo "Spriterrific CI spend is disabled."
+          echo "Anchor job (Fire Fox): kh73s9m80tz14zdr7n3gp16d358jakpv"
+          echo "See Assets/SPRITERRIFIC_ANCHOR.md"
+          exit 0
