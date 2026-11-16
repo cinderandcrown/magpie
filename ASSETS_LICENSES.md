@@ -12,3 +12,5 @@ Mission 0 ships **no** third-party art, audio, or fonts. Placeholder visuals are
 | `Assets/Generated/sprites/raccoon/rig/*` | Procedural crops / palette-matched limb+tail helpers for SKAction poses. | Derivative of licensed raccoon sheet (CC-BY 4.0) | 2026-11-16 |
 | `Assets/Audio/sfx/**` | ElevenLabs juice pack (41 WAVs + `sfx_manifest.json`). | Cinder & Crown / ElevenLabs ToS | 2026-11-16 |
 | `Assets/Audio/music/**` | ElevenLabs Music v2.5 soundtrack (8 looped `.m4a` + README). | Cinder & Crown / ElevenLabs ToS | 2026-11-16 |
+| `Assets/Generated/sprites/tiles_side/**` | Original neon industrial 16-mask side-view autotiles. | Cinder & Crown LLC | 2026-11-16 |
+| `Assets/Generated/sprites/props_side/**` | https://kenney.nl/assets/platformer-pack-industrial — Kenney | CC0 1.0 | 2026-11-16 |

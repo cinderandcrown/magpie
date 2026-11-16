@@ -40,12 +40,19 @@ Side views face WEST; ready frames are foot-baseline-normalized 256². `disco_da
 | --- | --- | --- |
 | `sprites/raccoon/rig/*.png` | Crops + palette-matched capsules derived for procedural SKAction poses | Same as parent raccoon sheet above when used with CC-BY pack; otherwise original project derivative |
 
+## Side-view ground + props
+
+| Asset | Source | License |
+| --- | --- | --- |
+| `sprites/tiles_side/mask_00.png`…`mask_15.png` | Original neon industrial 16-mask autotiles for this project | Proprietary — Cinder and Crown LLC |
+| `sprites/props_side/prop_*.png` | [Kenney Platformer Pack Industrial](https://kenney.nl/assets/platformer-pack-industrial) | **CC0 1.0** — decoration only (crates/pipes/girders) |
+
 ## Backgrounds / tiles / UI / audio
 
 | Asset | Source | License |
 | --- | --- | --- |
 | `backgrounds/*.png` | Original project art | Proprietary — Cinder and Crown LLC |
-| `sprites/tiles/*.png` (+ neon-grid bake at runtime) | Original project art | Proprietary — Cinder and Crown LLC |
+| `sprites/tiles/*.png` (+ neon-grid bake at runtime) | Original project art (legacy; ground now uses `tiles_side`) | Proprietary — Cinder and Crown LLC |
 | `sprites/mop/*`, `sprites/shiny/*` | Original project art | Proprietary — Cinder and Crown LLC |
 | `ui/logo_neon_city_bandit*.png` | Original project art | Proprietary — Cinder and Crown LLC |
 | `audio/*` | Original project audio | Proprietary — Cinder and Crown LLC |

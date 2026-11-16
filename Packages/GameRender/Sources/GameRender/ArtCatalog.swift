@@ -19,6 +19,8 @@ public enum ArtCatalog {
 
     private static var textureCache: [AssetKey: SKTexture] = [:]
     private static var tileCache: [Int: SKTexture] = [:]
+    private static var sideMaskCache: [Int: SKTexture] = [:]
+    private static var sidePropCache: [Int: SKTexture] = [:]
     private static var spriteAtlas: SKTextureAtlas?
     private static var tileAtlas: SKTextureAtlas?
     private static var didWarm = false
@@ -46,14 +48,16 @@ public enum ArtCatalog {
         var tileDict: [String: UIImage] = [:]
         for i in 1...27 {
             if let img = loadTileImage(index: i) {
-                // Prop tiles (18+) get edge accents only; floor/wall slabs get full grid.
-                let baked = i <= 17 ? bakeNeonGrid(onto: img, style: .platform) : bakeNeonGrid(onto: img, style: .prop)
+                // Legacy prop sheets only — ground uses tiles_side autotiles (no outline bake).
+                let baked = bakeNeonGrid(onto: img, style: .prop)
                 tileDict[String(format: "tile_%02d", i)] = baked
             }
         }
         if !tileDict.isEmpty {
             tileAtlas = SKTextureAtlas(dictionary: tileDict)
         }
+        warmSideAutotiles()
+        warmSideProps()
         _ = motionTrailTexture()
         _ = perspectiveGridTexture()
     }
@@ -311,23 +315,82 @@ public enum ArtCatalog {
         (1...27).compactMap { tileTexture(index: $0) }
     }
 
-    /// One visual tile definition set for SKTileMapNode (baked neon strips already in PNGs).
+    /// 16-mask side-view ground autotile set (`sprites/tiles_side/mask_XX.png`).
+    /// Bits: N=1 E=2 S=4 W=8 (solid neighbour present). No per-tile outline strokes.
     public static func makePlatformTileSet(tileSize: CGSize) -> SKTileSet {
+        warmSideAutotiles()
         var groups: [SKTileGroup] = []
-        for i in 1...27 {
-            guard let tex = tileTexture(index: i) else { continue }
+        groups.reserveCapacity(16)
+        for mask in 0..<16 {
+            let tex = sideAutotileTexture(mask: mask) ?? solidFallbackTexture(tileSize: tileSize)
             let def = SKTileDefinition(texture: tex, size: tileSize)
-            def.name = String(format: "tile_%02d", i)
+            def.name = String(format: "side_mask_%02d", mask)
             let group = SKTileGroup(tileDefinition: def)
             group.name = def.name
             groups.append(group)
         }
-        // Fallback solid if no textures.
-        if groups.isEmpty {
-            let fallback = SKTileDefinition(texture: SKTexture(), size: tileSize)
-            groups.append(SKTileGroup(tileDefinition: fallback))
-        }
         return SKTileSet(tileGroups: groups)
+    }
+
+    public static func sideAutotileTexture(mask: Int) -> SKTexture? {
+        let m = max(0, min(15, mask))
+        if let cached = sideMaskCache[m] { return cached }
+        warmSideAutotiles()
+        return sideMaskCache[m]
+    }
+
+    /// Kenney Industrial CC0 props for decoration only (crates / pipes).
+    public static func sidePropTexture(index: Int) -> SKTexture? {
+        if let cached = sidePropCache[index] { return cached }
+        warmSideProps()
+        return sidePropCache[index]
+    }
+
+    public static func sidePropTextures() -> [SKTexture] {
+        warmSideProps()
+        return sidePropCache.keys.sorted().compactMap { sidePropCache[$0] }
+    }
+
+    private static func warmSideAutotiles() {
+        if sideMaskCache.count >= 16 { return }
+        for mask in 0..<16 {
+            let name = String(format: "mask_%02d", mask)
+            let rel = "sprites/tiles_side/\(name)"
+            guard let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["png"]),
+                  let img = downsampledUIImage(url: url, maxPixel: 128) else { continue }
+            let tex = SKTexture(image: img)
+            tex.filteringMode = .nearest
+            sideMaskCache[mask] = tex
+        }
+    }
+
+    private static func warmSideProps() {
+        if !sidePropCache.isEmpty { return }
+        for i in 20...59 {
+            let name = String(format: "prop_%03d", i)
+            let rel = "sprites/props_side/\(name)"
+            guard let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["png"]),
+                  let img = downsampledUIImage(url: url, maxPixel: 128) else { continue }
+            let tex = SKTexture(image: img)
+            tex.filteringMode = .nearest
+            sidePropCache[i] = tex
+        }
+    }
+
+    private static func solidFallbackTexture(tileSize: CGSize) -> SKTexture {
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 1
+        let img = UIGraphicsImageRenderer(size: tileSize, format: format).image { ctx in
+            let cg = ctx.cgContext
+            cg.setFillColor(UIColor(red: 0.12, green: 0.1, blue: 0.2, alpha: 1).cgColor)
+            cg.fill(CGRect(origin: .zero, size: tileSize))
+            cg.setFillColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.85).cgColor)
+            cg.fill(CGRect(x: 0, y: 0, width: tileSize.width, height: 3))
+        }
+        let tex = SKTexture(image: img)
+        tex.filteringMode = .nearest
+        return tex
     }
 
     public static func rainEmitter(sceneSize: CGSize) -> SKEmitterNode {
@@ -661,9 +724,26 @@ public final class BanditVisual: SKNode {
         shadow.zPosition = -1
         shadow.position = CGPoint(x: 0, y: -2)
 
-        maskGlow = SKSpriteNode(color: .clear, size: CGSize(width: 4, height: 4))
+        // LED eye glints for Mask Mode (crisp points — not a translucent head plate).
+        maskGlow = SKSpriteNode(color: .clear, size: CGSize(width: 28, height: 12))
         maskGlow.alpha = 0
         maskGlow.isHidden = true
+        maskGlow.zPosition = 3
+        maskGlow.position = CGPoint(x: 2, y: 22)
+        let eyeL = SKShapeNode(circleOfRadius: 2.4)
+        eyeL.fillColor = ArtCatalog.neonCyan
+        eyeL.strokeColor = .white
+        eyeL.lineWidth = 0.6
+        eyeL.glowWidth = 1.2
+        eyeL.position = CGPoint(x: -5, y: 0)
+        let eyeR = SKShapeNode(circleOfRadius: 2.4)
+        eyeR.fillColor = ArtCatalog.neonCyan
+        eyeR.strokeColor = .white
+        eyeR.lineWidth = 0.6
+        eyeR.glowWidth = 1.2
+        eyeR.position = CGPoint(x: 5, y: 0)
+        maskGlow.addChild(eyeL)
+        maskGlow.addChild(eyeR)
 
         super.init()
         addChild(shadow)
@@ -742,12 +822,13 @@ public final class BanditVisual: SKNode {
             sprite.position.y = 0
         }
         if maskMode {
+            // Crisp cyan rim — not a blurry ghost head wash.
             sprite.color = ArtCatalog.neonCyan
-            sprite.colorBlendFactor = sheetDriven ? 0.22 : 0.38
+            sprite.colorBlendFactor = sheetDriven ? 0.18 : 0.28
             tail.color = ArtCatalog.neonCyan
-            tail.colorBlendFactor = 0.35
-            maskGlow.isHidden = true
-            maskGlow.alpha = 0
+            tail.colorBlendFactor = 0.28
+            maskGlow.isHidden = false
+            maskGlow.alpha = 0.95
         } else {
             sprite.color = .white
             sprite.colorBlendFactor = 0
@@ -1014,6 +1095,41 @@ public final class BanditVisual: SKNode {
 
     public func emitMaskTrail() {
         emitPooledTrail(maskMode: true, dash: false)
+    }
+
+    /// Mask Mode entry: LED pulse + 3 afterimage copies (no giant translucent head).
+    public func flashMaskEntry() {
+        maskGlow.isHidden = false
+        maskGlow.alpha = 1
+        maskGlow.removeAllActions()
+        maskGlow.setScale(1)
+        maskGlow.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.scale(to: 1.35, duration: 0.08),
+                SKAction.fadeAlpha(to: 1, duration: 0.05),
+            ]),
+            SKAction.scale(to: 1.0, duration: 0.12),
+        ]))
+        for i in 0..<3 {
+            guard let tex = sprite.texture else { continue }
+            let ghost = SKSpriteNode(texture: tex, size: sprite.size)
+            ghost.anchorPoint = sprite.anchorPoint
+            ghost.position = CGPoint(x: -facingSign * CGFloat(10 + i * 12), y: 0)
+            ghost.zPosition = -0.4
+            ghost.alpha = 0.45 - CGFloat(i) * 0.12
+            ghost.color = ArtCatalog.neonCyan
+            ghost.colorBlendFactor = 0.55
+            ghost.xScale = bodyFaceScale()
+            addChild(ghost)
+            ghost.run(SKAction.sequence([
+                SKAction.group([
+                    SKAction.fadeOut(withDuration: 0.28),
+                    SKAction.moveBy(x: -facingSign * 18, y: 0, duration: 0.28),
+                ]),
+                SKAction.removeFromParent(),
+            ]))
+        }
+        for _ in 0..<3 { emitMaskTrail() }
     }
 
     private func emitPooledTrail(maskMode: Bool, dash: Bool) {
