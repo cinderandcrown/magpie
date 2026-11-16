@@ -163,10 +163,8 @@ public struct SmokeBrain: Equatable, Sendable {
         let tx = Int(floor(b.position.x / tile))
         let ty = Int(floor(b.position.y / tile))
 
-        // Harness rooftop clip: climb while prefer_roof is set and midrun isn't released yet.
-        // Runs even during showcaseMask (early Mask can otherwise pin us to the street).
+        // Harness rooftop clip: climb while prefer_roof is set (even during showcaseMask).
         if Self.smokeFlagExists("smoke_prefer_roof.txt"),
-           !Self.smokeFlagExists("smoke_midrun_ok.txt"),
            act != .seekDeath, act != .finishPush {
             return preferRoofClimbInput(sim: sim, tx: tx, ty: ty)
         }

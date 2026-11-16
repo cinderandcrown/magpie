@@ -231,34 +231,33 @@ write_flag "smoke_prefer_roof.txt"
 # Allow sticky died= from a prior premature splash; require live playing + no stomps yet.
 wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0)) else 1)' 120
 shot "$OUT_DIR/02-midrun.png"
+# Release midrun so subsequent stomps count — prefer_roof climb still runs until cleared.
+write_flag "smoke_midrun_ok.txt"
 
 # 02r — soft rooftop wait (do NOT hard-exit: wait_status's exit 1 kills the whole smoke script).
-# Keep prefer_roof armed and delay midrun_ok so SmokeBrain stays in climb-friendly input.
-ROOF_OK=0
 ROOF_WAIT_START="$(date +%s)"
 while true; do
   require_app "rooftop"
   status="$(read_status)"
   if [[ "$status" == *"roof=1"* && "$status" == *"phase=playing"* ]]; then
     echo "ready@rooftop: $status"
-    ROOF_OK=1
     break
   fi
   now="$(date +%s)"
-  if (( now - ROOF_WAIT_START >= 20 )); then
-    echo "WARN: rooftop soft-timeout (status=$status) — continuing with clip extract" >&2
+  if (( now - ROOF_WAIT_START >= 18 )); then
+    echo "WARN: rooftop soft-timeout (status=$status) — continuing" >&2
     break
   fi
   sleep 0.35
 done
 shot "$OUT_DIR/02r-rooftop-route.png" || true
 # Hold a few seconds of climb/rooftop traversal for the continuous take / clip extract.
-sleep 4
+sleep 3
 rm -f "$(data_container)/Documents/smoke_prefer_roof.txt" 2>/dev/null || true
-write_flag "smoke_midrun_ok.txt"
 
-# 03 — real MOP stomp (before pause/bg so Mask Mode still has timer headroom for 04)
-wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 120
+# 03 — real MOP stomp (before pause/bg so Mask Mode still has timer headroom for 04).
+# Accept mask/combo as proof when early stomps happened before midrun_ok started counting.
+wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); c=re.search(r"combo=([0-9]+)", s); ok_st=(m and int(m.group(1))>=1); ok_mask=("mask=1" in s and c and int(c.group(1))>=1); sys.exit(0 if (ok_st or ok_mask) else 1)' 120
 shot "$OUT_DIR/03-mop-stomp.png"
 
 # 03b — three consecutive chained stomps (Nick feel pass).
