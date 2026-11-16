@@ -56,6 +56,7 @@ public struct SmokeBrain: Equatable, Sendable {
             "smoke_show_pause.txt", "smoke_pause_ok.txt",
             "smoke_background.txt", "smoke_foreground.txt",
             "smoke_show_map.txt", "smoke_map_ok.txt", "smoke_show_daily.txt", "smoke_daily_ok.txt",
+            "smoke_prefer_roof.txt",
         ] {
             setSmokeFlag(name, present: false)
         }
@@ -161,6 +162,14 @@ public struct SmokeBrain: Equatable, Sendable {
         let tile = sim.tuning.tileSize
         let tx = Int(floor(b.position.x / tile))
         let ty = Int(floor(b.position.y / tile))
+
+        // Harness rooftop clip: climb while prefer_roof is set and midrun isn't released yet.
+        // Runs even during showcaseMask (early Mask can otherwise pin us to the street).
+        if Self.smokeFlagExists("smoke_prefer_roof.txt"),
+           !Self.smokeFlagExists("smoke_midrun_ok.txt"),
+           act != .seekDeath, act != .finishPush {
+            return preferRoofClimbInput(sim: sim, tx: tx, ty: ty)
+        }
 
         if act == .seekDeath {
             seekDeathFrames += 1
@@ -362,31 +371,57 @@ public struct SmokeBrain: Equatable, Sendable {
         if tx <= 5 {
             moveX = max(moveX, 0.9)
         }
-        // Rooftop showcase: climb latch poles / one-ways when the harness asks (or mid-map).
-        let preferRoof = Self.smokeFlagExists("smoke_prefer_roof.txt")
-            || (tx >= 20 && tx <= 55 && sim.state.elapsed > 4 && sim.state.elapsed < 28)
-        if preferRoof {
-            let above = sim.map.tile(atX: tx, y: ty + 1)
-            let latchNear = sim.map.tile(atX: tx, y: ty) == .latch
-                || sim.map.tile(atX: tx + 1, y: ty) == .latch
-                || sim.map.tile(atX: tx - 1, y: ty) == .latch
-            let oneWayAbove = above == .oneWay || sim.map.tile(atX: tx, y: ty + 2) == .oneWay
-            if latchNear || oneWayAbove || b.onWallLeft || b.onWallRight {
-                jumpPressed = b.onGround || b.coyote > 0 || b.onWallLeft || b.onWallRight
-                jumpHeld = true
-                moveX = b.onWallRight ? -0.35 : 0.85
-            } else if b.onGround {
-                // Hop onto the next stepping stone toward the roof run.
-                jumpPressed = phase % 40 == 0
-                jumpHeld = jumpPressed || (!b.onGround && b.velocity.y > 0)
-                moveX = max(moveX, 0.9)
-            }
-        }
         if b.onWallLeft || b.onWallRight, !b.onGround {
             jumpPressed = tick % 20 == 0
             jumpHeld = true
             moveX = b.onWallRight ? -0.55 : 0.85
         }
+        return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed)
+    }
+
+    /// Drive toward latch / one-way climb for the rooftop-route smoke still + clip.
+    private func preferRoofClimbInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
+        let b = sim.state.bandit
+        let tile = sim.tuning.tileSize
+        let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? b.position.y
+        // Already high enough — strafe right along the roof deck.
+        if b.position.y > streetY + tile * 2.2 {
+            var jumpHeld = !b.onGround && b.velocity.y > 0
+            var jumpPressed = false
+            if gapAhead(sim: sim, tx: tx, ty: ty) {
+                jumpPressed = b.onGround || b.coyote > 0
+                jumpHeld = true
+            }
+            return InputFrame(moveX: 1.0, jumpPressed: jumpPressed, jumpHeld: jumpHeld)
+        }
+        let above = sim.map.tile(atX: tx, y: ty + 1)
+        let latchNear = sim.map.tile(atX: tx, y: ty) == .latch
+            || sim.map.tile(atX: tx + 1, y: ty) == .latch
+            || sim.map.tile(atX: tx - 1, y: ty) == .latch
+            || sim.map.tile(atX: tx + 1, y: ty + 1) == .latch
+        let oneWayAbove = above == .oneWay
+            || sim.map.tile(atX: tx, y: ty + 2) == .oneWay
+            || sim.map.tile(atX: tx + 1, y: ty + 1) == .oneWay
+        var moveX: Double = 1.0
+        var jumpPressed = false
+        var jumpHeld = false
+        if latchNear || oneWayAbove || b.onWallLeft || b.onWallRight {
+            jumpPressed = b.onGround || b.coyote > 0 || b.onWallLeft || b.onWallRight || tick % 12 == 0
+            jumpHeld = true
+            moveX = b.onWallRight ? -0.25 : 0.75
+        } else if b.onGround || b.coyote > 0 {
+            // Keep hopping toward the mid-map latch tower (~x 20–40).
+            jumpPressed = tick % 18 == 0 || sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty))
+            jumpHeld = jumpPressed || (!b.onGround && b.velocity.y > 0)
+            if tx < 22 { moveX = 1.0 }
+            else if tx > 48 { moveX = -0.4 }
+        } else {
+            jumpHeld = b.velocity.y > 0
+            if b.velocity.y < 0, !b.flopping {
+                return InputFrame(moveX: 0.85, jumpHeld: true, pouncePressed: false)
+            }
+        }
+        if tx <= 5 { moveX = max(moveX, 0.9) }
         return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed)
     }
 
