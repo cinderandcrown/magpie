@@ -24,8 +24,9 @@ final class SmokeTests: XCTestCase {
         XCTAssertNotNil(map.findFirst(.exit))
     }
 
-    /// Regression: Neon Docks must stay under a node budget so the simulator does not jetsam.
-    /// (Previously each solid spawned a sprite + glow SKShapeNode ≈ 2× and crashed mid-smoke.)
+    /// Regression: Neon Docks must stay under a jetsam-safe geometry budget.
+    /// Ground is one `SKTileMapNode` (not 1 sprite/solid); keep raw solid count bounded so
+    /// autotile / prop decoration passes stay cheap on exploration maps (~96×24).
     func testNeonDocksSolidNodeBudget() throws {
         let map = try NeonDocksLevel.load()
         var solids = 0
@@ -35,11 +36,8 @@ final class SmokeTests: XCTestCase {
                 if map.isSolid(t) { solids += 1 }
             }
         }
-        // One visual node per solid (no edge twin). Leave headroom for props/MOPs/shinies.
-        let perSolid = 1
-        let budget = solids * perSolid + 250
-        XCTAssertLessThan(solids, 700, "unexpected solid count \(solids)")
-        XCTAssertLessThanOrEqual(solids * perSolid, budget)
+        // Exploration rebuild (~940 solids) still well under a 1200 soft ceiling.
+        XCTAssertLessThan(solids, 1200, "unexpected solid count \(solids)")
         XCTAssertGreaterThan(solids, 100)
     }
 
