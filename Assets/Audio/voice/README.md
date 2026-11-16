@@ -2,7 +2,7 @@
 
 Robot voice lines for MOP enemies. Keep them short, PG, and punny — no weapon or firearm wording.
 
-## Needed files (m4a)
+## Files (m4a)
 
 | File | Line |
 | --- | --- |
@@ -14,4 +14,4 @@ Robot voice lines for MOP enemies. Keep them short, PG, and punny — no weapon 
 
 Source of truth for copy: `Assets/Story/Story.json` → `mopChatter`.
 
-Generate with a robotic / crisp voice (ElevenLabs). Drop finished m4a files here and note the assets branch in the PR if generated outside CI.
+Generated with ElevenLabs voice **Humanoid Neutral RBT** (`VukfMVtvHInVUWoMNPiQ`), flow `Sc2GbpojP1XuUkCUwpBN`.
