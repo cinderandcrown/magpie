@@ -227,7 +227,41 @@ wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search
 shot "$OUT_DIR/02-midrun.png"
 write_flag "smoke_midrun_ok.txt"
 
-# 02b — Pause menu (during live play)
+# 03 — real MOP stomp (before pause/bg so Mask Mode still has timer headroom for 04)
+wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 120
+shot "$OUT_DIR/03-mop-stomp.png"
+
+# 04 — Mask Mode while still playing (requires live maskOn=1, not sticky mask=).
+# Capture BEFORE pause/bg beats — those burn wall-clock while the sim keeps draining maskTimer.
+wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=1" in s and "phase=playing" in s) else 1)' 120
+MASK_SHOT_OK=0
+for _try in $(seq 1 40); do
+  status="$(read_status)"
+  if [[ "$status" != *"maskOn=1"* || "$status" != *"phase=playing"* ]]; then
+    sleep 0.25
+    continue
+  fi
+  sleep 0.2
+  shot "$OUT_DIR/04-mask-mode.png"
+  status="$(read_status)"
+  if [[ "$status" == *"maskOn=1"* && "$status" == *"phase=playing"* ]]; then
+    echo "ready@mask-shot: $status"
+    MASK_SHOT_OK=1
+    break
+  fi
+  echo "mask shot raced (status=$status) — retry $_try" >&2
+  rm -f "$OUT_DIR/04-mask-mode.png"
+  sleep 0.2
+done
+if [[ "$MASK_SHOT_OK" -ne 1 ]]; then
+  echo "FAIL: could not capture Mask Mode while phase=playing maskOn=1" >&2
+  shot "$OUT_DIR/fail-mask-timeout.png" || true
+  read_status >&2 || true
+  exit 1
+fi
+write_flag "smoke_mask_ok.txt"
+
+# 02b — Pause menu (after Mask shot so the LED beat is not racing the timer)
 write_flag "smoke_show_pause.txt"
 wait_status "pause-menu" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=1" in s else 1)' 60
 sleep 0.35
@@ -242,40 +276,6 @@ sleep 0.35
 shot "$OUT_DIR/02c-background.png"
 write_flag "smoke_foreground.txt"
 wait_status "foreground" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s and "phase=playing" in s else 1)' 90
-
-# 03 — real MOP stomp
-wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 120
-shot "$OUT_DIR/03-mop-stomp.png"
-
-# 04 — Mask Mode while still playing (requires live maskOn=1, not sticky mask=).
-# Screenshot can take seconds; re-verify after the shot so 04 never captures SPLASHED.
-wait_status "mask" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=1" in s and "phase=playing" in s) else 1)' 120
-MASK_SHOT_OK=0
-for _try in $(seq 1 50); do
-  status="$(read_status)"
-  if [[ "$status" != *"maskOn=1"* || "$status" != *"phase=playing"* ]]; then
-    sleep 0.3
-    continue
-  fi
-  sleep 0.35
-  shot "$OUT_DIR/04-mask-mode.png"
-  status="$(read_status)"
-  if [[ "$status" == *"maskOn=1"* && "$status" == *"phase=playing"* ]]; then
-    echo "ready@mask-shot: $status"
-    MASK_SHOT_OK=1
-    break
-  fi
-  echo "mask shot raced (status=$status) — retry $_try" >&2
-  rm -f "$OUT_DIR/04-mask-mode.png"
-  sleep 0.25
-done
-if [[ "$MASK_SHOT_OK" -ne 1 ]]; then
-  echo "FAIL: could not capture Mask Mode while phase=playing maskOn=1" >&2
-  shot "$OUT_DIR/fail-mask-timeout.png" || true
-  read_status >&2 || true
-  exit 1
-fi
-write_flag "smoke_mask_ok.txt"
 
 # 05 — death / retry overlay (app holds failed until smoke_death_ok.txt)
 wait_status "death" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("died=1" in s and "phase=failed" in s) else 1)' 120

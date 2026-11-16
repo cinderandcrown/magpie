@@ -395,8 +395,8 @@ public final class HeistScene: SKScene {
                     world.addChild(n)
                 }
 
-                // Wet-floor reflections on solid tops (every other tile).
-                if !openBelow, (x + y) % 2 == 0 {
+                // Wet-floor reflections on solid tops (sparse — FPS headroom).
+                if !openBelow, (x + y * 3) % 5 == 0 {
                     addWetFloorReflection(at: pos, tile: tile)
                 }
 
@@ -1593,6 +1593,14 @@ public final class HeistScene: SKScene {
             if case .playing = sim.state.phase {
                 sim.step(input)
                 handle(sim.state.events)
+                // Hold Mask Mode open until the harness snaps 04 — screenshot I/O
+                // can take seconds of wall time while the sim keeps ticking.
+                if smokeEnabled,
+                   sim.state.bandit.maskMode,
+                   !SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
+                {
+                    sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
+                }
             }
             accumulator -= tuning.dt
             steps += 1
