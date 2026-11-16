@@ -467,8 +467,11 @@ public enum TitleArt {
     public static let workingSubtitle = "Free the crew · Stomp MOPs"
 }
 
-/// Bandit raccoon: existing Mission-1 sprites + procedural limb/tail/head rig (zero new art).
-/// Limbs are cropped from the idle sheet and driven with SKActions so the character reads as alive.
+/// Bandit raccoon — living motion with zero new art budget (see `Assets/LICENSES.md`).
+///
+/// Primary silhouette: project run / jump / fall / idle sheets (frame-animated).
+/// Procedural layer: idle-sheet crops (head, torso, 2 arms, 2 legs, tail) driven with
+/// SKAction run cycle, jump/fall/land poses, and squash-stretch so the character never freezes.
 @MainActor
 public final class BanditVisual: SKNode {
     public let sprite: SKSpriteNode
@@ -515,54 +518,59 @@ public final class BanditVisual: SKNode {
         rig = SKNode()
         rig.name = "rig"
 
-        // Full-body sprite remains as silhouette fallback / mask tint target.
+        // Full-body sheet kept for hurt/colorize hooks + air poses; rig is the living silhouette.
         sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 72, height: 72))
         sprite.name = "sprite"
-        sprite.alpha = 0.001 // hidden — rig carries the silhouette; kept for squash/colorize hooks
+        sprite.zPosition = 0.5
+        sprite.alpha = 0.001
         ArtCatalog.applyDespill(sprite)
 
-        torso = SKSpriteNode(texture: parts.torso, size: CGSize(width: 34, height: 28))
+        torso = SKSpriteNode(texture: parts.torso, size: CGSize(width: 36, height: 34))
         torso.name = "torso"
         torso.position = CGPoint(x: 0, y: -2)
+        torso.zPosition = 0.5
         ArtCatalog.applyDespill(torso)
 
-        head = SKSpriteNode(texture: parts.head, size: CGSize(width: 36, height: 32))
+        head = SKSpriteNode(texture: parts.head, size: CGSize(width: 40, height: 36))
         head.name = "head"
-        head.position = CGPoint(x: 2, y: 18)
+        head.position = CGPoint(x: 2, y: 20)
+        head.zPosition = 0.8
         ArtCatalog.applyDespill(head)
 
-        armB = SKSpriteNode(texture: parts.arm, size: CGSize(width: 14, height: 18))
+        armB = SKSpriteNode(texture: parts.arm, size: CGSize(width: 18, height: 26))
         armB.name = "armB"
         armB.anchorPoint = CGPoint(x: 0.5, y: 1.0)
-        armB.position = CGPoint(x: -10, y: 6)
-        armB.zPosition = -0.2
+        armB.position = CGPoint(x: -14, y: 10)
+        armB.zPosition = 0.2
         ArtCatalog.applyDespill(armB)
 
-        armF = SKSpriteNode(texture: parts.arm, size: CGSize(width: 14, height: 18))
+        armF = SKSpriteNode(texture: parts.arm, size: CGSize(width: 18, height: 26))
         armF.name = "armF"
         armF.anchorPoint = CGPoint(x: 0.5, y: 1.0)
-        armF.position = CGPoint(x: 10, y: 6)
+        armF.position = CGPoint(x: 14, y: 10)
         armF.xScale = -1
+        armF.zPosition = 0.6
         ArtCatalog.applyDespill(armF)
 
-        legB = SKSpriteNode(texture: parts.leg, size: CGSize(width: 16, height: 20))
+        legB = SKSpriteNode(texture: parts.leg, size: CGSize(width: 20, height: 28))
         legB.name = "legB"
         legB.anchorPoint = CGPoint(x: 0.5, y: 1.0)
-        legB.position = CGPoint(x: -6, y: -12)
-        legB.zPosition = -0.2
+        legB.position = CGPoint(x: -8, y: -14)
+        legB.zPosition = 0.2
         ArtCatalog.applyDespill(legB)
 
-        legF = SKSpriteNode(texture: parts.leg, size: CGSize(width: 16, height: 20))
+        legF = SKSpriteNode(texture: parts.leg, size: CGSize(width: 20, height: 28))
         legF.name = "legF"
         legF.anchorPoint = CGPoint(x: 0.5, y: 1.0)
-        legF.position = CGPoint(x: 6, y: -12)
+        legF.position = CGPoint(x: 8, y: -14)
+        legF.zPosition = 0.6
         ArtCatalog.applyDespill(legF)
 
-        tail = SKSpriteNode(texture: parts.tail, size: CGSize(width: 20, height: 24))
+        tail = SKSpriteNode(texture: parts.tail, size: CGSize(width: 36, height: 24))
         tail.name = "tail"
-        tail.anchorPoint = CGPoint(x: 0.2, y: 0.5)
+        tail.anchorPoint = CGPoint(x: 0.9, y: 0.5)
         tail.position = CGPoint(x: -14, y: 0)
-        tail.zPosition = -0.3
+        tail.zPosition = -0.2
         ArtCatalog.applyDespill(tail)
 
         shadow = SKShapeNode(ellipseOf: CGSize(width: 40, height: 10))
@@ -609,16 +617,25 @@ public final class BanditVisual: SKNode {
 
     public func setFacing(_ facing: Double) {
         facingSign = facing >= 0 ? 1 : -1
-        rig.xScale = facingSign
-        sprite.xScale = abs(sprite.xScale) * facingSign
+        body.xScale = facingSign
+        // Keep absolute scales on children; body flip handles facing.
+        sprite.xScale = abs(sprite.xScale)
     }
 
     public func squash(x: CGFloat, y: CGFloat) {
         body.removeAction(forKey: "sq")
-        body.setScale(1)
+        let face = facingSign
+        body.xScale = face
+        body.yScale = 1
         body.run(SKAction.sequence([
-            SKAction.scaleX(to: x, y: y, duration: 0.055),
-            SKAction.scaleX(to: 1, y: 1, duration: 0.12),
+            SKAction.group([
+                SKAction.scaleX(to: x * face, duration: 0.05),
+                SKAction.scaleY(to: y, duration: 0.05),
+            ]),
+            SKAction.group([
+                SKAction.scaleX(to: face, duration: 0.11),
+                SKAction.scaleY(to: 1, duration: 0.11),
+            ]),
         ]), withKey: "sq")
     }
 
@@ -628,36 +645,44 @@ public final class BanditVisual: SKNode {
             applyPose(anim)
         }
         bobPhase += dt
-        // Secondary head bob while idle/run so the rig never freezes.
         if anim == .idle || anim == .run {
-            head.position.y = 18 + sin(bobPhase * (anim == .run ? 14 : 3)) * (anim == .run ? 2.2 : 1.2)
+            head.position.y = 20 + sin(bobPhase * (anim == .run ? 14 : 3)) * (anim == .run ? 2.4 : 1.3)
         }
+        let parts = [torso, head, armF, armB, legF, legB, tail]
         if maskMode {
-            for n in [torso, head, armF, armB, legF, legB, tail] {
+            for n in parts {
                 n.color = ArtCatalog.neonCyan
                 n.colorBlendFactor = 0.28
             }
+            sprite.color = ArtCatalog.neonCyan
+            sprite.colorBlendFactor = 0.22
             maskGlow.isHidden = false
             maskGlow.alpha = 0.55 + 0.35 * sin(bobPhase * 5)
             maskGlow.setScale(1.15 + 0.18 * sin(bobPhase * 6))
         } else {
-            for n in [torso, head, armF, armB, legF, legB, tail] {
+            for n in parts {
                 n.color = ArtCatalog.neonPink
-                n.colorBlendFactor = 0.12
+                n.colorBlendFactor = 0.1
             }
+            sprite.color = ArtCatalog.neonPink
+            sprite.colorBlendFactor = 0.08
             maskGlow.isHidden = true
             maskGlow.alpha = 0
             maskGlow.setScale(1)
         }
-        // Keep sprite texture in sync for any code that colorizes `sprite` (hurt flash).
+        // Air poses: briefly reveal the drawn sheet under the rig for a clear silhouette read.
         switch anim {
-        case .jump, .apex: sprite.texture = jumpTex ?? idleTex
-        case .fall, .wallSlide: sprite.texture = fallTex ?? idleTex
-        case .pounce: sprite.texture = (flopTex ?? pounceTex) ?? idleTex
-        case .run where runTextures.count > 1:
-            let idx = Int(bobPhase * 12) % runTextures.count
-            sprite.texture = runTextures[idx]
+        case .jump, .apex:
+            sprite.alpha = 0.55
+            sprite.texture = jumpTex ?? idleTex
+        case .fall, .wallSlide:
+            sprite.alpha = 0.55
+            sprite.texture = fallTex ?? idleTex
+        case .pounce:
+            sprite.alpha = 0.55
+            sprite.texture = (flopTex ?? pounceTex) ?? idleTex
         default:
+            sprite.alpha = 0.001
             sprite.texture = (maskMode ? maskTex : nil) ?? idleTex
         }
         tickMotionTrail(anim: anim, maskMode: maskMode, dt: dt, smokeLite: smokeLite)
@@ -682,7 +707,7 @@ public final class BanditVisual: SKNode {
     }
 
     private func stopLimbActions() {
-        for n in [armF, armB, legF, legB, tail, head, torso, rig] as [SKNode] {
+        for n in [armF, armB, legF, legB, tail, head, torso, rig, sprite, body] as [SKNode] {
             n.removeAction(forKey: "limb")
         }
     }
@@ -690,99 +715,124 @@ public final class BanditVisual: SKNode {
     private func startIdleMotion() {
         resetLimbBases()
         head.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.moveBy(x: 0, y: 1.5, duration: 0.55),
-            SKAction.moveBy(x: 0, y: -1.5, duration: 0.55),
+            SKAction.moveBy(x: 0, y: 1.6, duration: 0.5),
+            SKAction.moveBy(x: 0, y: -1.6, duration: 0.5),
         ])), withKey: "limb")
         tail.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.rotate(toAngle: 0.35, duration: 0.4),
-            SKAction.rotate(toAngle: -0.25, duration: 0.4),
+            SKAction.rotate(toAngle: 0.45, duration: 0.4),
+            SKAction.rotate(toAngle: -0.35, duration: 0.4),
         ])), withKey: "limb")
         armF.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.rotate(toAngle: 0.15, duration: 0.7),
-            SKAction.rotate(toAngle: -0.1, duration: 0.7),
+            SKAction.rotate(toAngle: 0.2, duration: 0.6),
+            SKAction.rotate(toAngle: -0.15, duration: 0.6),
         ])), withKey: "limb")
         armB.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.rotate(toAngle: -0.12, duration: 0.7),
-            SKAction.rotate(toAngle: 0.12, duration: 0.7),
+            SKAction.rotate(toAngle: -0.16, duration: 0.6),
+            SKAction.rotate(toAngle: 0.16, duration: 0.6),
+        ])), withKey: "limb")
+        torso.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.group([
+                SKAction.scaleX(to: 1.05, duration: 0.5),
+                SKAction.scaleY(to: 0.96, duration: 0.5),
+            ]),
+            SKAction.group([
+                SKAction.scaleX(to: 1.0, duration: 0.5),
+                SKAction.scaleY(to: 1.0, duration: 0.5),
+            ]),
         ])), withKey: "limb")
     }
 
     private func startRunCycle() {
         resetLimbBases()
-        // Opposite-phase limbs — classic 2-beat run (~8 visual “frames” via continuous swing).
-        let swing: CGFloat = 0.85
-        let step: TimeInterval = 0.09
-        func cycle(_ node: SKNode, a: CGFloat, b: CGFloat, delay: TimeInterval) {
-            node.run(SKAction.sequence([
-                SKAction.wait(forDuration: delay),
-                SKAction.repeatForever(SKAction.sequence([
-                    SKAction.rotate(toAngle: a, duration: step),
-                    SKAction.rotate(toAngle: b, duration: step),
-                ])),
-            ]), withKey: "limb")
+        let swing: CGFloat = 1.1
+        let step: TimeInterval = 0.07
+        func cycle(_ node: SKNode, a: CGFloat, b: CGFloat) {
+            node.run(SKAction.repeatForever(SKAction.sequence([
+                SKAction.rotate(toAngle: a, duration: step),
+                SKAction.rotate(toAngle: b, duration: step),
+            ])), withKey: "limb")
         }
-        cycle(legF, a: swing, b: -swing, delay: 0)
-        cycle(legB, a: -swing, b: swing, delay: 0)
-        cycle(armF, a: -swing * 0.75, b: swing * 0.75, delay: 0)
-        cycle(armB, a: swing * 0.75, b: -swing * 0.75, delay: 0)
+        cycle(legF, a: swing, b: -swing)
+        cycle(legB, a: -swing, b: swing)
+        cycle(armF, a: -swing * 0.9, b: swing * 0.9)
+        cycle(armB, a: swing * 0.9, b: -swing * 0.9)
         tail.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.rotate(toAngle: 0.55, duration: step),
-            SKAction.rotate(toAngle: -0.35, duration: step),
+            SKAction.rotate(toAngle: 0.75, duration: step),
+            SKAction.rotate(toAngle: -0.5, duration: step),
         ])), withKey: "limb")
         torso.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.moveBy(x: 0, y: 2.5, duration: step),
-            SKAction.moveBy(x: 0, y: -2.5, duration: step),
+            SKAction.moveBy(x: 0, y: 3.0, duration: step),
+            SKAction.moveBy(x: 0, y: -3.0, duration: step),
         ])), withKey: "limb")
         head.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.moveBy(x: 1.2, y: 1.5, duration: step),
-            SKAction.moveBy(x: -1.2, y: -1.5, duration: step),
+            SKAction.moveBy(x: 1.4, y: 1.8, duration: step),
+            SKAction.moveBy(x: -1.4, y: -1.8, duration: step),
+        ])), withKey: "limb")
+        // Whole-body squash pulse so the run never reads as a static cutout.
+        body.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.group([
+                SKAction.scaleX(to: 0.9 * facingSign, duration: step),
+                SKAction.scaleY(to: 1.12, duration: step),
+            ]),
+            SKAction.group([
+                SKAction.scaleX(to: 1.08 * facingSign, duration: step),
+                SKAction.scaleY(to: 0.9, duration: step),
+            ]),
         ])), withKey: "limb")
     }
 
     private func poseJump() {
         resetLimbBases()
-        legF.zRotation = -0.55
-        legB.zRotation = -0.35
-        armF.zRotation = -0.9
-        armB.zRotation = 0.7
-        tail.zRotation = -0.5
-        head.position = CGPoint(x: 2, y: 20)
-        torso.yScale = 1.08
-        torso.xScale = 0.92
+        armF.zRotation = -1.05
+        armB.zRotation = 0.9
+        legF.zRotation = -0.65
+        legB.zRotation = -0.45
+        tail.zRotation = -0.6
+        torso.yScale = 1.1
+        torso.xScale = 0.9
+        head.position = CGPoint(x: 2, y: 22)
+        tail.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.rotate(toAngle: -0.35, duration: 0.11),
+            SKAction.rotate(toAngle: -0.75, duration: 0.11),
+        ])), withKey: "limb")
     }
 
     private func poseApex() {
         resetLimbBases()
-        legF.zRotation = -0.2
-        legB.zRotation = 0.15
         armF.zRotation = -0.4
-        armB.zRotation = 0.35
+        armB.zRotation = 0.4
+        legF.zRotation = -0.2
+        legB.zRotation = 0.2
         tail.zRotation = 0.2
         torso.yScale = 0.94
-        torso.xScale = 1.06
+        torso.xScale = 1.08
     }
 
     private func poseFall() {
         resetLimbBases()
-        legF.zRotation = 0.45
-        legB.zRotation = 0.25
-        armF.zRotation = 0.7
-        armB.zRotation = -0.5
-        tail.zRotation = 0.6
-        torso.yScale = 1.12
-        torso.xScale = 0.88
-        head.zRotation = -0.08
+        armF.zRotation = 0.9
+        armB.zRotation = -0.7
+        legF.zRotation = 0.55
+        legB.zRotation = 0.35
+        tail.zRotation = 0.7
+        torso.yScale = 1.14
+        torso.xScale = 0.86
+        head.zRotation = -0.1
+        tail.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.rotate(toAngle: 0.4, duration: 0.1),
+            SKAction.rotate(toAngle: 0.9, duration: 0.1),
+        ])), withKey: "limb")
     }
 
     private func posePounce() {
         resetLimbBases()
-        legF.zRotation = 0.9
-        legB.zRotation = 0.7
-        armF.zRotation = 1.0
-        armB.zRotation = 0.8
-        tail.zRotation = 0.9
-        torso.yScale = 0.82
-        torso.xScale = 1.18
+        armF.zRotation = 1.1
+        armB.zRotation = 0.95
+        legF.zRotation = 1.0
+        legB.zRotation = 0.8
+        tail.zRotation = 1.0
+        torso.yScale = 0.78
+        torso.xScale = 1.22
         head.position = CGPoint(x: 4, y: 14)
     }
 
@@ -792,12 +842,15 @@ public final class BanditVisual: SKNode {
         tail.zRotation = 0; head.zRotation = 0
         torso.xScale = 1; torso.yScale = 1
         torso.position = CGPoint(x: 0, y: -2)
-        head.position = CGPoint(x: 2, y: 18)
-        armB.position = CGPoint(x: -10, y: 6)
-        armF.position = CGPoint(x: 10, y: 6)
-        legB.position = CGPoint(x: -6, y: -12)
-        legF.position = CGPoint(x: 6, y: -12)
+        head.position = CGPoint(x: 2, y: 20)
+        armB.position = CGPoint(x: -14, y: 10)
+        armF.position = CGPoint(x: 14, y: 10)
+        legB.position = CGPoint(x: -8, y: -14)
+        legF.position = CGPoint(x: 8, y: -14)
         tail.position = CGPoint(x: -14, y: 0)
+        sprite.position = .zero
+        body.xScale = facingSign
+        body.yScale = 1
     }
 
     private func tickMotionTrail(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool) {

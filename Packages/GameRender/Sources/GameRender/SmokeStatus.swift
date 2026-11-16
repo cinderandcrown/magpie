@@ -96,7 +96,7 @@ public struct SmokeStatus: Equatable, Sendable {
                 if FileManager.default.fileExists(atPath: Self.timerLogURL.path),
                    let handle = try? FileHandle(forWritingTo: Self.timerLogURL) {
                     defer { try? handle.close() }
-                    try? handle.seekToEnd()
+                    _ = try? handle.seekToEnd()
                     try? handle.write(contentsOf: data)
                 } else {
                     try? sample.write(to: Self.timerLogURL, atomically: true, encoding: .utf8)
