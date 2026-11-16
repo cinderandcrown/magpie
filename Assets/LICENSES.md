@@ -8,13 +8,25 @@ All gameplay art and audio in this repository are either:
 
 Also see root `ASSETS_LICENSES.md` and `docs/ASSETS.md`.
 
-## Raccoon / bandit (primary — fluid sheet)
+## Raccoon / bandit / MOP (primary — Spriterrific)
+
+| Asset | Source | License | In-game credits |
+| --- | --- | --- | --- |
+| `sprites/spriterrific/**` + `sprites/spriterrific_ready/**` (bandit, mop_bot, mop_9000_boss) | Spriterrific AI ([spriterrific.com](https://spriterrific.com)); original text prompts on Cinder & Crown account — see `Assets/Generated/sprites/spriterrific/README.md` and `Assets/SPRITERRIFIC_ANCHOR.md` | Owned by **Cinder and Crown LLC** | Yes — `Art: Spriterrific (Cinder & Crown)` |
+
+Side views face WEST; ready frames are foot-baseline-normalized 256². `disco_dance` reserved for backlog easter egg. `bandit/anchor-s.png` for menu/Hideout.
+
+## Raccoon / bandit (legacy fallback — OGA CC-BY)
 
 | Asset | Source URL | Author | License | In-game credits |
 | --- | --- | --- | --- | --- |
-| `sprites/raccoon/*.png` (idle, run_01–06, jump, fall, pounce, belly_flop, mask_mode, tail_swing) and `sprites/raccoon/licensed_ccby/**` | [Cute raccoon 2d game sprite and animations](https://opengameart.org/content/cute-raccoon-2d-game-sprite-and-animations) (`raccoon-assets.zip`) | null-painter-error | **CC-BY 4.0** | Yes — title screen: `Raccoon art: null-painter-error (CC-BY 4.0)` (`TitleArt.assetCredits`) |
+| `sprites/raccoon/*.png` + `sprites/raccoon/licensed_ccby/**` | [Cute raccoon 2d game sprite and animations](https://opengameart.org/content/cute-raccoon-2d-game-sprite-and-animations) | null-painter-error | **CC-BY 4.0** | Keep attribution while files remain in tree |
 
-Frames were downsampled / content-cropped / lightly neon-rim graded for SpriteKit; no NC/ND terms. Distinct from third-party IP (no cane / top-hat / blue-gold gentleman-thief look).
+## Juice SFX (pending)
+
+| Asset | Source | License |
+| --- | --- | --- |
+| `Assets/Audio/sfx/**` (ElevenLabs; manifest TBD) | Fire Fox handoff after core-slice review | Cinder & Crown; ElevenLabs ToS |
 
 ## Raccoon procedural rig (fallback / squash helpers)
 

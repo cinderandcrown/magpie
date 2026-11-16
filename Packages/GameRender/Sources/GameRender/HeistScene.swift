@@ -25,7 +25,7 @@ public final class HeistScene: SKScene {
     private let rainLayer = SKNode()
     private var bandit: BanditVisual!
     private var shinyNodes: [Int: SKNode] = [:]
-    private var mopNodes: [Int: SKSpriteNode] = [:]
+    private var mopNodes: [Int: MopVisual] = [:]
     private let hud = SKNode()
     private let overlay = SKNode()
     private let playHUD = SKNode()
@@ -1510,20 +1510,20 @@ public final class HeistScene: SKScene {
             guard let node = mopNodes[m.id] else { continue }
             if node.userData?["squashing"] as? Bool == true { continue }
             node.position = cg(m.position)
-            node.isHidden = !m.alive
             if m.alive {
-                // Swap at most when crossing the alert threshold (avoid per-frame texture thrash).
-                let alertNow = abs(m.position.x - b.position.x) < 80
-                let key = alertNow ? "alert" : "patrol"
-                if node.userData?["pose"] as? String != key {
-                    if node.userData == nil { node.userData = NSMutableDictionary() }
-                    node.userData?["pose"] = key
-                    if alertNow, let alert = ArtCatalog.texture(.mopAlert) {
-                        node.texture = alert
-                    } else if let patrol = ArtCatalog.texture(.mopPatrol) {
-                        node.texture = patrol
-                    }
+                node.isHidden = false
+                node.alpha = 1
+                var pose = m.anim
+                if pose == .walk, abs(m.position.x - b.position.x) < 80 {
+                    pose = .attack
                 }
+                node.show(anim: pose, facing: m.facing)
+            } else if m.anim == .death, m.animHold > 0 {
+                node.isHidden = false
+                node.alpha = CGFloat(max(0.15, m.animHold / 0.8))
+                node.show(anim: .death, facing: m.facing)
+            } else {
+                node.isHidden = true
             }
         }
 

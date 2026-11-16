@@ -144,6 +144,62 @@ Prices and catalog still need Nicholas approval before shipping (see open questi
 - A satisfying **level-up / rank-up** moment (celebration juice, not a paywall).
 - **Badass cosmetics and finishers** in the (free + premium) pass — earnable in play; paid track may speed cosmetics only within Monetization limits (no crazy power gap).
 
+### EAT-TRASH POWER-UPS (Mario-style, original) — Nicholas
+
+**Gate:** after core-slice review. Do not build in the current mission pass.
+
+**Loop:** raccoon finds junk food in **hidden trash cans / crates**, eats it (chomp = reuse `pick_up` sheet; burp SFX), gains a temporary power-up. All items original IP. Getting hit **removes** the active power-up. Visuals in **code** (tints, glows, particles, shader) — no new sprite sheets.
+
+| Junk food | Power-up | Effect |
+| --- | --- | --- |
+| Glowing pizza crust | **Turbo Tail** | Coil-glow tail; hold jump to glide |
+| Fizzy energy can | **Steam Boots** | Double jump + neon steam puff |
+| Battery | **Shock Goggles** | ~8s invincible; stun robots on contact; electric aura |
+| Fridge leftovers | **Magnet Satchel** | Loot pulls toward him ~10s |
+| Moldy cheese | **Shadow Mask** | ~6s invisible to MOP bots; green stink-cloud trail |
+
+### Juice & Engagement (gamify hard, ethical) — Nicholas
+
+**Gate:** after sprite wiring + core-slice review. Do not build in the current mission pass.
+
+**Ethics (binding):** no nag popups; no fake timers; any random reward shows **odds**. Fits Monetization / no-nag rules.
+
+#### Moment-to-moment
+
+- Coin / loot pickups: pitch rises with the combo chain.
+- Combo meter with **x2 / x3 / x5 HEIST!** popups.
+- Stomp: hit-stop + screen shake + crunch SFX.
+- Number-pop for each score tick.
+- Last MOP in a clear: slow-mo + flash.
+- Haptics everywhere — light on pickup, heavy on stomp.
+
+#### End of level
+
+- **1–3 star** rating animates in one star at a time with rising chimes.
+- Loot tally counts up with a ticking sound.
+- **New best** banner when earned.
+- Chest / **stash bag** opens with a burst.
+
+#### Meta
+
+- Daily heist **streak** (calendar UI, escalating rewards).
+- 3 daily missions + a weekly challenge.
+- Player **level / rank** with big level-up fanfare.
+- Achievements / badges with toast popups.
+- **Collection log** (every trash power-up and loot type found).
+- Hideout upgrades (see Hideout backlog).
+- Pass XP from everything (play, dailies, collection).
+
+#### Comeback
+
+- Free **daily spin** with odds shown.
+- **While you were away** Hideout collection screen.
+- First-win-of-the-day bonus XP.
+
+#### SFX handoff
+
+Fire Fox generates with ElevenLabs → deliver to `Assets/Audio/sfx/` with a manifest. Use placeholders until then.
+
 ## Unchanged engineering pillars
 
 Gates · Swift/SpriteKit · GameCore determinism · portrait one-thumb · baked glow (no SKEffectNode/shaders) · one mission quality bar at a time.

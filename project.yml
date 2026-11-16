@@ -61,6 +61,9 @@ targets:
           test -f "${DEST}/ui/logo_neon_city_bandit.png"
           test -f "${DEST}/ui/logo_neon_city_bandit@1024.png"
           test -f "${DEST}/audio/level_loop.m4a"
+          test -f "${DEST}/sprites/spriterrific_ready/bandit/idle/01.png"
+          test -f "${DEST}/sprites/spriterrific_ready/mop_bot/walk/01.png"
+          test -f "${DEST}/sprites/spriterrific/bandit/idle/spritesheet.png"
           echo "Copied Generated -> $DEST"
     settings:
       base:

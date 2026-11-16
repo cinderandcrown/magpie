@@ -259,9 +259,27 @@ public struct SmokeBrain: Equatable, Sendable {
     private func showcaseRunInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
-        var moveX = 1.0
+        // Beat showcase: idle → walk (slight stick) → run (full) → hop, before MOP hunt.
+        // Cycles every ~3.5s so the smoke video reads each sheet.
+        let phase = tick % 210
+        var moveX: Double
         var jumpPressed = false
         var jumpHeld = false
+        if phase < 36 {
+            moveX = 0 // idle sheet
+        } else if phase < 100 {
+            moveX = 0.35 // walk (below walkRunStickThreshold)
+        } else if phase < 170 {
+            moveX = 1.0 // run
+        } else {
+            moveX = 1.0
+            if b.onGround, phase == 170 || phase == 190 {
+                jumpPressed = true
+                jumpHeld = true
+            } else if !b.onGround {
+                jumpHeld = b.velocity.y > 0
+            }
+        }
         // Stay well left of the MOP pack so midrun never accidentally stomps before the hunt beat.
         if let mop = nearestMop(sim: sim) {
             let dx = mop.position.x - b.position.x
@@ -270,17 +288,13 @@ public struct SmokeBrain: Equatable, Sendable {
                 return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false, pouncePressed: false)
             }
         }
-        // Periodic hops + wall-slide taps so 02-midrun reads as Celeste-feel movement.
-        if b.onGround, tick % 42 < 4 {
-            jumpPressed = true
-            jumpHeld = true
-        }
         if gapAhead(sim: sim, tx: tx, ty: ty), !hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
             jumpPressed = b.onGround || b.coyote > 0
             jumpHeld = true
+            moveX = max(moveX, 0.85)
         }
         if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 2) {
-            moveX = 0.15
+            moveX = min(abs(moveX), 0.15) * (moveX < 0 ? -1 : 1)
             jumpPressed = false
         }
         if b.onWallLeft || b.onWallRight, !b.onGround {

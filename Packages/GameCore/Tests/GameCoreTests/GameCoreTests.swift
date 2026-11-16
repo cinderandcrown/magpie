@@ -516,6 +516,48 @@ final class GameCoreTests: XCTestCase {
         XCTAssertNotEqual(sim.state.mops[0].position.x, x0)
     }
 
+    func testWalkVersusRunAnim() throws {
+        let map = try TileMap.parse("""
+        ##########
+        #.@......#
+        #========#
+        ##########
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        // Slight stick → walk
+        for _ in 0..<30 { sim.step(InputFrame(moveX: 0.35)) }
+        XCTAssertEqual(sim.state.bandit.anim, .walk)
+        // Full stick → run
+        for _ in 0..<30 { sim.step(InputFrame(moveX: 1.0)) }
+        XCTAssertEqual(sim.state.bandit.anim, .run)
+        // Stop → idle
+        for _ in 0..<40 { sim.step(.idle) }
+        XCTAssertEqual(sim.state.bandit.anim, .idle)
+    }
+
+    func testHurtLocksAnimBriefly() throws {
+        let map = try TileMap.parse("""
+        ######
+        #.@M.#
+        #====#
+        ######
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        // Walk into MOP
+        var sawHurt = false
+        for _ in 0..<120 {
+            sim.step(InputFrame(moveX: 1))
+            if sim.state.bandit.anim == .hurt {
+                sawHurt = true
+                XCTAssertGreaterThan(sim.state.bandit.animHold, 0)
+                break
+            }
+        }
+        XCTAssertTrue(sawHurt)
+    }
+
     func testSolidWallBlocks() throws {
         let map = try TileMap.parse("""
         #####

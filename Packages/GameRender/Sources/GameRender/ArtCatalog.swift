@@ -107,10 +107,13 @@ public enum ArtCatalog {
         )
     }
 
-    /// Prefer Spriterrific cycles, then CC-BY folders:
-    /// `sprites/raccoon/spriterrific/<name>/01.png` then `licensed_ccby/<name>/`.
+    /// Prefer Spriterrific ready frames, then legacy CC-BY folders.
     public static func licensedCycleTextures(_ name: String, maxFrames: Int = 24) -> [SKTexture] {
+        if let cycle = SpriteCycles.bandit(name), !cycle.textures.isEmpty {
+            return Array(cycle.textures.prefix(maxFrames))
+        }
         let roots = [
+            "sprites/spriterrific_ready/bandit/\(name)",
             "sprites/raccoon/spriterrific/\(name)",
             "sprites/raccoon/licensed_ccby/\(name)",
         ]
@@ -130,12 +133,12 @@ public enum ArtCatalog {
         return []
     }
 
-    public static func makeMopNode() -> SKSpriteNode {
-        let tex = texture(.mopPatrol) ?? texture(.mopIdle)
-        let n = SKSpriteNode(texture: tex, size: CGSize(width: 72, height: 48))
-        n.name = "mop"
-        applyDespill(n)
-        return n
+    public static func makeMopNode() -> MopVisual {
+        MopVisual()
+    }
+
+    public static func makeBossNode() -> BossVisual {
+        BossVisual()
     }
 
     public static func makeShinyNode() -> SKNode {
@@ -488,14 +491,11 @@ public enum TitleArt {
     public static let displayTitle = "The Neon City Bandit"
     public static let fallbackWordmark = "THE NEON CITY\nBANDIT"
     public static let workingSubtitle = "Free the crew · Stomp MOPs"
-    /// In-game credits. Spriterrific outputs are owned by Cinder & Crown; CC-BY line kept while OGA frames remain.
-    public static let assetCredits = "Raccoon: Spriterrific · null-painter-error (CC-BY 4.0)"
+    /// In-game credits. Spriterrific steampunk-neon bandit / MOP sheets owned by Cinder & Crown.
+    public static let assetCredits = "Art: Spriterrific (Cinder & Crown)"
 }
 
-/// Bandit raccoon — living motion (see `Assets/LICENSES.md`).
-///
-/// Prefers CC-BY licensed side-view cycles (`licensed_ccby/`) when present; otherwise
-/// project sheets + procedural limb/tail SKActions. Squash-stretch always on.
+/// Bandit raccoon — Spriterrific sheets (west-facing); feet sit IN the ground art.
 @MainActor
 public final class BanditVisual: SKNode {
     public let sprite: SKSpriteNode
@@ -510,9 +510,15 @@ public final class BanditVisual: SKNode {
     private let tail: SKSpriteNode
     private let shadow: SKShapeNode
     private let maskGlow: SKSpriteNode
+    private var cycles: [String: SpriteCycle] = [:]
     private var runTextures: [SKTexture] = []
+    private var walkTextures: [SKTexture] = []
     private var idleTextures: [SKTexture] = []
     private var jumpTextures: [SKTexture] = []
+    private var attackTextures: [SKTexture] = []
+    private var hurtTextures: [SKTexture] = []
+    private var deathTextures: [SKTexture] = []
+    private var pickUpTextures: [SKTexture] = []
     private var idleTex: SKTexture?
     private var jumpTex: SKTexture?
     private var fallTex: SKTexture?
@@ -520,24 +526,54 @@ public final class BanditVisual: SKNode {
     private var flopTex: SKTexture?
     private var maskTex: SKTexture?
     private var bobPhase: CGFloat = 0
+    /// World facing: +1 = right/east. Sheets face west, so body.xScale = −facingSign.
     private var facingSign: CGFloat = 1
+    private var usesWestSheets = true
+    private var footAnchorY: CGFloat = 0.11
     private var currentAnim: BanditAnim = .idle
     private var trailPool: [SKSpriteNode] = []
     private var trailCursor: Int = 0
     private var trailAcc: CGFloat = 0
     private let trailPoolSize = 18
+    private var sheetDriven = false
 
     public override init() {
         ArtCatalog.warmAtlases()
-        idleTex = ArtCatalog.texture(.raccoonIdle)
-        let licensedRun = ArtCatalog.licensedCycleTextures("run", maxFrames: 12)
-        runTextures = licensedRun.count >= 6 ? licensedRun : ArtCatalog.textures(AssetManifest.runCycle)
-        idleTextures = ArtCatalog.licensedCycleTextures("idle", maxFrames: 8)
-        jumpTextures = ArtCatalog.licensedCycleTextures("jump", maxFrames: 8)
-        jumpTex = ArtCatalog.texture(.raccoonJump)
-        fallTex = ArtCatalog.texture(.raccoonFall)
-        pounceTex = ArtCatalog.texture(.raccoonPounce)
-        flopTex = ArtCatalog.texture(.raccoonBellyFlop)
+        func load(_ action: String) -> SpriteCycle? {
+            SpriteCycles.bandit(action)
+        }
+        let idleC = load("idle")
+        let walkC = load("walk")
+        let runC = load("run")
+        let jumpC = load("jump")
+        let attackC = load("attack")
+        let hurtC = load("hurt")
+        let deathC = load("death")
+        let pickC = load("pick_up")
+        sheetDriven = (runC?.textures.count ?? 0) >= 6 && (idleC?.textures.count ?? 0) >= 2
+        if let idleC { cycles["idle"] = idleC; idleTextures = idleC.textures; footAnchorY = idleC.footAnchorY }
+        if let walkC { cycles["walk"] = walkC; walkTextures = walkC.textures }
+        if let runC { cycles["run"] = runC; runTextures = runC.textures }
+        if let jumpC { cycles["jump"] = jumpC; jumpTextures = jumpC.textures }
+        if let attackC { cycles["attack"] = attackC; attackTextures = attackC.textures }
+        if let hurtC { cycles["hurt"] = hurtC; hurtTextures = hurtC.textures }
+        if let deathC { cycles["death"] = deathC; deathTextures = deathC.textures }
+        if let pickC { cycles["pick_up"] = pickC; pickUpTextures = pickC.textures }
+        usesWestSheets = sheetDriven
+
+        if !sheetDriven {
+            let licensedRun = ArtCatalog.licensedCycleTextures("run", maxFrames: 12)
+            runTextures = licensedRun.count >= 6 ? licensedRun : ArtCatalog.textures(AssetManifest.runCycle)
+            idleTextures = ArtCatalog.licensedCycleTextures("idle", maxFrames: 8)
+            jumpTextures = ArtCatalog.licensedCycleTextures("jump", maxFrames: 8)
+            usesWestSheets = false
+        }
+
+        idleTex = idleTextures.first ?? ArtCatalog.texture(.raccoonIdle)
+        jumpTex = jumpTextures.first ?? ArtCatalog.texture(.raccoonJump)
+        fallTex = jumpTextures.dropFirst(jumpTextures.count * 2 / 3).first ?? ArtCatalog.texture(.raccoonFall)
+        pounceTex = attackTextures.first ?? ArtCatalog.texture(.raccoonPounce)
+        flopTex = attackTextures.last ?? ArtCatalog.texture(.raccoonBellyFlop)
         maskTex = ArtCatalog.texture(.raccoonMaskMode)
 
         let parts = ArtCatalog.raccoonRigParts()
@@ -547,11 +583,10 @@ public final class BanditVisual: SKNode {
         rig = SKNode()
         rig.name = "rig"
 
-        // Primary silhouette = licensed / project sheets (frame-animated).
-        // Anchor near the feet so soles sit IN the ground art (not floating mid-tile).
-        sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 78, height: 78))
+        // Anchor at normalized foot baseline so soles sit IN the ground art.
+        sprite = SKSpriteNode(texture: idleTex, size: SpriteCycles.banditDisplaySize)
         sprite.name = "sprite"
-        sprite.anchorPoint = CGPoint(x: 0.5, y: 0.12)
+        sprite.anchorPoint = CGPoint(x: 0.5, y: footAnchorY)
         sprite.zPosition = 1
         ArtCatalog.applyDespill(sprite)
 
@@ -596,13 +631,12 @@ public final class BanditVisual: SKNode {
         legF.alpha = 0
         ArtCatalog.applyDespill(legF)
 
-        // Procedural tail overlay only when sheet cycle is thin; licensed sheet already has a tail.
         tail = SKSpriteNode(texture: parts.tail, size: CGSize(width: 36, height: 24))
         tail.name = "tail"
         tail.anchorPoint = CGPoint(x: 0.9, y: 0.5)
         tail.position = CGPoint(x: -16, y: -2)
         tail.zPosition = -0.3
-        tail.alpha = licensedRun.count >= 6 ? 0 : 1
+        tail.alpha = sheetDriven ? 0 : 1
         ArtCatalog.applyDespill(tail)
 
         shadow = SKShapeNode(ellipseOf: CGSize(width: 40, height: 10))
@@ -630,6 +664,7 @@ public final class BanditVisual: SKNode {
             rig.addChild(n)
         }
         name = "bandit"
+        applyFacingScale()
 
         let trailTex = ArtCatalog.motionTrailTexture()
         for i in 0..<trailPoolSize {
@@ -650,14 +685,22 @@ public final class BanditVisual: SKNode {
 
     public func setFacing(_ facing: Double) {
         facingSign = facing >= 0 ? 1 : -1
-        body.xScale = facingSign
-        // Keep absolute scales on children; body flip handles facing.
+        applyFacingScale()
         sprite.xScale = abs(sprite.xScale)
+    }
+
+    private func bodyFaceScale() -> CGFloat {
+        // West-facing sheets: flip when facing right (+1).
+        usesWestSheets ? -facingSign : facingSign
+    }
+
+    private func applyFacingScale() {
+        body.xScale = bodyFaceScale()
     }
 
     public func squash(x: CGFloat, y: CGFloat) {
         body.removeAction(forKey: "sq")
-        let face = facingSign
+        let face = bodyFaceScale()
         body.xScale = face
         body.yScale = 1
         body.run(SKAction.sequence([
@@ -678,88 +721,124 @@ public final class BanditVisual: SKNode {
             applyPose(anim)
         }
         bobPhase += dt
-        if anim == .idle || anim == .run {
-            sprite.position.y = sin(bobPhase * (anim == .run ? 15 : 3.2)) * (anim == .run ? 2.6 : 1.3)
+        // Sheet cycles already animate; skip extra bob when sheet-driven.
+        if !sheetDriven, anim == .idle || anim == .run || anim == .walk {
+            let runLike = anim == .run
+            sprite.position.y = sin(bobPhase * (runLike ? 15 : 3.2)) * (runLike ? 2.6 : 1.3)
+        } else if sheetDriven {
+            sprite.position.y = 0
         } else {
             sprite.position.y = 0
         }
         if maskMode {
             sprite.color = ArtCatalog.neonCyan
-            sprite.colorBlendFactor = 0.22
+            sprite.colorBlendFactor = sheetDriven ? 0.12 : 0.22
             tail.color = ArtCatalog.neonCyan
             tail.colorBlendFactor = 0.25
             maskGlow.isHidden = false
             maskGlow.alpha = 0.55 + 0.35 * sin(bobPhase * 5)
             maskGlow.setScale(1.15 + 0.18 * sin(bobPhase * 6))
         } else {
-            sprite.color = ArtCatalog.neonPink
-            sprite.colorBlendFactor = 0.08
+            sprite.color = .white
+            sprite.colorBlendFactor = 0
             tail.color = .white
             tail.colorBlendFactor = 0
             maskGlow.isHidden = true
             maskGlow.alpha = 0
             maskGlow.setScale(1)
         }
-        // Keep sheet texture in sync when the frames action is not running.
         if sprite.action(forKey: "frames") == nil {
             switch anim {
             case .jump, .apex: sprite.texture = jumpTex ?? idleTex
             case .fall, .wallSlide: sprite.texture = fallTex ?? idleTex
             case .pounce: sprite.texture = (flopTex ?? pounceTex) ?? idleTex
+            case .walk where walkTextures.count > 1:
+                sprite.texture = walkTextures[Int(bobPhase * 12) % walkTextures.count]
             case .run where runTextures.count > 1:
-                let idx = Int(bobPhase * 14) % runTextures.count
-                sprite.texture = runTextures[idx]
+                sprite.texture = runTextures[Int(bobPhase * 14) % runTextures.count]
+            case .hurt where hurtTextures.count > 0:
+                sprite.texture = hurtTextures[min(hurtTextures.count - 1, Int(bobPhase * 20) % hurtTextures.count)]
+            case .death where deathTextures.count > 0:
+                sprite.texture = deathTextures[min(deathTextures.count - 1, Int(bobPhase * 12))]
+            case .pickUp where pickUpTextures.count > 0:
+                sprite.texture = pickUpTextures[min(pickUpTextures.count - 1, Int(bobPhase * 18) % pickUpTextures.count)]
             default:
-                sprite.texture = (maskMode ? maskTex : nil) ?? idleTex
+                sprite.texture = idleTex
             }
         }
         tickMotionTrail(anim: anim, maskMode: maskMode, dt: dt, smokeLite: smokeLite)
     }
 
+    private func tpf(_ action: String, fallback: TimeInterval) -> TimeInterval {
+        cycles[action]?.timePerFrame ?? fallback
+    }
+
+    private func playLoop(_ textures: [SKTexture], action: String, fallbackTPF: TimeInterval) {
+        guard textures.count > 1 else {
+            sprite.texture = textures.first ?? idleTex
+            return
+        }
+        sprite.run(SKAction.repeatForever(
+            SKAction.animate(with: textures, timePerFrame: tpf(action, fallback: fallbackTPF))
+        ), withKey: "frames")
+    }
+
+    private func playOnce(_ textures: [SKTexture], action: String, fallbackTPF: TimeInterval) {
+        guard textures.count > 1 else {
+            sprite.texture = textures.first ?? idleTex
+            return
+        }
+        sprite.run(SKAction.animate(with: textures, timePerFrame: tpf(action, fallback: fallbackTPF)), withKey: "frames")
+    }
+
     private func applyPose(_ anim: BanditAnim) {
         stopLimbActions()
         sprite.removeAction(forKey: "frames")
+        if sheetDriven { rig.alpha = 0 }
         switch anim {
+        case .walk:
+            if !sheetDriven { startRunCycle() }
+            playLoop(walkTextures.isEmpty ? runTextures : walkTextures, action: "walk", fallbackTPF: 0.06)
         case .run:
-            startRunCycle()
-            if runTextures.count > 1 {
-                sprite.run(SKAction.repeatForever(
-                    SKAction.animate(with: runTextures, timePerFrame: 0.055)
-                ), withKey: "frames")
-            }
+            if !sheetDriven { startRunCycle() }
+            playLoop(runTextures, action: "run", fallbackTPF: 0.055)
         case .jump:
-            poseJump()
+            if !sheetDriven { poseJump() }
             if jumpTextures.count > 2 {
                 let ascent = Array(jumpTextures.prefix(max(2, jumpTextures.count / 2)))
-                sprite.run(SKAction.animate(with: ascent, timePerFrame: 0.06), withKey: "frames")
+                sprite.run(SKAction.animate(with: ascent, timePerFrame: tpf("jump", fallback: 0.06)), withKey: "frames")
             } else {
                 sprite.texture = jumpTex ?? idleTex
             }
         case .apex:
-            poseApex()
+            if !sheetDriven { poseApex() }
             sprite.texture = jumpTextures.dropFirst(jumpTextures.count / 2).first ?? jumpTex ?? idleTex
         case .fall, .wallSlide:
-            poseFall()
+            if !sheetDriven { poseFall() }
             if jumpTextures.count > 2 {
                 let descent = Array(jumpTextures.suffix(max(2, jumpTextures.count / 2)))
                 sprite.run(SKAction.repeatForever(
-                    SKAction.animate(with: descent, timePerFrame: 0.08)
+                    SKAction.animate(with: descent, timePerFrame: tpf("jump", fallback: 0.08))
                 ), withKey: "frames")
             } else {
                 sprite.texture = fallTex ?? idleTex
             }
         case .pounce:
-            posePounce()
-            sprite.texture = (flopTex ?? pounceTex) ?? idleTex
-        case .idle:
-            startIdleMotion()
-            if idleTextures.count > 1 {
-                sprite.run(SKAction.repeatForever(
-                    SKAction.animate(with: idleTextures, timePerFrame: 0.12)
-                ), withKey: "frames")
+            if !sheetDriven { posePounce() }
+            if attackTextures.count > 2 {
+                playOnce(attackTextures, action: "attack", fallbackTPF: 0.04)
             } else {
-                sprite.texture = idleTex
+                sprite.texture = (flopTex ?? pounceTex) ?? idleTex
             }
+        case .hurt:
+            playOnce(hurtTextures, action: "hurt", fallbackTPF: 0.04)
+        case .death:
+            playOnce(deathTextures, action: "death", fallbackTPF: 0.05)
+        case .pickUp:
+            playOnce(pickUpTextures, action: "pick_up", fallbackTPF: 0.04)
+        case .idle:
+            if !sheetDriven { startIdleMotion() }
+            playLoop(idleTextures, action: "idle", fallbackTPF: 0.12)
         }
     }
 
@@ -826,13 +905,14 @@ public final class BanditVisual: SKNode {
             SKAction.moveBy(x: -1.4, y: -1.8, duration: step),
         ])), withKey: "limb")
         // Whole-body squash pulse so the run never reads as a static cutout.
+        let face = bodyFaceScale()
         body.run(SKAction.repeatForever(SKAction.sequence([
             SKAction.group([
-                SKAction.scaleX(to: 0.9 * facingSign, duration: step),
+                SKAction.scaleX(to: 0.9 * face, duration: step),
                 SKAction.scaleY(to: 1.12, duration: step),
             ]),
             SKAction.group([
-                SKAction.scaleX(to: 1.08 * facingSign, duration: step),
+                SKAction.scaleX(to: 1.08 * face, duration: step),
                 SKAction.scaleY(to: 0.9, duration: step),
             ]),
         ])), withKey: "limb")
@@ -906,12 +986,12 @@ public final class BanditVisual: SKNode {
         legF.position = CGPoint(x: 8, y: -14)
         tail.position = CGPoint(x: -14, y: 0)
         sprite.position = .zero
-        body.xScale = facingSign
+        applyFacingScale()
         body.yScale = 1
     }
 
     private func tickMotionTrail(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool) {
-        let moving = maskMode || anim == .run || anim == .pounce || anim == .jump || anim == .apex
+        let moving = maskMode || anim == .run || anim == .walk || anim == .pounce || anim == .jump || anim == .apex
         guard moving else { return }
         trailAcc += dt
         let interval: CGFloat = {

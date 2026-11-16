@@ -28,7 +28,7 @@ All HUD/controls respect `safeAreaInsets` (island + home indicator). Smoke uses 
 
 ## Art handoff
 
-Fire Fox runs Spriterrific locally (CI spend disabled). Variant job: see `Assets/SPRITERRIFIC_ANCHOR.md`. Agent normalizes sheets (alpha, scale, foot baseline, contact sheet) then wires via `ArtCatalog` / `BanditVisual`.
+Fire Fox runs Spriterrific locally (CI spend disabled). Sheets: `Assets/Generated/sprites/spriterrific/` → normalize with `scripts/normalize_spriterrific_sheets.py` → `spriterrific_ready/`. Runtime: `SpriteCycles` → `BanditVisual` / `MopVisual` / `BossVisual` (west-facing flip; shared foot baseline). Boss tread scrolls in code until `tread_roll` is swapped in. See `Assets/SPRITERRIFIC_ANCHOR.md`.
 
 ## QA gate
 

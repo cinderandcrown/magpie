@@ -1,0 +1,110 @@
+{
+  "characters": {
+    "bandit": {
+      "foot_y": 227,
+      "actions": {
+        "idle": {
+          "frames": 10,
+          "fps": 6,
+          "path": "sprites/spriterrific_ready/bandit/idle"
+        },
+        "walk": {
+          "frames": 29,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/bandit/walk"
+        },
+        "run": {
+          "frames": 19,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/bandit/run"
+        },
+        "jump": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/bandit/jump"
+        },
+        "attack": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/bandit/attack"
+        },
+        "hurt": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/bandit/hurt"
+        },
+        "death": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/bandit/death"
+        },
+        "pick_up": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/bandit/pick_up"
+        },
+        "disco_dance": {
+          "frames": 10,
+          "fps": 6,
+          "path": "sprites/spriterrific_ready/bandit/disco_dance"
+        }
+      }
+    },
+    "mop_bot": {
+      "foot_y": 227,
+      "actions": {
+        "walk": {
+          "frames": 30,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/mop_bot/walk"
+        },
+        "attack": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/mop_bot/attack"
+        },
+        "hurt": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/mop_bot/hurt"
+        },
+        "death": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/mop_bot/death"
+        }
+      }
+    },
+    "mop_9000_boss": {
+      "foot_y": 227,
+      "actions": {
+        "idle": {
+          "frames": 10,
+          "fps": 6,
+          "path": "sprites/spriterrific_ready/mop_9000_boss/idle"
+        },
+        "walk": {
+          "frames": 29,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/mop_9000_boss/walk"
+        },
+        "attack": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/mop_9000_boss/attack"
+        },
+        "hurt": {
+          "frames": 25,
+          "fps": 24,
+          "path": "sprites/spriterrific_ready/mop_9000_boss/hurt"
+        },
+        "death": {
+          "frames": 13,
+          "fps": 12,
+          "path": "sprites/spriterrific_ready/mop_9000_boss/death"
+        }
+      }
+    }
+  },
+  "notes": "Side views face WEST; flip xScale for right. Anchor bottom-center at shared foot_y."
+}

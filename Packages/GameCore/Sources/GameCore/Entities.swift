@@ -3,7 +3,7 @@
 import Foundation
 
 public enum BanditAnim: Equatable, Sendable {
-    case idle, run, jump, apex, fall, pounce, wallSlide
+    case idle, walk, run, jump, apex, fall, pounce, wallSlide, hurt, death, pickUp
 }
 
 public struct BanditState: Equatable, Sendable {
@@ -26,6 +26,8 @@ public struct BanditState: Equatable, Sendable {
     public var carriedShinies: Int
     public var bankedShinies: Int
     public var anim: BanditAnim
+    /// While > 0, `anim` stays locked (hurt / death / pickUp one-shots).
+    public var animHold: Double
 
     public static func spawn(at position: Vec2, hearts: Int) -> BanditState {
         BanditState(
@@ -47,7 +49,8 @@ public struct BanditState: Equatable, Sendable {
             invuln: 0,
             carriedShinies: 0,
             bankedShinies: 0,
-            anim: .idle
+            anim: .idle,
+            animHold: 0
         )
     }
 }
@@ -58,6 +61,10 @@ public struct ShinyPickup: Equatable, Sendable, Identifiable {
     public var alive: Bool
 }
 
+public enum MopAnim: Equatable, Sendable {
+    case walk, attack, hurt, death
+}
+
 public struct MopEnemy: Equatable, Sendable, Identifiable {
     public var id: Int
     public var position: Vec2
@@ -66,6 +73,9 @@ public struct MopEnemy: Equatable, Sendable, Identifiable {
     public var phase: Double
     public var alive: Bool
     public var respawn: Double
+    public var anim: MopAnim
+    public var animHold: Double
+    public var facing: Double
 }
 
 public struct Checkpoint: Equatable, Sendable, Identifiable {

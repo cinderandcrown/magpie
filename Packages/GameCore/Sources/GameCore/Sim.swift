@@ -70,7 +70,10 @@ public struct Sim: Equatable, Sendable {
         var mops: [MopEnemy] = []
         for (i, c) in map.findAll(.mopSpawn).enumerated() {
             let p = map.worldCenter(ofX: c.0, y: c.1, tileSize: tile)
-            mops.append(MopEnemy(id: i, position: p, home: p, patrolSpan: tile * 2.5, phase: Double(i) * 0.7, alive: true, respawn: 0))
+            mops.append(MopEnemy(
+                id: i, position: p, home: p, patrolSpan: tile * 2.5, phase: Double(i) * 0.7,
+                alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1
+            ))
         }
         var cps: [Checkpoint] = []
         for (i, c) in map.findAll(.checkpoint).enumerated() {
@@ -121,6 +124,12 @@ public struct Sim: Equatable, Sendable {
         else if b.jumpBuffer > 0 { b.jumpBuffer = max(0, b.jumpBuffer - dt) }
 
         if b.invuln > 0 { b.invuln = max(0, b.invuln - dt) }
+        if b.animHold > 0 {
+            b.animHold = max(0, b.animHold - dt)
+            if b.animHold <= 0, b.anim == .hurt || b.anim == .pickUp {
+                b.anim = .idle
+            }
+        }
 
         integrate(input: input, bandit: &b, dt: dt)
         collide(bandit: &b)
@@ -322,8 +331,18 @@ public struct Sim: Equatable, Sendable {
     }
 
     private func updateAnim(bandit: inout BanditState) {
+        // Hurt / death / pick-up are sticky until animHold expires.
+        if bandit.animHold > 0 { return }
         if bandit.onGround {
-            bandit.anim = abs(bandit.velocity.x) > 20 ? .run : .idle
+            let speed = abs(bandit.velocity.x)
+            let walkPx = tuning.walkSpeed * tuning.tileSize
+            if speed <= 20 {
+                bandit.anim = .idle
+            } else if speed < walkPx * 0.85 {
+                bandit.anim = .walk
+            } else {
+                bandit.anim = .run
+            }
         } else if bandit.onWallLeft || bandit.onWallRight {
             bandit.anim = .wallSlide
         } else if bandit.pouncing || bandit.flopping {
@@ -344,6 +363,8 @@ public struct Sim: Equatable, Sendable {
                 state.shinies[i].alive = false
                 let gain = bandit.maskMode ? 2 : 1
                 bandit.carriedShinies += gain
+                bandit.anim = .pickUp
+                bandit.animHold = 0.35
                 state.events.append(SimEvent(kind: .shiny, position: state.shinies[i].position))
             }
         }
@@ -397,10 +418,19 @@ public struct Sim: Equatable, Sendable {
                 }
                 continue
             }
+            if state.mops[i].animHold > 0 {
+                state.mops[i].animHold = max(0, state.mops[i].animHold - dt)
+            }
+            let prevX = state.mops[i].position.x
             state.mops[i].phase += dt
             let ox = sin(state.mops[i].phase) * state.mops[i].patrolSpan
             state.mops[i].position.x = state.mops[i].home.x + ox
             state.mops[i].position.y = state.mops[i].home.y
+            let dx = state.mops[i].position.x - prevX
+            if abs(dx) > 0.01 { state.mops[i].facing = dx >= 0 ? 1 : -1 }
+            if state.mops[i].animHold <= 0 {
+                state.mops[i].anim = .walk
+            }
 
             let d = state.mops[i].position.distance(to: bandit.position)
             // Stomp hitbox live only on contact: flopping, or falling onto the MOP from above.
@@ -413,6 +443,8 @@ public struct Sim: Equatable, Sendable {
             {
                 state.mops[i].alive = false
                 state.mops[i].respawn = 3.5
+                state.mops[i].anim = .death
+                state.mops[i].animHold = 0.8
                 bandit.velocity.y = tuning.stompBounceVelocity * tuning.tileSize / 2.2
                 bandit.flopping = false
                 bandit.combo = min(tuning.comboCap, bandit.combo + 1)
@@ -431,8 +463,14 @@ public struct Sim: Equatable, Sendable {
                 bandit.invuln = tuning.invulnSeconds
                 bandit.velocity.y = tuning.jumpVelocity * tuning.tileSize / 3
                 bandit.velocity.x = -bandit.facing * tuning.runSpeed * tuning.tileSize * 0.4
+                bandit.anim = .hurt
+                bandit.animHold = 0.45
+                state.mops[i].anim = .attack
+                state.mops[i].animHold = 0.5
                 state.events.append(SimEvent(kind: .hurt, position: bandit.position))
                 if bandit.hearts <= 0 {
+                    bandit.anim = .death
+                    bandit.animHold = 1.2
                     fail(.bagged, at: bandit.position)
                 }
             }
@@ -463,6 +501,8 @@ public struct Sim: Equatable, Sendable {
 
     private mutating func fail(_ reason: FailReason, at pos: Vec2) {
         guard case .playing = state.phase else { return }
+        state.bandit.anim = .death
+        state.bandit.animHold = 1.2
         state.phase = .failed(reason)
         state.events.append(SimEvent(kind: .fail(reason), position: pos))
     }
