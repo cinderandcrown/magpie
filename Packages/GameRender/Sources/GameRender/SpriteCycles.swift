@@ -6,7 +6,8 @@ import SpriteKit
 import UIKit
 
 /// One Spriterrific action cycle (normalized frames under `sprites/spriterrific_ready/`).
-public struct SpriteCycle: Sendable {
+/// Not Sendable: holds `SKTexture` (SpriteKit). Load/use on the main actor via `SpriteCycles`.
+public struct SpriteCycle {
     public var textures: [SKTexture]
     public var fps: Double
     public var footY: Double
