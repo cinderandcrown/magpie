@@ -117,7 +117,13 @@ public struct SmokeBrain: Equatable, Sendable {
 
         case .playing:
             failWait = 0
-            if sim.state.bandit.maskMode { sawMask = true }
+            // Defer Mask credit until midrun still is done — early alley stomps used to
+            // flip act→showcaseMask, then freeze with maskOn=0 waiting for 04 forever.
+            let midrunReady = Self.smokeFlagExists("smoke_midrun_ok.txt")
+                || !Self.smokeFlagExists("smoke_proceed.txt")
+            if sim.state.bandit.maskMode, midrunReady {
+                sawMask = true
+            }
 
             if diedOnce {
                 act = .finishPush
@@ -185,8 +191,8 @@ public struct SmokeBrain: Equatable, Sendable {
         if act == .showcaseMask {
             let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
             let mask2Ok = Self.smokeFlagExists("smoke_mask2_ok.txt")
-            // After first Mask shot: if Mask dropped, hunt MOPs again for re-entry.
-            if maskOk, !mask2Ok, !b.maskMode {
+            // Hunt whenever Mask is off and a Mask still (04 / 04b) is still pending.
+            if !b.maskMode, (!maskOk || !mask2Ok) {
                 return maskReentryHuntInput(sim: sim, tx: tx, ty: ty)
             }
             // Hold on deck for Mask screenshot — maskTimer keeps maskOn=1 while we wait.

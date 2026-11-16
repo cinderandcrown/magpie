@@ -2322,9 +2322,15 @@ public final class HeistScene: SKScene {
                     if !sim.state.bandit.maskMode, !mask1Pending {
                         smokeSawMaskDropAfterFirst = true
                     }
+                    let midrunOk = SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
+                    // Cancel accidental Mask before midrun still — keeps palette + act machine honest.
+                    if !midrunOk, sim.state.bandit.maskMode {
+                        sim.state.bandit.maskMode = false
+                        sim.state.bandit.maskTimer = 0
+                        sim.state.bandit.combo = 0
+                    }
                     if sim.state.bandit.maskMode {
                         // Don't pin Mask open before midrun still — street neon palette needs a clean alley.
-                        let midrunOk = SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
                         let holdFirst = midrunOk && mask1Pending
                         let holdSecond = midrunOk && mask2Pending && smokeSawMaskDropAfterFirst
                         if holdFirst || holdSecond {
