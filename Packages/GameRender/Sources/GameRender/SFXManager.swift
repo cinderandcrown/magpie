@@ -19,10 +19,14 @@ public final class SFXManager: @unchecked Sendable {
 
     private var metas: [String: ClipMeta] = [:]
     private var loops: [String: AVAudioPlayer] = [:]
-    private var oneshots: [AVAudioPlayer] = []
+    /// Per-clip voice pool — reuse players instead of decoding a new one each play.
+    private var oneshotPools: [String: [AVAudioPlayer]] = [:]
+    private var poolCursor: [String: Int] = [:]
+    private var lastPlayUptime: [String: TimeInterval] = [:]
     private var preloaded = false
     private let lock = NSLock()
-    private let maxOneshots = 6
+    private let voicesPerClip = 3
+    private let retriggerGuard: TimeInterval = 0.04
 
     private let volumeKey = "neon_bandit.sfxVolume"
 
@@ -125,21 +129,43 @@ public final class SFXManager: @unchecked Sendable {
         let mutedNow = muted
         let vol = volume
         let pcm = metas[name]?.data
+        let now = ProcessInfo.processInfo.systemUptime
+        if let last = lastPlayUptime[name], now - last < retriggerGuard {
+            lock.unlock()
+            return
+        }
+        lastPlayUptime[name] = now
         lock.unlock()
         guard !mutedNow, let pcm else { return }
-        guard let player = makePlayer(from: pcm, loop: false) else { return }
-        player.rate = max(0.5, min(2.0, rate))
-        player.volume = max(0, min(1, vol * gain))
-        player.play()
+
         lock.lock()
-        oneshots.append(player)
-        oneshots.removeAll { !$0.isPlaying && $0 !== player }
-        if oneshots.count > maxOneshots {
-            let drop = oneshots.count - maxOneshots
-            for p in oneshots.prefix(drop) { p.stop() }
-            oneshots.removeFirst(drop)
+        var pool = oneshotPools[name] ?? []
+        let player: AVAudioPlayer?
+        if let idle = pool.first(where: { !$0.isPlaying }) {
+            player = idle
+        } else if pool.count < voicesPerClip, let created = makePlayer(from: pcm, loop: false) {
+            pool.append(created)
+            oneshotPools[name] = pool
+            player = created
+        } else if !pool.isEmpty {
+            let idx = (poolCursor[name] ?? 0) % pool.count
+            poolCursor[name] = idx + 1
+            let reuse = pool[idx]
+            reuse.stop()
+            player = reuse
+        } else if let created = makePlayer(from: pcm, loop: false) {
+            oneshotPools[name] = [created]
+            player = created
+        } else {
+            player = nil
         }
         lock.unlock()
+
+        guard let player else { return }
+        player.rate = max(0.5, min(2.0, rate))
+        player.volume = max(0, min(1, vol * gain))
+        player.currentTime = 0
+        player.play()
     }
 
     public func startLoop(_ name: String, gain: Float = 1.0) {
@@ -177,7 +203,9 @@ public final class SFXManager: @unchecked Sendable {
         defer { lock.unlock() }
         let v = muted ? 0 : volume
         for (_, p) in loops { p.volume = v }
-        for p in oneshots where p.isPlaying { p.volume = v }
+        for (_, pool) in oneshotPools {
+            for p in pool where p.isPlaying { p.volume = v }
+        }
     }
 
     public func applyMuteState() {
@@ -231,6 +259,10 @@ public final class SFXManager: @unchecked Sendable {
         guard names.indices.contains(index) else { return }
         play(names[index])
     }
+
+    public func playTallyTick() { play("tally_tick") }
+    public func playNewBest() { play("new_best") }
+    public func playLevelUp() { play("level_up") }
 
     public func setBossTreadMoving(_ moving: Bool) {
         if moving {

@@ -145,6 +145,24 @@ public final class JuiceSound: @unchecked Sendable {
         SFXManager.shared.playStar(index)
     }
 
+    public func playTallyTick() {
+        prepare()
+        logSmoke("sfx tally_tick")
+        SFXManager.shared.playTallyTick()
+    }
+
+    public func playNewBest() {
+        prepare()
+        logSmoke("sfx new_best")
+        SFXManager.shared.playNewBest()
+    }
+
+    public func playLevelUp() {
+        prepare()
+        logSmoke("sfx level_up")
+        SFXManager.shared.playLevelUp()
+    }
+
     public func playJump() {
         prepare()
         logSmoke("sfx jump")

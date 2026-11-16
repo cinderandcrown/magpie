@@ -43,7 +43,11 @@ public struct Tuning: Equatable, Sendable {
     public var pounceBoostY: Double = 4.0
     public var bellyFlopFallBoost: Double = 18
     public var stompBounceVelocity: Double = 12
-    public var stompHitRadius: Double = 22
+    /// Contact-tight stomp radius (world px). Must clear halfH (~14) plus patrol jitter.
+    /// Was 22 (wide aura / visual overlap); 18 reads as contact.
+    public var stompHitRadius: Double = 18
+    /// Separate hurt radius — slightly under stomp so stomps win on contact frames.
+    public var hurtHitRadius: Double = 16
 
     // Combat / meta
     /// Window to chain stomps into Mask (must span adjacent MOP patrols on a deck).

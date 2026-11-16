@@ -584,11 +584,13 @@ final class GameCoreTests: XCTestCase {
             seconds: 30,
             combo: 3
         )
-        XCTAssertEqual(earned.count, 3)
+        XCTAssertEqual(earned.medals.count, 3)
+        XCTAssertTrue(earned.isNewBest)
         let progress = store.load()
         XCTAssertEqual(progress.medalsByLevel[ProgressStore.neonDocksLevelID]?.count, 3)
         XCTAssertTrue(progress.isUnlocked(.arcadeRow))
         XCTAssertEqual(progress.bestCombo, 3)
+        XCTAssertEqual(progress.bestSecondsByLevel[ProgressStore.neonDocksLevelID], 30)
 
         let day = ProgressStore.dayKey(date: Date(timeIntervalSince1970: 1_700_000_000))
         XCTAssertFalse(day.isEmpty)

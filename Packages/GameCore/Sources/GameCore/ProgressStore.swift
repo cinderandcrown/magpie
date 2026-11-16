@@ -47,20 +47,30 @@ public struct PlayerProgress: Equatable, Sendable, Codable {
     public var bestCombo: Int
     public var dailyClears: Int
     public var lastDailyDay: String?
+    /// Best clear time per level (seconds). Lower is better.
+    public var bestSecondsByLevel: [String: Double]
+    /// Soft XP from medals / clears — drives the results level-up sting.
+    public var xp: Int
 
     public init(
         medalsByLevel: [String: LevelMedals] = [:],
         unlockedDistricts: [String] = [DistrictID.neonDocks.rawValue],
         bestCombo: Int = 0,
         dailyClears: Int = 0,
-        lastDailyDay: String? = nil
+        lastDailyDay: String? = nil,
+        bestSecondsByLevel: [String: Double] = [:],
+        xp: Int = 0
     ) {
         self.medalsByLevel = medalsByLevel
         self.unlockedDistricts = unlockedDistricts
         self.bestCombo = bestCombo
         self.dailyClears = dailyClears
         self.lastDailyDay = lastDailyDay
+        self.bestSecondsByLevel = bestSecondsByLevel
+        self.xp = xp
     }
+
+    public var rankLevel: Int { max(1, xp / 3 + 1) }
 
     public func isUnlocked(_ district: DistrictID) -> Bool {
         unlockedDistricts.contains(district.rawValue)
@@ -95,6 +105,13 @@ public struct ProgressStore: Sendable {
         UserDefaults.standard.set(data, forKey: defaultsKey)
     }
 
+    public struct ClearResult: Equatable, Sendable {
+        public var medals: LevelMedals
+        public var isNewBest: Bool
+        public var didLevelUp: Bool
+        public var rankLevel: Int
+    }
+
     /// Compute medals for a clear and merge into progress. Death awards nothing.
     @discardableResult
     public func recordClear(
@@ -104,24 +121,40 @@ public struct ProgressStore: Sendable {
         seconds: Double,
         parSeconds: Double = ProgressStore.defaultParSeconds,
         combo: Int
-    ) -> LevelMedals {
+    ) -> ClearResult {
         var progress = load()
+        let priorLevel = progress.rankLevel
         let earned = LevelMedals(
             finish: true,
             allShinies: shiniesTotal > 0 && shiniesCollected >= shiniesTotal,
             parTime: seconds <= parSeconds
         )
         var existing = progress.medalsByLevel[levelID] ?? LevelMedals()
+        let beforeCount = existing.count
         existing.merge(earned)
         progress.medalsByLevel[levelID] = existing
         progress.bestCombo = max(progress.bestCombo, combo)
+        let prevBest = progress.bestSecondsByLevel[levelID]
+        let isNewBest = prevBest == nil || seconds < (prevBest ?? .greatestFiniteMagnitude)
+        if isNewBest {
+            progress.bestSecondsByLevel[levelID] = seconds
+        }
+        // XP: +1 per newly earned medal slot this clear.
+        let gained = max(0, existing.count - beforeCount)
+        progress.xp += max(1, gained)
         // Unlock Arcade Row after any Neon Docks clear with ≥1 medal.
         if levelID.hasPrefix("neon_docks"), existing.count >= 1,
            !progress.unlockedDistricts.contains(DistrictID.arcadeRow.rawValue) {
             progress.unlockedDistricts.append(DistrictID.arcadeRow.rawValue)
         }
+        let didLevelUp = progress.rankLevel > priorLevel
         save(progress)
-        return earned
+        return ClearResult(
+            medals: earned,
+            isNewBest: isNewBest,
+            didLevelUp: didLevelUp,
+            rankLevel: progress.rankLevel
+        )
     }
 
     public func recordDailyClear(dayKey: String) {

@@ -133,13 +133,21 @@ public struct Sim: Equatable, Sendable {
             }
         }
 
+        // Airborne before integrate/collide — walking must not look like a stomp
+        // just because gravity briefly pulls vy negative on solid ground.
+        let wasAirborne = !b.onGround || b.flopping
         integrate(input: input, bandit: &b, dt: dt)
+        // Snapshot fall intent before collide zeroes vy on landing — tight stomp
+        // hitboxes still connect on the contact frame.
+        let fallSpeed = -b.velocity.y / max(tuning.tileSize, 1)
+        let stompFalling = b.flopping
+            || (wasAirborne && b.velocity.y < 0 && fallSpeed >= tuning.stompMinFallSpeed)
         collide(bandit: &b)
         updateAnim(bandit: &b)
         collectShinies(bandit: &b)
         updateCheckpoints(bandit: &b)
         bankAndExit(bandit: &b)
-        updateMops(bandit: &b, dt: dt)
+        updateMops(bandit: &b, dt: dt, stompFalling: stompFalling)
         updateCombo(bandit: &b, dt: dt)
         hazards(bandit: &b)
 
@@ -413,7 +421,7 @@ public struct Sim: Equatable, Sendable {
         return p.distance(to: bandit.position) < tuning.tileSize * 1.2
     }
 
-    private mutating func updateMops(bandit: inout BanditState, dt: Double) {
+    private mutating func updateMops(bandit: inout BanditState, dt: Double, stompFalling: Bool) {
         for i in state.mops.indices {
             if !state.mops[i].alive {
                 state.mops[i].respawn -= dt
@@ -438,13 +446,11 @@ public struct Sim: Equatable, Sendable {
             }
 
             let d = state.mops[i].position.distance(to: bandit.position)
-            // Stomp hitbox live only on contact: flopping, or falling onto the MOP from above.
-            let fallSpeed = -bandit.velocity.y / max(tuning.tileSize, 1)
-            let stompActive = bandit.flopping
-                || (bandit.velocity.y < 0 && fallSpeed >= tuning.stompMinFallSpeed)
-            if stompActive
-                && d < tuning.stompHitRadius
-                && bandit.position.y > state.mops[i].position.y + 2
+            // Stomp on contact: use pre-collide fall intent so landing frames still connect.
+            let aboveMop = bandit.position.y >= state.mops[i].position.y + halfH * 0.25
+            if stompFalling
+                && d <= tuning.stompHitRadius
+                && aboveMop
             {
                 state.mops[i].alive = false
                 state.mops[i].respawn = 3.5
@@ -468,20 +474,23 @@ public struct Sim: Equatable, Sendable {
                 state.events.append(SimEvent(kind: .shake, position: state.mops[i].position))
                 continue
             }
-            // Hurt on touch
-            if d < tuning.stompHitRadius * 0.85 && bandit.invuln <= 0 {
+            // Hurt on tight contact; suppress only during a real falling stomp window.
+            if d <= tuning.hurtHitRadius && bandit.invuln <= 0 && !(stompFalling && aboveMop) {
                 bandit.hearts -= 1
                 bandit.invuln = tuning.invulnSeconds
                 bandit.velocity.y = tuning.jumpVelocity * tuning.tileSize / 3
-                bandit.velocity.x = -bandit.facing * tuning.runSpeed * tuning.tileSize * 0.4
+                bandit.velocity.x = -bandit.facing * tuning.runSpeed * tuning.tileSize * 0.55
                 bandit.anim = .hurt
-                bandit.animHold = 0.45
+                bandit.animHold = 0.35
                 state.mops[i].anim = .attack
-                state.mops[i].animHold = 0.5
+                state.mops[i].animHold = 0.35
+                // Nudge MOP away so sprites don't sit overlapping for half a second.
+                let push = bandit.facing >= 0 ? -1.0 : 1.0
+                state.mops[i].position.x += push * 10
                 state.events.append(SimEvent(kind: .hurt, position: bandit.position))
                 if bandit.hearts <= 0 {
                     bandit.anim = .death
-                    bandit.animHold = 1.2
+                    bandit.animHold = 1.35
                     fail(.bagged, at: bandit.position)
                 }
             }
@@ -518,7 +527,7 @@ public struct Sim: Equatable, Sendable {
     private mutating func fail(_ reason: FailReason, at pos: Vec2) {
         guard case .playing = state.phase else { return }
         state.bandit.anim = .death
-        state.bandit.animHold = 1.2
+        state.bandit.animHold = 1.35
         state.phase = .failed(reason)
         state.events.append(SimEvent(kind: .fail(reason), position: pos))
     }

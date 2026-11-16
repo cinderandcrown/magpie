@@ -2,7 +2,7 @@
 
 import Foundation
 
-public enum BanditAnim: Equatable, Sendable {
+public enum BanditAnim: Equatable, Hashable, Sendable {
     case idle, walk, run, jump, apex, fall, pounce, wallSlide, hurt, death, pickUp
 }
 
