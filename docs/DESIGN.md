@@ -10,6 +10,18 @@ A cocky masked raccoon runs short neon-city heists: pounce, belly-flop MOPs, ban
 
 **North-star (Nicholas):** the game must be **fun enough that people come back daily**. Retention is designed around a great 30-second loop first, then light optional hooks — never nagging.
 
+## Reference games (Nicholas)
+
+What he returns to / loves — **steal the feeling, never the IP**. No copied names, UI chrome, layouts, art, audio, or mode names from these titles. Original neon-heist framing only.
+
+| Reference | What to take | What never to take |
+| --- | --- | --- |
+| **Clash of Clans** | Return loop: a home you upgrade with stolen loot; timers that finish while you’re away; a reason to check in daily; something to collect every visit. Free-friendly — no nag popups, no pay-to-win. | Village layout, building names, UI cards, troop fantasy, or Supercell branding. |
+| **Star Trek Fleet Command** | Same return-loop pattern: base / roster progress that advances offline; daily goals; collectible progress each session. | Star Trek IP, ship/officer names, starbase UI, or STFC mode labels. |
+| **Call of Duty** | Badass *feel*: heavy punchy hits (hit-stop, screen shake, crisp SFX); a satisfying level-up / rank-up beat; cosmetics and finishers that feel earned in the pass. | Gun names, operator kits, HUD layout, killstreak labels, or CoD branding. |
+
+Derived backlog (below) is gated until the **core slice passes review**. Do not implement in the current mission pass.
+
 ## Retention plan (binding)
 
 ### Core fun first (30-second loop)
@@ -93,6 +105,24 @@ Smoke evidence for this increment: combos, medals on the results card, district 
 - Unlocks a cosmetic flag / achievement.
 
 **Constraints:** original art and code only. No licensed music. Keep it a juicy secret — no feature sprawl into the core loop.
+
+### Hideout return loop (from CoC / STFC feel) — Nicholas
+
+**Gate:** after core-slice review. Original naming/UI/art only.
+
+- **Hideout** home base the raccoon upgrades with stolen Shinies / loot.
+- Upgrades that **finish while you’re away** (offline progress timers).
+- **Daily heist goals** tied to the Hideout / Den visit.
+- **Something to collect every visit** (small, free, non-nagging).
+- **Free-friendly:** no nag purchase popups; no pay-to-win power.
+
+### Badass feel pass (from CoD feel) — Nicholas
+
+**Gate:** after core-slice review. Original cosmetics/finishers only.
+
+- Heavier, punchier hits: tunable hit-stop, screen shake, crisp original SFX.
+- A satisfying **level-up / rank-up** moment (celebration juice, not a paywall).
+- **Badass cosmetics and finishers** in the (free + premium cosmetic) pass — earned in play, never P2W.
 
 ## Unchanged engineering pillars
 
