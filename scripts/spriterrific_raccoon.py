@@ -40,12 +40,19 @@ ANCHOR_BRIEF = (
 
 
 def api_key() -> str:
-    """Normalize the secret: strip whitespace / surrounding quotes / accidental Bearer prefix.
+    """Normalize the secret: strip whitespace, quotes, Bearer/, and NAME= prefixes.
     Never logs or returns a partial key.
     """
     key = (os.environ.get("SPRITERRIFIC_API_KEY") or "").strip()
     if len(key) >= 2 and key[0] == key[-1] and key[0] in ("'", '"'):
         key = key[1:-1].strip()
+    # .env-style paste: SPRITERRIFIC_API_KEY=sk_… (or any NAME=sk_…)
+    if "=" in key and not key.startswith("sk_"):
+        left, _, right = key.partition("=")
+        if left.strip().replace("-", "").replace("_", "").isalnum() and right.strip():
+            key = right.strip()
+            if len(key) >= 2 and key[0] == key[-1] and key[0] in ("'", '"'):
+                key = key[1:-1].strip()
     if key.lower().startswith("bearer "):
         key = key[7:].strip()
     if not key:
@@ -274,11 +281,24 @@ def main() -> None:
     saved = save_artifacts(char_job, run_dir)
     anchor_path = find_anchor_file(run_dir, saved)
     check_anchor(anchor_path)
-    (run_dir / "ANCHOR_REVIEW.txt").write_text(
-        f"anchor={anchor_path}\nbrief={ANCHOR_BRIEF}\npreset=preserve-reference-v1\n"
-        f"job={char_job_id}\nstatus=approved-by-automated-gate\n",
-        encoding="utf-8",
+    me_after_anchor = api("GET", "/api/v1/me")
+    bal_after_anchor = credit_total(me_after_anchor)
+    live_url = f"https://app.spriterrific.com/jobs/{char_job_id}"
+    report = (
+        f"=== ANCHOR REPORT ===\n"
+        f"anchorJobId={char_job_id}\n"
+        f"anchorImage={anchor_path}\n"
+        f"liveUrl={live_url}\n"
+        f"creditsDebited={char_job.get('creditsDebited')}\n"
+        f"creditsRefunded={char_job.get('creditsRefunded')}\n"
+        f"balanceRemaining={bal_after_anchor}\n"
+        f"preset=preserve-reference-v1\n"
+        f"status=approved-by-automated-gate\n"
+        f"brief={ANCHOR_BRIEF}\n"
     )
+    print(report, end="")
+    (run_dir / "ANCHOR_REVIEW.txt").write_text(report, encoding="utf-8")
+    print("Continuing with animations (idle, then run/jump/attack)…")
 
     # --- Idle alone (100) — separate context from locomotion ---
     idle_body = {
