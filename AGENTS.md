@@ -4,6 +4,8 @@ This is the working agent brief for Magpie. Design, originality, pillars, feel b
 
 **How this file relates to the plan:** keep the plan’s rules and ambition; adapt only *who runs where* and *who merges/tags* to our real setup. Every adaptation is logged in `DECISIONS.md`. When an ad-hoc chat brief conflicts with this file or the plan’s design bar, **this file + the plan’s design win** — aim for a badass game; do not sandbag feel or juice.
 
+**Vibe Game Dev methods:** follow `docs/VIBEGAMEDEV_METHODS.md` for pass shape, gyms, Spriterrific art (anchor first — Fire Fox approves before animations; do not block other work while waiting), juice, audio, and smoke QA.
+
 ## 0. How we actually work
 
 | Role | Who | Does |

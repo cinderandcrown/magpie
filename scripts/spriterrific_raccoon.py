@@ -4,14 +4,14 @@
 Hard budget: 500 free credits. Spend plan (Anchor First + preserve-reference):
   - Upload local reference (0)
   - Character job: preserve-reference-v1, actions []     = 30  (anchor only)
-  - Automated anchor check (abort before animations if weak)
-  - Action job: idle (freeze context)                    = 100
-  - Action job: run, jump, attack/stomp                  = 300
-  Total = 430
+  - STOP for Fire Fox approval (docs/VIBEGAMEDEV_METHODS.md)
+  - After Assets/SPRITERRIFIC_ANIMATE: idle (100) + run/jump/attack (300)
+  Total if approved = 430
 
-Safety gates (abort with no spend beyond what's already done):
-  - GET /api/v1/me — abort if total credits < 460
-  - GET /api/v1/jobs — abort if a neon-city-bandit / raccoon job already exists
+Safety gates:
+  - GET /api/v1/me — abort if total credits < 460 before any enqueue
+  - Anchor phase: abort if a neon-city-bandit character job already exists
+  - Animate phase: require --reference-job-id (approved anchor); no second character job
 
 Never prints SPRITERRIFIC_API_KEY.
 """
@@ -28,9 +28,10 @@ from pathlib import Path
 BASE = os.environ.get("SPRITERRIFIC_API_BASE", "https://courteous-mouse-611.convex.site")
 SKILL_VER = "1.6.1"
 CHARACTER_NAME = "neon-city-bandit"
-# Abort threshold (user): require ≥460 available even though planned spend is 430.
 MIN_BALANCE = 460
 PLANNED_SPEND = 430
+ANCHOR_SPEND = 30
+ANIMATE_SPEND = 400
 
 ANCHOR_BRIEF = (
     "original chubby raccoon thief, glowing cyan LED visor mask, dark hoodie with neon "
@@ -46,7 +47,6 @@ def api_key() -> str:
     key = (os.environ.get("SPRITERRIFIC_API_KEY") or "").strip()
     if len(key) >= 2 and key[0] == key[-1] and key[0] in ("'", '"'):
         key = key[1:-1].strip()
-    # .env-style paste: SPRITERRIFIC_API_KEY=sk_… (or any NAME=sk_…)
     if "=" in key and not key.startswith("sk_"):
         left, _, right = key.partition("=")
         if left.strip().replace("-", "").replace("_", "").isalnum() and right.strip():
@@ -84,7 +84,6 @@ def api(method: str, path: str, data: bytes | None = None, content_type: str | N
             return json.loads(body.decode())
     except urllib.error.HTTPError as e:
         err = e.read().decode(errors="replace")
-        # Never include auth header material; body is safe.
         if e.code == 401:
             raise SystemExit(
                 f"HTTP 401 {path}: unauthorized — SPRITERRIFIC_API_KEY secret is present "
@@ -152,34 +151,34 @@ def credit_total(me: dict) -> int:
     return int(me.get("planCredits") or 0) + int(me.get("topupCredits") or 0)
 
 
-def existing_raccoon_jobs() -> list[dict]:
-    """Return prior jobs for this character (any non-canceled status)."""
-    payload = api("GET", "/api/v1/jobs?limit=50")
+def list_jobs(limit: int = 50) -> list[dict]:
+    payload = api("GET", f"/api/v1/jobs?limit={limit}")
     jobs = payload.get("jobs") or payload.get("items") or []
     if isinstance(payload.get("job"), dict):
         jobs = [payload["job"]]
+    return [j for j in jobs if isinstance(j, dict)]
+
+
+def existing_character_jobs() -> list[dict]:
     found = []
-    for j in jobs:
-        if not isinstance(j, dict):
-            continue
+    for j in list_jobs():
+        blob = json.dumps(j).lower()
         name = (j.get("characterName") or j.get("name") or "").lower()
         params = j.get("parameters") or j.get("request") or {}
         pname = str(params.get("characterName") or "").lower()
-        blob = json.dumps(j).lower()
-        if (
-            CHARACTER_NAME in name
-            or CHARACTER_NAME in pname
-            or CHARACTER_NAME in blob
-            or ("raccoon" in name and "bandit" in blob)
-        ):
-            status = j.get("status") or ""
-            if status != "canceled":
-                found.append(j)
+        jtype = (j.get("type") or params.get("type") or "").lower()
+        if CHARACTER_NAME not in name and CHARACTER_NAME not in pname and CHARACTER_NAME not in blob:
+            continue
+        if j.get("status") == "canceled":
+            continue
+        # Prefer character-typed jobs; also catch jobs that produced anchors.
+        if jtype in ("character", "") or "anchor" in blob or jtype == "character":
+            found.append(j)
     return found
 
 
 def check_anchor(path: Path) -> None:
-    """Lightweight gate before spending animation credits. No regenerations."""
+    """Lightweight automated gate; Fire Fox still approves before animations."""
     if not path.is_file() or path.stat().st_size < 8_000:
         raise SystemExit(f"Anchor check failed: missing/too small {path}")
     try:
@@ -197,9 +196,9 @@ def check_anchor(path: Path) -> None:
         w = int(xs.max() - xs.min()) + 1
         if h < 64 or w < 40:
             raise SystemExit(f"Anchor check failed: bbox {w}x{h} too small for phone-readable sprite")
-        print(f"Anchor OK: {path.name} size={im.size} bbox={w}x{h} fill={frac:.1%}")
+        print(f"Anchor OK (auto-gate): {path.name} size={im.size} bbox={w}x{h} fill={frac:.1%}")
     except ImportError:
-        print(f"Anchor OK (no Pillow): {path} bytes={path.stat().st_size}")
+        print(f"Anchor OK (auto-gate, no Pillow): {path} bytes={path.stat().st_size}")
 
 
 def find_anchor_file(run_dir: Path, saved: list[Path]) -> Path:
@@ -212,34 +211,30 @@ def find_anchor_file(run_dir: Path, saved: list[Path]) -> Path:
     raise SystemExit("Anchor artifact not found after character job")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--ref", type=Path, required=True)
-    ap.add_argument("--out", type=Path, default=Path("spriterrific-runs"))
-    ap.add_argument("--dry-run", default="false")
-    args = ap.parse_args()
-    dry = str(args.dry_run).lower() in ("1", "true", "yes")
-
+def preflight(expected_spend: int) -> int:
     me = api("GET", "/api/v1/me")
     if me.get("notice"):
         print(f"NOTICE: {me['notice']}")
     total = credit_total(me)
     print(f"Credits available: {total} (plan={me.get('planCredits')} topup={me.get('topupCredits')})")
-    print(f"Planned spend: {PLANNED_SPEND} (preserve-reference anchor 30 + idle 100 + run/jump/attack 300)")
+    print(f"Expected this phase: {expected_spend} (full plan if approved: {PLANNED_SPEND})")
     print(f"Abort threshold: balance < {MIN_BALANCE}")
-    print(f"Anchor brief (design intent; preserve-reference keeps uploaded art): {ANCHOR_BRIEF}")
-
+    print(f"Anchor brief: {ANCHOR_BRIEF}")
     if total < MIN_BALANCE:
         raise SystemExit(f"ABORT: balance {total} < {MIN_BALANCE} — refusing to enqueue")
+    return total
 
-    prior = existing_raccoon_jobs()
+
+def run_anchor(args: argparse.Namespace) -> None:
+    preflight(ANCHOR_SPEND)
+    prior = existing_character_jobs()
     if prior:
         ids = [j.get("id") or j.get("jobId") for j in prior[:5]]
         raise SystemExit(
-            f"ABORT: raccoon/bandit job(s) already exist ({ids}) — refusing second spend"
+            f"ABORT: neon-city-bandit job(s) already exist ({ids}) — refusing second anchor spend"
         )
 
-    if dry:
+    if str(args.dry_run).lower() in ("1", "true", "yes"):
         print("DRY RUN — gates passed; no upload/enqueue")
         return
 
@@ -257,7 +252,6 @@ def main() -> None:
     upload_id = upload["uploadId"]
     print(f"uploadId={upload_id}")
 
-    # --- Anchor First (30 credits) ---
     char_body = {
         "type": "character",
         "characterName": CHARACTER_NAME,
@@ -281,26 +275,83 @@ def main() -> None:
     saved = save_artifacts(char_job, run_dir)
     anchor_path = find_anchor_file(run_dir, saved)
     check_anchor(anchor_path)
-    me_after_anchor = api("GET", "/api/v1/me")
-    bal_after_anchor = credit_total(me_after_anchor)
+    me_after = api("GET", "/api/v1/me")
+    bal = credit_total(me_after)
     live_url = f"https://app.spriterrific.com/jobs/{char_job_id}"
     report = (
-        f"=== ANCHOR REPORT ===\n"
+        f"=== ANCHOR REPORT (awaiting Fire Fox approval) ===\n"
         f"anchorJobId={char_job_id}\n"
         f"anchorImage={anchor_path}\n"
         f"liveUrl={live_url}\n"
         f"creditsDebited={char_job.get('creditsDebited')}\n"
         f"creditsRefunded={char_job.get('creditsRefunded')}\n"
-        f"balanceRemaining={bal_after_anchor}\n"
+        f"balanceRemaining={bal}\n"
         f"preset=preserve-reference-v1\n"
-        f"status=approved-by-automated-gate\n"
+        f"nextSpendIfApproved={ANIMATE_SPEND} (idle 100 + run/jump/attack 300)\n"
+        f"status=waiting-for-fire-fox\n"
         f"brief={ANCHOR_BRIEF}\n"
     )
     print(report, end="")
     (run_dir / "ANCHOR_REVIEW.txt").write_text(report, encoding="utf-8")
-    print("Continuing with animations (idle, then run/jump/attack)…")
+    pending = {
+        "characterJobId": char_job_id,
+        "anchorImage": str(anchor_path),
+        "liveUrl": live_url,
+        "balanceRemaining": bal,
+        "candidatePromptPreset": "preserve-reference-v1",
+        "anchorBrief": ANCHOR_BRIEF,
+        "status": "waiting-for-fire-fox",
+        "nextSpendIfApproved": ANIMATE_SPEND,
+    }
+    (run_dir / "LEDGER.json").write_text(
+        json.dumps(
+            {
+                **pending,
+                "creditsDebited": int(char_job.get("creditsDebited") or 0),
+                "creditsRefunded": int(char_job.get("creditsRefunded") or 0),
+                "phase": "anchor",
+                "referenceImage": str(ref),
+                "source": "Spriterrific",
+                "owner": "Cinder and Crown LLC",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    # Written by CI into the repo after download — path used for animate gate.
+    pending_path = Path("Assets/SPRITERRIFIC_ANCHOR_PENDING.json")
+    pending_path.parent.mkdir(parents=True, exist_ok=True)
+    pending_path.write_text(json.dumps(pending, indent=2) + "\n", encoding="utf-8")
+    print(
+        "STOPPING after anchor — Fire Fox reviews before animations. "
+        "Other mission work continues. To animate later: place Assets/SPRITERRIFIC_ANIMATE "
+        f"and run --phase=animate --reference-job-id={char_job_id}"
+    )
 
-    # --- Idle alone (100) — separate context from locomotion ---
+
+def run_animate(args: argparse.Namespace) -> None:
+    preflight(ANIMATE_SPEND)
+    char_job_id = (args.reference_job_id or "").strip()
+    if not char_job_id:
+        pending = Path("Assets/SPRITERRIFIC_ANCHOR_PENDING.json")
+        if pending.is_file():
+            char_job_id = str(json.loads(pending.read_text()).get("characterJobId") or "")
+    if not char_job_id:
+        raise SystemExit("Animate phase needs --reference-job-id or Assets/SPRITERRIFIC_ANCHOR_PENDING.json")
+
+    if str(args.dry_run).lower() in ("1", "true", "yes"):
+        print(f"DRY RUN — would animate referenceJobId={char_job_id}")
+        return
+
+    # Confirm anchor job exists / completed
+    payload = api("GET", f"/api/v1/jobs/{char_job_id}")
+    char_job = payload.get("job") or payload
+    if char_job.get("status") not in ("completed", "partial"):
+        raise SystemExit(f"Reference job {char_job_id} not ready: {char_job.get('status')}")
+
+    run_dir = args.out / f"{CHARACTER_NAME}-{char_job_id[-8:]}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
     idle_body = {
         "type": "action",
         "characterName": CHARACTER_NAME,
@@ -320,7 +371,6 @@ def main() -> None:
         raise SystemExit(f"Idle job failed: {idle_job.get('status')}")
     save_artifacts(idle_job, run_dir / "idle")
 
-    # --- run / jump / attack(stomp) (300) ---
     act_body = {
         "type": "action",
         "characterName": CHARACTER_NAME,
@@ -340,19 +390,12 @@ def main() -> None:
         raise SystemExit(f"Action job failed: {act_job.get('status')}")
     save_artifacts(act_job, run_dir / "actions")
 
-    debited = (
-        int(char_job.get("creditsDebited") or 0)
-        + int(idle_job.get("creditsDebited") or 0)
-        + int(act_job.get("creditsDebited") or 0)
-    )
-    refunded = (
-        int(char_job.get("creditsRefunded") or 0)
-        + int(idle_job.get("creditsRefunded") or 0)
-        + int(act_job.get("creditsRefunded") or 0)
-    )
+    me = api("GET", "/api/v1/me")
+    debited = int(idle_job.get("creditsDebited") or 0) + int(act_job.get("creditsDebited") or 0)
+    refunded = int(idle_job.get("creditsRefunded") or 0) + int(act_job.get("creditsRefunded") or 0)
     ledger = {
+        "phase": "animate",
         "anchorBrief": ANCHOR_BRIEF,
-        "referenceImage": str(ref),
         "candidatePromptPreset": "preserve-reference-v1",
         "characterJobId": char_job_id,
         "idleJobId": idle_job_id,
@@ -360,6 +403,7 @@ def main() -> None:
         "creditsDebited": debited,
         "creditsRefunded": refunded,
         "creditsNet": debited - refunded,
+        "balanceRemaining": credit_total(me),
         "plannedSpend": PLANNED_SPEND,
         "source": "Spriterrific",
         "owner": "Cinder and Crown LLC",
@@ -368,6 +412,20 @@ def main() -> None:
     (run_dir / "LEDGER.json").write_text(json.dumps(ledger, indent=2), encoding="utf-8")
     print(json.dumps(ledger, indent=2))
     print(f"Done. Artifacts in {run_dir}")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ref", type=Path, default=Path("Assets/Generated/sprites/raccoon/idle.png"))
+    ap.add_argument("--out", type=Path, default=Path("spriterrific-runs"))
+    ap.add_argument("--dry-run", default="false")
+    ap.add_argument("--phase", choices=("anchor", "animate"), default="anchor")
+    ap.add_argument("--reference-job-id", default="")
+    args = ap.parse_args()
+    if args.phase == "anchor":
+        run_anchor(args)
+    else:
+        run_animate(args)
 
 
 if __name__ == "__main__":
