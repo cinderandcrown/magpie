@@ -178,26 +178,8 @@ public struct SmokeBrain: Equatable, Sendable {
             let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
             let mask2Ok = Self.smokeFlagExists("smoke_mask2_ok.txt")
             // After first Mask shot: if Mask dropped, hunt MOPs again for re-entry.
-            if maskOk, !mask2Ok, !b.maskMode, let mop = nearestMop(sim: sim) {
-                let dx = mop.position.x - b.position.x
-                var moveX: Double = dx < -8 ? -0.25 : 1.0
-                var jumpPressed = false
-                var jumpHeld = false
-                var pouncePressed = false
-                if b.onGround || b.coyote > 0 {
-                    if abs(dx) < tile * 5.0 { jumpPressed = true; jumpHeld = true }
-                } else if b.velocity.y > 0 {
-                    jumpHeld = true
-                } else if !b.flopping {
-                    pouncePressed = true
-                }
-                if tx <= 5 { moveX = max(moveX, 0.85) }
-                return InputFrame(
-                    moveX: moveX,
-                    jumpPressed: jumpPressed,
-                    jumpHeld: jumpHeld || jumpPressed,
-                    pouncePressed: pouncePressed
-                )
+            if maskOk, !mask2Ok, !b.maskMode {
+                return maskReentryHuntInput(sim: sim, tx: tx, ty: ty)
             }
             // Hold on deck for Mask screenshot — maskTimer keeps maskOn=1 while we wait.
             var moveX: Double = 0.08
@@ -375,6 +357,56 @@ public struct SmokeBrain: Equatable, Sendable {
             moveX = b.onWallRight ? -0.55 : 0.85
         }
         return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed)
+    }
+
+    /// Drop from rooftops if needed, then stomp-hunt for Mask re-entry.
+    private func maskReentryHuntInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
+        let b = sim.state.bandit
+        let tile = sim.tuning.tileSize
+        let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? b.position.y
+        // Prefer street-deck MOPs for the second Mask (opening pack / patrols).
+        let streetMops = sim.state.mops.filter {
+            $0.alive && abs($0.position.y - streetY) < tile * 2.5
+        }
+        let mop = streetMops.min(by: { $0.position.distance(to: b.position) < $1.position.distance(to: b.position) })
+            ?? nearestMop(sim: sim)
+
+        // Still perched after the rooftop beat — drop through one-ways / walk off ledges.
+        if b.position.y > streetY + tile * 1.2 {
+            let edgeR = !sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty - 1))
+                || sim.map.tile(atX: tx + 1, y: ty - 1) == .oneWay
+            if !b.onGround {
+                return InputFrame(moveX: 0.85, moveY: -1, pouncePressed: !b.flopping)
+            }
+            if edgeR {
+                return InputFrame(moveX: 1, moveY: -1)
+            }
+            return InputFrame(moveX: 1, moveY: -1, jumpPressed: false, jumpHeld: false)
+        }
+
+        guard let mop else {
+            return InputFrame(moveX: 1.0)
+        }
+        let dx = mop.position.x - b.position.x
+        var moveX: Double = dx < -8 ? -0.35 : 1.0
+        var jumpPressed = false
+        var jumpHeld = false
+        var pouncePressed = false
+        if b.onGround || b.coyote > 0 {
+            if abs(dx) < tile * 5.5 { jumpPressed = true; jumpHeld = true }
+        } else if b.velocity.y > 0 {
+            jumpHeld = true
+        } else if !b.flopping {
+            pouncePressed = true
+            jumpHeld = true
+        }
+        if tx <= 5 { moveX = max(moveX, 0.85) }
+        return InputFrame(
+            moveX: moveX,
+            jumpPressed: jumpPressed,
+            jumpHeld: jumpHeld || jumpPressed,
+            pouncePressed: pouncePressed
+        )
     }
 
     /// Drive toward latch / one-way climb for the rooftop-route smoke still + clip.
