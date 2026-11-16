@@ -221,8 +221,9 @@ public final class HeistScene: SKScene {
     private func buildParallax() {
         // Cover the full viewport height so the neon city is visible behind platforms.
         let viewH = size.height / Self.worldZoom
-        let h = max(viewH * 1.35, 720)
-        let maxPx: CGFloat = 1280
+        let h = max(viewH * 1.25, 680)
+        // Cap plate resolution — 1280px tiles were crushing simulator FPS.
+        let maxPx: CGFloat = 960
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
 
         func tileLayer(
@@ -233,7 +234,9 @@ public final class HeistScene: SKScene {
             neonBoost: Bool
         ) {
             let width = max(node.size.width, 1)
-            let copies = max(3, Int(ceil((mapW + size.width) / width)) + 1)
+            // Cover the camera lead without over-tiling the full map width.
+            let cover = min(mapW, size.width / Self.worldZoom * 4) + width
+            let copies = max(2, Int(ceil(cover / width)) + 1)
             for i in 0..<copies {
                 let plate = node.copy() as? SKSpriteNode ?? SKSpriteNode(texture: node.texture, size: node.size)
                 plate.position = CGPoint(x: CGFloat(i) * width * 0.92, y: y)
@@ -242,12 +245,12 @@ public final class HeistScene: SKScene {
                 // wash toward muted purple-gray (that hid magenta/teal and dimmed the city).
                 if neonBoost {
                     plate.color = SKColor(red: 1.0, green: 0.55, blue: 0.95, alpha: 1)
-                    plate.colorBlendFactor = 0.16
+                    plate.colorBlendFactor = 0.18
                     plate.alpha = 1.0
                 } else {
                     plate.color = SKColor(red: 0.55, green: 0.85, blue: 1.0, alpha: 1)
                     plate.colorBlendFactor = 0.10
-                    plate.alpha = 0.96
+                    plate.alpha = 0.95
                 }
                 parent.addChild(plate)
             }
@@ -258,15 +261,19 @@ public final class HeistScene: SKScene {
         if let far = ArtCatalog.background(.farSkyline, height: h, maxPixel: maxPx) {
             tileLayer(far, into: parallaxFar, y: midY + 60, z: -30, neonBoost: false)
         }
-        let gridW = max(mapW + size.width, 1400)
-        let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.7)
+        let gridW = min(max(mapW * 0.5, size.width / Self.worldZoom * 3), 1800)
+        let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.55)
         grid.position = CGPoint(x: gridW * 0.28, y: midY)
-        grid.alpha = 0.45
+        grid.alpha = 0.4
         parallaxFar.addChild(grid)
-        if let mid = ArtCatalog.background(.midBuildings, height: h * 1.15, maxPixel: maxPx) {
+        if let mid = ArtCatalog.background(.midBuildings, height: h * 1.1, maxPixel: maxPx) {
             tileLayer(mid, into: parallaxMid, y: midY + 10, z: -20, neonBoost: true)
         }
-        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.95, maxPixel: maxPx) {
+        // Bright neon signage in the mid band — magenta/teal pixels for the palette gate.
+        let signs = ArtCatalog.neonSignageStrip(width: mapW * 0.55, height: 80)
+        signs.position = CGPoint(x: mapW * 0.22, y: midY + 70)
+        parallaxMid.addChild(signs)
+        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.9, maxPixel: maxPx) {
             tileLayer(near, into: parallaxNear, y: midY - 40, z: -10, neonBoost: false)
         }
 
@@ -354,8 +361,8 @@ public final class HeistScene: SKScene {
                 let below = sim.map.tile(atX: x, y: y - 1)
                 let openBelow = !sim.map.isSolid(below) && below != .water
 
-                // Occasional crate / pipe on walkable tops (not every tile).
-                if !propTextures.isEmpty, !openBelow, (x + y * 5) % 11 == 0 {
+                // Occasional crate / pipe on walkable tops (sparse — keep FPS headroom).
+                if !propTextures.isEmpty, !openBelow, (x + y * 5) % 17 == 0 {
                     let tex = propTextures[propI % propTextures.count]
                     propI += 1
                     let n = SKSpriteNode(texture: tex, size: CGSize(width: tile * 0.7, height: tile * 0.7))
@@ -419,18 +426,12 @@ public final class HeistScene: SKScene {
                     body.position = CGPoint(x: pos.x, y: pos.y - tile * 0.05)
                     body.zPosition = 1
                     world.addChild(body)
-                    let surface = SKShapeNode(rectOf: CGSize(width: tile * 1.02, height: 3))
-                    surface.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.85)
-                    surface.strokeColor = .clear
-                    surface.glowWidth = 1
+                    let surface = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.85), size: CGSize(width: tile * 1.02, height: 3))
                     surface.position = CGPoint(x: pos.x, y: pos.y + tile * 0.35)
                     surface.zPosition = 1.2
                     world.addChild(surface)
                 case .spike:
-                    let n = SKShapeNode(rectOf: CGSize(width: tile * 0.8, height: tile * 0.5))
-                    n.fillColor = ArtCatalog.neonPink
-                    n.strokeColor = .clear
-                    n.glowWidth = 2
+                    let n = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.8, height: tile * 0.5))
                     n.position = pos
                     n.zPosition = 5
                     world.addChild(n)

@@ -395,23 +395,55 @@ public enum ArtCatalog {
 
     public static func rainEmitter(sceneSize: CGSize) -> SKEmitterNode {
         let e = SKEmitterNode()
-        e.particleBirthRate = 55
+        // Keep rain readable without crushing simulator FPS (smoke gate ≥55).
+        e.particleBirthRate = 22
         e.numParticlesToEmit = 0
-        e.particleLifetime = 1.1
-        e.particleSize = CGSize(width: 1.5, height: 10)
-        e.particleColor = neonCyan.withAlphaComponent(0.55)
+        e.particleLifetime = 0.95
+        e.particleSize = CGSize(width: 1.5, height: 9)
+        e.particleColor = neonCyan.withAlphaComponent(0.5)
         e.particleColorBlendFactor = 1
-        e.particleAlpha = 0.55
-        e.particleAlphaRange = 0.25
-        e.particleSpeed = 280
-        e.particleSpeedRange = 80
+        e.particleAlpha = 0.5
+        e.particleAlphaRange = 0.2
+        e.particleSpeed = 260
+        e.particleSpeedRange = 60
         e.emissionAngle = -.pi / 2 - 0.25
         e.emissionAngleRange = 0.08
         e.particleRotation = -.pi / 2 - 0.25
         e.position = CGPoint(x: 0, y: sceneSize.height * 0.55)
-        e.particlePositionRange = CGVector(dx: sceneSize.width * 1.2, dy: 20)
+        e.particlePositionRange = CGVector(dx: sceneSize.width * 1.1, dy: 16)
         e.zPosition = 70
         return e
+    }
+
+    /// Bright neon signage strips for the mid parallax band (palette + skyline read).
+    public static func neonSignageStrip(width: CGFloat, height: CGFloat) -> SKNode {
+        let root = SKNode()
+        let colors: [SKColor] = [
+            neonPink, neonCyan, neonLime, neonOrange,
+            SKColor(red: 1.0, green: 0.2, blue: 0.85, alpha: 1),
+            SKColor(red: 0.2, green: 0.95, blue: 1.0, alpha: 1),
+        ]
+        var x: CGFloat = -width * 0.4
+        var i = 0
+        while x < width * 0.45 {
+            let w = CGFloat(28 + (i % 5) * 10)
+            let h = CGFloat(10 + (i % 3) * 6)
+            let sign = SKSpriteNode(color: colors[i % colors.count], size: CGSize(width: w, height: h))
+            sign.position = CGPoint(x: x, y: CGFloat((i % 4) * 18) - 20)
+            sign.alpha = 0.92
+            sign.zPosition = 1
+            root.addChild(sign)
+            // Soft glow twin behind the sign.
+            let glow = SKSpriteNode(color: colors[i % colors.count], size: CGSize(width: w * 1.35, height: h * 1.8))
+            glow.position = sign.position
+            glow.alpha = 0.35
+            glow.zPosition = 0
+            root.addChild(glow)
+            x += w + CGFloat(18 + (i % 4) * 8)
+            i += 1
+        }
+        root.zPosition = -19
+        return root
     }
 
     /// Palette anchors for smoke side-by-side check (Game Plan bright magenta + teal).
