@@ -518,30 +518,30 @@ public final class BanditVisual: SKNode {
         rig = SKNode()
         rig.name = "rig"
 
-        // Full-body sheet kept for hurt/colorize hooks + air poses; rig is the living silhouette.
+        // Primary silhouette = project sheets (run/jump/fall). Procedural limbs amplify
+        // motion without replacing the readable character art (zero new art budget).
         sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 72, height: 72))
         sprite.name = "sprite"
-        sprite.zPosition = 0.5
-        sprite.alpha = 0.001
+        sprite.zPosition = 1
         ArtCatalog.applyDespill(sprite)
 
         torso = SKSpriteNode(texture: parts.torso, size: CGSize(width: 36, height: 34))
         torso.name = "torso"
         torso.position = CGPoint(x: 0, y: -2)
-        torso.zPosition = 0.5
+        torso.alpha = 0
         ArtCatalog.applyDespill(torso)
 
         head = SKSpriteNode(texture: parts.head, size: CGSize(width: 40, height: 36))
         head.name = "head"
         head.position = CGPoint(x: 2, y: 20)
-        head.zPosition = 0.8
+        head.alpha = 0
         ArtCatalog.applyDespill(head)
 
         armB = SKSpriteNode(texture: parts.arm, size: CGSize(width: 18, height: 26))
         armB.name = "armB"
         armB.anchorPoint = CGPoint(x: 0.5, y: 1.0)
         armB.position = CGPoint(x: -14, y: 10)
-        armB.zPosition = 0.2
+        armB.alpha = 0
         ArtCatalog.applyDespill(armB)
 
         armF = SKSpriteNode(texture: parts.arm, size: CGSize(width: 18, height: 26))
@@ -549,28 +549,29 @@ public final class BanditVisual: SKNode {
         armF.anchorPoint = CGPoint(x: 0.5, y: 1.0)
         armF.position = CGPoint(x: 14, y: 10)
         armF.xScale = -1
-        armF.zPosition = 0.6
+        armF.alpha = 0
         ArtCatalog.applyDespill(armF)
 
         legB = SKSpriteNode(texture: parts.leg, size: CGSize(width: 20, height: 28))
         legB.name = "legB"
         legB.anchorPoint = CGPoint(x: 0.5, y: 1.0)
         legB.position = CGPoint(x: -8, y: -14)
-        legB.zPosition = 0.2
+        legB.alpha = 0
         ArtCatalog.applyDespill(legB)
 
         legF = SKSpriteNode(texture: parts.leg, size: CGSize(width: 20, height: 28))
         legF.name = "legF"
         legF.anchorPoint = CGPoint(x: 0.5, y: 1.0)
         legF.position = CGPoint(x: 8, y: -14)
-        legF.zPosition = 0.6
+        legF.alpha = 0
         ArtCatalog.applyDespill(legF)
 
+        // Visible procedural tail — clear living cue behind the sheet.
         tail = SKSpriteNode(texture: parts.tail, size: CGSize(width: 36, height: 24))
         tail.name = "tail"
         tail.anchorPoint = CGPoint(x: 0.9, y: 0.5)
-        tail.position = CGPoint(x: -14, y: 0)
-        tail.zPosition = -0.2
+        tail.position = CGPoint(x: -16, y: -2)
+        tail.zPosition = -0.3
         ArtCatalog.applyDespill(tail)
 
         shadow = SKShapeNode(ellipseOf: CGSize(width: 40, height: 10))
@@ -646,63 +647,69 @@ public final class BanditVisual: SKNode {
         }
         bobPhase += dt
         if anim == .idle || anim == .run {
-            head.position.y = 20 + sin(bobPhase * (anim == .run ? 14 : 3)) * (anim == .run ? 2.4 : 1.3)
+            sprite.position.y = sin(bobPhase * (anim == .run ? 15 : 3.2)) * (anim == .run ? 2.6 : 1.3)
+        } else {
+            sprite.position.y = 0
         }
-        let parts = [torso, head, armF, armB, legF, legB, tail]
         if maskMode {
-            for n in parts {
-                n.color = ArtCatalog.neonCyan
-                n.colorBlendFactor = 0.28
-            }
             sprite.color = ArtCatalog.neonCyan
             sprite.colorBlendFactor = 0.22
+            tail.color = ArtCatalog.neonCyan
+            tail.colorBlendFactor = 0.25
             maskGlow.isHidden = false
             maskGlow.alpha = 0.55 + 0.35 * sin(bobPhase * 5)
             maskGlow.setScale(1.15 + 0.18 * sin(bobPhase * 6))
         } else {
-            for n in parts {
-                n.color = ArtCatalog.neonPink
-                n.colorBlendFactor = 0.1
-            }
             sprite.color = ArtCatalog.neonPink
             sprite.colorBlendFactor = 0.08
+            tail.color = .white
+            tail.colorBlendFactor = 0
             maskGlow.isHidden = true
             maskGlow.alpha = 0
             maskGlow.setScale(1)
         }
-        // Air poses: briefly reveal the drawn sheet under the rig for a clear silhouette read.
-        switch anim {
-        case .jump, .apex:
-            sprite.alpha = 0.55
-            sprite.texture = jumpTex ?? idleTex
-        case .fall, .wallSlide:
-            sprite.alpha = 0.55
-            sprite.texture = fallTex ?? idleTex
-        case .pounce:
-            sprite.alpha = 0.55
-            sprite.texture = (flopTex ?? pounceTex) ?? idleTex
-        default:
-            sprite.alpha = 0.001
-            sprite.texture = (maskMode ? maskTex : nil) ?? idleTex
+        // Keep sheet texture in sync when the frames action is not running.
+        if sprite.action(forKey: "frames") == nil {
+            switch anim {
+            case .jump, .apex: sprite.texture = jumpTex ?? idleTex
+            case .fall, .wallSlide: sprite.texture = fallTex ?? idleTex
+            case .pounce: sprite.texture = (flopTex ?? pounceTex) ?? idleTex
+            case .run where runTextures.count > 1:
+                let idx = Int(bobPhase * 14) % runTextures.count
+                sprite.texture = runTextures[idx]
+            default:
+                sprite.texture = (maskMode ? maskTex : nil) ?? idleTex
+            }
         }
         tickMotionTrail(anim: anim, maskMode: maskMode, dt: dt, smokeLite: smokeLite)
     }
 
     private func applyPose(_ anim: BanditAnim) {
         stopLimbActions()
+        sprite.removeAction(forKey: "frames")
         switch anim {
         case .run:
             startRunCycle()
+            if runTextures.count > 1 {
+                sprite.run(SKAction.repeatForever(
+                    SKAction.animate(with: runTextures, timePerFrame: 0.065)
+                ), withKey: "frames")
+            }
         case .jump:
             poseJump()
+            sprite.texture = jumpTex ?? idleTex
         case .apex:
             poseApex()
+            sprite.texture = jumpTex ?? idleTex
         case .fall, .wallSlide:
             poseFall()
+            sprite.texture = fallTex ?? idleTex
         case .pounce:
             posePounce()
+            sprite.texture = (flopTex ?? pounceTex) ?? idleTex
         case .idle:
             startIdleMotion()
+            sprite.texture = idleTex
         }
     }
 

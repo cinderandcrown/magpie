@@ -570,14 +570,18 @@ for label, im in (("midrun", midrun), ("stomp", stomp)):
         raise SystemExit(f"FAIL: {label} playfield backdrop is near-white ({frac:.1%}) — night sky missing")
 
 # Mask Mode must stay readable — reject full-screen cyan/white blowout.
+# Note: pure cyan (low R, high G/B) can pass a naive luminance>220 check — gate cyan explicitly.
 mw, mh = mask.size
 mbox = (int(mw * 0.15), int(mh * 0.25), int(mw * 0.85), int(mh * 0.7))
 mpx = list(mask.crop(mbox).getdata())
 avg = tuple(sum(c[i] for c in mpx) // len(mpx) for i in range(3))
-blow = sum(1 for r, g, b in mpx if (r + g + b) / 3 > 220) / len(mpx)
-print(f"mask center avg={avg} blowout={blow:.3%}")
-if blow > 0.45 or (avg[1] > 230 and avg[2] > 230 and avg[0] > 140):
-    raise SystemExit(f"FAIL: Mask Mode full-screen wash hides gameplay (avg={avg}, blowout={blow:.1%})")
+blow = sum(1 for r, g, b in mpx if (r + g + b) / 3 > 200) / len(mpx)
+cyan = sum(1 for r, g, b in mpx if g > 180 and b > 180 and g > r + 40 and b > r + 40) / len(mpx)
+print(f"mask center avg={avg} blowout={blow:.3%} cyanWash={cyan:.3%}")
+if blow > 0.28 or cyan > 0.35 or (avg[1] > 200 and avg[2] > 200 and avg[1] > avg[0] + 50):
+    raise SystemExit(
+        f"FAIL: Mask Mode full-screen wash hides gameplay (avg={avg}, blowout={blow:.1%}, cyan={cyan:.1%})"
+    )
 
 # Side-by-side vs mid_buildings reference strip
 rw, rh = 480, 270

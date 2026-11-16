@@ -281,22 +281,25 @@ public final class HeistScene: SKScene {
         maskVignette.alpha = 0
         maskVignette.isHidden = true
         overlay.addChild(maskVignette)
-        // Tasteful grade: alpha-blend ≤18% cyan/magenta — never additive full-screen blowout.
-        let wash = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.16), size: CGSize(width: 40, height: 40))
+        // Tasteful grade — SKSpriteNode(color:) ignores UIColor alpha; set node.alpha instead.
+        // Cap ≤15% cyan / ≤8% magenta so Mask Mode never reads as a cyan whiteout.
+        let wash = SKSpriteNode(color: ArtCatalog.neonCyan, size: CGSize(width: 40, height: 40))
         wash.name = "wash"
         wash.blendMode = .alpha
+        wash.alpha = 0.14
         maskVignette.addChild(wash)
-        let magenta = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.08), size: CGSize(width: 40, height: 40))
+        let magenta = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: 40, height: 40))
         magenta.name = "washMagenta"
         magenta.blendMode = .alpha
+        magenta.alpha = 0.07
         magenta.zPosition = 1
         maskVignette.addChild(magenta)
         // Soft edge vignette (darken corners) — keeps center readable.
-        let edge = SKSpriteNode(color: SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 0.35), size: CGSize(width: 40, height: 40))
+        let edge = SKSpriteNode(color: SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 1), size: CGSize(width: 40, height: 40))
         edge.name = "vignetteEdge"
         edge.blendMode = .alpha
         edge.zPosition = 2
-        edge.alpha = 0.5
+        edge.alpha = 0.28
         maskVignette.addChild(edge)
     }
 
@@ -1537,8 +1540,11 @@ public final class HeistScene: SKScene {
                 }
                 bandit.emitMaskTrail()
             }
-            // Pulse 0.75…1.0 of the already-low 16% wash — never blow out the frame.
-            maskVignette.alpha = 0.75 + 0.2 * sin(maskGradePulse * 3.5)
+            // Parent stays fully on; child alphas carry the ≤15% grade (pulse gently).
+            maskVignette.alpha = 1
+            if let wash = maskVignette.childNode(withName: "wash") as? SKSpriteNode {
+                wash.alpha = 0.11 + 0.04 * sin(maskGradePulse * 3.5)
+            }
             if !lastMaskMode {
                 applyMaskParallaxGrade(active: true, pulse: 1)
             }
@@ -1936,10 +1942,12 @@ public final class HeistScene: SKScene {
     private func flashMask() {
         // Brief ≤120ms low-alpha flash, then subtle sustained grade. Gameplay stays readable.
         maskVignette.isHidden = false
-        maskVignette.alpha = 0
-        maskVignette.run(SKAction.fadeAlpha(to: 0.9, duration: 0.16))
+        maskVignette.alpha = 1
+        if let wash = maskVignette.childNode(withName: "wash") as? SKSpriteNode {
+            wash.alpha = 0.14
+        }
         applyMaskParallaxGrade(active: true, pulse: 1)
-        _ = tryFullscreenFlash(color: ArtCatalog.neonCyan, peakAlpha: 0.18, duration: 0.11)
+        _ = tryFullscreenFlash(color: ArtCatalog.neonCyan, peakAlpha: 0.16, duration: 0.1)
         neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 5 : 12)
         neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 2 : 6)
         let rings = smokeEnabled ? 2 : 3

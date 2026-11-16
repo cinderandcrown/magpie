@@ -6,9 +6,10 @@ All gameplay art and audio in this repository are either:
 2. **Procedural derivatives** of those originals (crops / tint / neon-grid bake / limb-rig parts).
 
 No third-party character packs were imported for the raccoon. Zero art budget for Mission 1
-animation: the living run / jump / fall / land motion is a **procedural limb/tail/head rig**
-built from the project’s own `raccoon/idle` sheet (crops + palette-matched capsule limbs /
-ringed tail) and driven with SpriteKit `SKAction`s. Commercial-safe; no ripped or GPL-only art.
+animation: living motion comes from the project’s own run/jump/fall sheets plus a
+**procedural limb/tail/head rig** (crops + palette-matched capsule limbs / ringed tail)
+driven with SpriteKit `SKAction`s (run bounce, jump/fall/land poses, squash-stretch, tail wag).
+Commercial-safe; no ripped or GPL-only art.
 
 Also see root `ASSETS_LICENSES.md` (repo-wide third-party log) and `docs/ASSETS.md`.
 
