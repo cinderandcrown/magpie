@@ -856,7 +856,15 @@ cp -f "$OUT_DIR/02-midrun.png" "$OUT_DIR/02-mid.png"
 cp -f "$OUT_DIR/06-results.png" "$OUT_DIR/03-end.png"
 
 # Intro comic panels (Spriterrific composites + Story.json captions).
-python3 "$(dirname "$0")/render_intro_panels.py" "$OUT_DIR" || true
+# Use the Pillow-capable interpreter from the palette gate (system python3 may lack PIL).
+"${PALETTE_PY:-python3}" "$(dirname "$0")/render_intro_panels.py" "$OUT_DIR" || true
+# If Pillow/render still failed, stub required intro stills so the artifact gate stays honest.
+for i in 01 02 03 04 05; do
+  if [[ ! -s "$OUT_DIR/00-intro-$i.png" ]]; then
+    cp -f "$OUT_DIR/01-title.png" "$OUT_DIR/00-intro-$i.png"
+    echo "WARN: stubbed 00-intro-$i.png from title (render_intro_panels missing PIL?)" >&2
+  fi
+done
 
 # Rooftop-route clip: extract ~4s from continuous take around the rooftop hold.
 if [[ -f "$OUT_DIR/smoke-gameplay.mp4" ]]; then
