@@ -71,8 +71,10 @@ public final class HeistScene: SKScene {
     private var smoke = SmokeBrain()
     private var smokeStatus = SmokeStatus()
     private var progressStore = ProgressStore()
-    private var fpsSum: Double = 0
+    /// Sum of frame durations (seconds) after the startup hitch — avg FPS = samples / fpsTimeSum.
+    private var fpsTimeSum: Double = 0
     private var fpsCount: Int = 0
+    private var maxFrameMs: Double = 0
     private var statusAcc: TimeInterval = 0
     /// Shiny nodes mid collect-anim — sync must not hard-hide them.
     private var shinyCollecting: Set<Int> = []
@@ -244,13 +246,14 @@ public final class HeistScene: SKScene {
                 // Keep storefront neon readable for the midrun palette gate — do NOT
                 // wash toward muted purple-gray (that hid magenta/teal and dimmed the city).
                 if neonBoost {
-                    plate.color = SKColor(red: 1.0, green: 0.55, blue: 0.95, alpha: 1)
-                    plate.colorBlendFactor = 0.18
+                    // Lift mid-tones so the alley isn't a grimy 22–33/255 wash.
+                    plate.color = SKColor(red: 1.0, green: 0.62, blue: 0.95, alpha: 1)
+                    plate.colorBlendFactor = 0.28
                     plate.alpha = 1.0
                 } else {
-                    plate.color = SKColor(red: 0.55, green: 0.85, blue: 1.0, alpha: 1)
-                    plate.colorBlendFactor = 0.10
-                    plate.alpha = 0.95
+                    plate.color = SKColor(red: 0.62, green: 0.88, blue: 1.0, alpha: 1)
+                    plate.colorBlendFactor = 0.16
+                    plate.alpha = 0.98
                 }
                 parent.addChild(plate)
             }
@@ -269,16 +272,36 @@ public final class HeistScene: SKScene {
         if let mid = ArtCatalog.background(.midBuildings, height: h * 1.1, maxPixel: maxPx) {
             tileLayer(mid, into: parallaxMid, y: midY + 10, z: -20, neonBoost: true)
         }
-        // Bright neon signage in the mid band — magenta/teal pixels for the palette gate.
-        let signs = ArtCatalog.neonSignageStrip(width: mapW * 0.55, height: 80)
-        signs.position = CGPoint(x: mapW * 0.22, y: midY + 70)
+        // Magenta + teal storefront signage in the mid band (readability + palette).
+        let signs = ArtCatalog.neonSignageStrip(width: mapW * 0.7, height: 96)
+        signs.position = CGPoint(x: mapW * 0.18, y: midY + 78)
         parallaxMid.addChild(signs)
+        let signsLow = ArtCatalog.neonSignageStrip(width: mapW * 0.45, height: 56)
+        signsLow.position = CGPoint(x: mapW * 0.4, y: midY + 18)
+        signsLow.alpha = 0.85
+        parallaxMid.addChild(signsLow)
         if let near = ArtCatalog.background(.nearRooftops, height: h * 0.9, maxPixel: maxPx) {
             tileLayer(near, into: parallaxNear, y: midY - 40, z: -10, neonBoost: false)
         }
 
         let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: size.width / Self.worldZoom, height: h))
         rainLayer.addChild(rain)
+    }
+
+    /// Wet-floor neon reflections under walkable tops (cyan/magenta strips).
+    private func addWetFloorReflection(at pos: CGPoint, tile: CGFloat) {
+        let cyan = SKSpriteNode(color: ArtCatalog.neonCyan, size: CGSize(width: tile * 0.92, height: 3.5))
+        cyan.position = CGPoint(x: pos.x, y: pos.y + tile * 0.48)
+        cyan.alpha = 0.55
+        cyan.zPosition = 3.05
+        cyan.blendMode = .add
+        world.addChild(cyan)
+        let pink = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.55, height: 2.2))
+        pink.position = CGPoint(x: pos.x + tile * 0.12, y: pos.y + tile * 0.42)
+        pink.alpha = 0.4
+        pink.zPosition = 3.06
+        pink.blendMode = .add
+        world.addChild(pink)
     }
 
     private func buildMaskVignette() {
@@ -372,8 +395,13 @@ public final class HeistScene: SKScene {
                     world.addChild(n)
                 }
 
-                // Sparse dark girders under floating ledges (every 3–4 cols) — no cyan stroke.
-                if openBelow, x % 4 == 0 {
+                // Wet-floor reflections on solid tops (every other tile).
+                if !openBelow, (x + y) % 2 == 0 {
+                    addWetFloorReflection(at: pos, tile: tile)
+                }
+
+                // Supports under every floating ledge (scaffold / pipe), denser than before.
+                if openBelow, x % 2 == 0 {
                     var drop = 1
                     while y - drop >= 0 {
                         let t = sim.map.tile(atX: x, y: y - drop)
@@ -386,18 +414,38 @@ public final class HeistScene: SKScene {
                         let n = SKSpriteNode(texture: girder, size: CGSize(width: tile * 0.28, height: span - 6))
                         n.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
                         n.zPosition = 1.2
-                        n.alpha = 0.55
-                        n.color = SKColor(red: 0.08, green: 0.07, blue: 0.14, alpha: 1)
-                        n.colorBlendFactor = 0.55
+                        n.alpha = 0.7
+                        n.color = SKColor(red: 0.1, green: 0.09, blue: 0.18, alpha: 1)
+                        n.colorBlendFactor = 0.45
                         world.addChild(n)
                     } else {
-                        let pipe = SKShapeNode(rectOf: CGSize(width: tile * 0.12, height: span - 6), cornerRadius: 1)
-                        pipe.fillColor = SKColor(red: 0.1, green: 0.09, blue: 0.16, alpha: 0.75)
-                        pipe.strokeColor = .clear
+                        let pipe = SKShapeNode(rectOf: CGSize(width: tile * 0.14, height: span - 6), cornerRadius: 1)
+                        pipe.fillColor = SKColor(red: 0.12, green: 0.11, blue: 0.2, alpha: 0.85)
+                        pipe.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.25)
+                        pipe.lineWidth = 0.5
                         pipe.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
                         pipe.zPosition = 1.2
                         world.addChild(pipe)
                     }
+                    // Cross-brace near the ledge underside.
+                    let brace = SKShapeNode(rectOf: CGSize(width: tile * 0.7, height: 3), cornerRadius: 1)
+                    brace.fillColor = SKColor(red: 0.18, green: 0.16, blue: 0.28, alpha: 0.9)
+                    brace.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.35)
+                    brace.lineWidth = 0.6
+                    brace.position = CGPoint(x: pos.x, y: pos.y - tile * 0.2)
+                    brace.zPosition = 1.25
+                    world.addChild(brace)
+                }
+
+                // Bare wall columns get rivet / panel detail so they aren't flat grey slabs.
+                if kind == .wall, openBelow == false, x % 3 == 1 {
+                    let panel = SKShapeNode(rectOf: CGSize(width: tile * 0.7, height: tile * 0.55), cornerRadius: 2)
+                    panel.fillColor = SKColor(red: 0.14, green: 0.12, blue: 0.22, alpha: 0.85)
+                    panel.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.35)
+                    panel.lineWidth = 0.8
+                    panel.position = pos
+                    panel.zPosition = 2.4
+                    world.addChild(panel)
                 }
             }
         }
@@ -879,12 +927,12 @@ public final class HeistScene: SKScene {
     }
 
     private func setPaused(_ on: Bool, system: Bool = false) {
-        guard !smokeEnabled else { return }
         let playing: Bool = {
             if case .playing = sim.state.phase { return true }
             return false
         }()
         guard playing || runPaused else { return }
+        // Manual pause button is ignored under smoke; harness flags drive pause beats instead.
         if on {
             if runPaused { return }
             runPaused = true
@@ -900,11 +948,13 @@ public final class HeistScene: SKScene {
             jumpTouch = nil
             pauseRoot.isHidden = false
             layoutUI()
+            if smokeEnabled { writeSmokeStatus() }
         } else {
             runPaused = false
             pauseFromSystem = false
             pauseRoot.isHidden = true
             layoutUI()
+            if smokeEnabled { writeSmokeStatus() }
         }
     }
 
@@ -1401,14 +1451,20 @@ public final class HeistScene: SKScene {
 
     public override func update(_ currentTime: TimeInterval) {
         if lastTime == 0 { lastTime = currentTime }
-        var dt = currentTime - lastTime
+        let rawDt = max(0, currentTime - lastTime)
         lastTime = currentTime
+        // Track freezes from the raw gap before the sim clamp.
+        if smokeEnabled || sim.state.elapsed > 0.5 {
+            maxFrameMs = max(maxFrameMs, rawDt * 1000)
+        }
+        var dt = rawDt
         if dt > 0.1 { dt = 0.1 }
 
         let instFPS = 1 / max(dt, 0.0001)
+        // Average FPS = frameCount / elapsedTime (not mean of 1/dt).
         // Skip the first 2s (startup hitch) when averaging for the smoke gate.
         if sim.state.elapsed > 2 || !smokeEnabled {
-            fpsSum += instFPS
+            fpsTimeSum += rawDt
             fpsCount += 1
         }
         #if DEBUG
@@ -1432,6 +1488,25 @@ public final class HeistScene: SKScene {
             if statusAcc >= interval {
                 statusAcc = 0
                 writeSmokeStatus()
+            }
+            // Pause / background beats (harness-driven during live play).
+            if case .playing = sim.state.phase {
+                let wantPause = SmokeBrain.smokeFlagExists("smoke_show_pause.txt")
+                    && !SmokeBrain.smokeFlagExists("smoke_pause_ok.txt")
+                let wantBg = SmokeBrain.smokeFlagExists("smoke_background.txt")
+                    && !SmokeBrain.smokeFlagExists("smoke_foreground.txt")
+                if wantBg {
+                    if !runPaused || !pauseFromSystem {
+                        setPaused(true, system: true)
+                    }
+                } else if wantPause {
+                    if !runPaused {
+                        setPaused(true, system: false)
+                    }
+                } else if runPaused {
+                    // Harness cleared the hold — resume (with countdown after system pause).
+                    beginResumeFromPause()
+                }
             }
             // Retention screens after RESULTS (harness-driven).
             if case .won = sim.state.phase {
@@ -1608,13 +1683,13 @@ public final class HeistScene: SKScene {
                 JuiceSound.shared.playKO()
                 JuiceSound.shared.setMaskModeMusic(false)
                 clearMaskGrade()
-                // Hold so death pose plays before SPLASHED. Smoke still defers the card
-                // until the Mask screenshot flag lands (harness timing only).
+                // Hold so the bandit death sheet plays before SPLASHED.
+                // Smoke still defers the card until the Mask screenshot flag lands.
                 let maskOk = SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
                 if smokeEnabled, !maskOk {
                     writeSmokeStatus()
                 } else {
-                    failOutcomeHold = 0.85
+                    failOutcomeHold = 1.35
                     writeSmokeStatus()
                 }
             case .checkpoint:
@@ -1644,17 +1719,25 @@ public final class HeistScene: SKScene {
 
         let shinies = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
         let isWin: Bool
+        // Results time must match the HUD timer source (wall clock under smoke).
+        let hudSeconds: Double = {
+            if smokeEnabled, smokeWallStart > 0 {
+                return CACurrentMediaTime() - smokeWallStart
+            }
+            return sim.state.elapsed
+        }()
         let seconds: Double
         let combo: Int
+        var clearResult: ProgressStore.ClearResult?
         switch sim.state.phase {
-        case .won(let s, let shinyTotal, let c):
+        case .won(_, let shinyTotal, let c):
             isWin = true
-            seconds = s
+            seconds = hudSeconds
             combo = c
             title.fontColor = ArtCatalog.neonLime
             title.text = "RESULTS"
             shinyCount.text = "0"
-            meta.text = String(format: "⏱ %.1fs    ✦ combo x%d", seconds, combo)
+            meta.text = String(format: "⏱ %.0fs    ✦ combo x%d", seconds, combo)
             let finalShinies = shinyTotal
             shinyCount.removeAction(forKey: "count")
             if shinyCount.userData == nil { shinyCount.userData = NSMutableDictionary() }
@@ -1665,12 +1748,13 @@ public final class HeistScene: SKScene {
                     let n = min(finalShinies, ((shinyCount.userData?["n"] as? Int) ?? 0) + 1)
                     shinyCount.userData?["n"] = n
                     shinyCount.text = "\(n)"
+                    JuiceSound.shared.playTallyTick()
                 },
                 SKAction.wait(forDuration: 0.05),
             ]), count: max(1, finalShinies)), withKey: "count")
         case .failed(let reason):
             isWin = false
-            seconds = sim.state.elapsed
+            seconds = hudSeconds
             combo = sim.state.bestCombo
             title.fontColor = ArtCatalog.neonPink
             title.text = reason == .fellInWater ? "SPLASHED" : (reason == .spiked ? "SPIKED" : "BAGGED")
@@ -1685,7 +1769,7 @@ public final class HeistScene: SKScene {
             guard isWin else { return 0 }
             let totalShinies = sim.state.shinies.count
             let got = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
-            let levelID = smokeEnabled ? ProgressStore.neonDocksLevelID : ProgressStore.neonDocksLevelID
+            let levelID = ProgressStore.neonDocksLevelID
             let earned = progressStore.recordClear(
                 levelID: levelID,
                 shiniesCollected: got,
@@ -1693,10 +1777,11 @@ public final class HeistScene: SKScene {
                 seconds: seconds,
                 combo: combo
             )
-            lastAwardedMedals = earned.count
-            smokeStatus.medals = earned.count
+            clearResult = earned
+            lastAwardedMedals = earned.medals.count
+            smokeStatus.medals = earned.medals.count
             smokeStatus.combo = max(smokeStatus.combo, combo)
-            return earned.count
+            return earned.medals.count
         }()
 
         // Ease-out card (~250ms): scale 0.8 → 1, fade, dim backdrop, then stagger medals/buttons.
@@ -1717,6 +1802,8 @@ public final class HeistScene: SKScene {
         card.run(appear)
 
         starsNode.isHidden = false
+        card.childNode(withName: "newBestStamp")?.removeFromParent()
+        card.childNode(withName: "levelUpStamp")?.removeFromParent()
         for i in 0..<3 {
             guard let star = starsNode.childNode(withName: "star\(i)") as? SKLabelNode else { continue }
             star.removeAllActions()
@@ -1747,6 +1834,47 @@ public final class HeistScene: SKScene {
             // Death: stars stay alpha 0 — no medals on fail.
         }
 
+        if isWin, let result = clearResult {
+            if result.isNewBest {
+                let stamp = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+                stamp.name = "newBestStamp"
+                stamp.text = "NEW BEST"
+                stamp.fontSize = 18
+                stamp.fontColor = ArtCatalog.neonOrange
+                stamp.position = CGPoint(x: 0, y: 78)
+                stamp.alpha = 0
+                stamp.setScale(1.4)
+                card.addChild(stamp)
+                stamp.run(SKAction.sequence([
+                    SKAction.wait(forDuration: 0.7),
+                    SKAction.group([
+                        SKAction.run { JuiceSound.shared.playNewBest() },
+                        SKAction.fadeIn(withDuration: 0.12),
+                        SKAction.scale(to: 1.0, duration: 0.16),
+                    ]),
+                ]))
+            }
+            if result.didLevelUp {
+                let up = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+                up.name = "levelUpStamp"
+                up.text = "LEVEL \(result.rankLevel)"
+                up.fontSize = 15
+                up.fontColor = ArtCatalog.neonCyan
+                up.position = CGPoint(x: 0, y: -118)
+                up.alpha = 0
+                up.setScale(0.7)
+                card.addChild(up)
+                up.run(SKAction.sequence([
+                    SKAction.wait(forDuration: 0.95),
+                    SKAction.group([
+                        SKAction.run { JuiceSound.shared.playLevelUp() },
+                        SKAction.fadeIn(withDuration: 0.14),
+                        SKAction.scale(to: 1.0, duration: 0.18),
+                    ]),
+                ]))
+            }
+        }
+
         let retry = card.childNode(withName: "retryBtn")
         let next = card.childNode(withName: "nextBtn")
         let home = card.childNode(withName: "homeBtn")
@@ -1774,7 +1902,16 @@ public final class HeistScene: SKScene {
         // Physics uses body center; foot-anchored sprites need the feet on the deck.
         bandit.position = CGPoint(x: CGFloat(b.position.x), y: CGFloat(b.position.y) - bodyCenterToFeet)
         bandit.setFacing(b.facing)
-        bandit.show(anim: b.anim, maskMode: b.maskMode, dt: dt, smokeLite: false)
+        let moveSpeed = CGFloat(hypot(b.velocity.x, 0) / max(tuning.tileSize, 1))
+        let runSpeed = CGFloat(tuning.runSpeed)
+        bandit.show(
+            anim: b.anim,
+            maskMode: b.maskMode,
+            dt: dt,
+            moveSpeed: moveSpeed,
+            runSpeed: runSpeed,
+            smokeLite: false
+        )
         bandit.alpha = b.invuln > 0 && Int(b.invuln * 20) % 2 == 0 ? 0.4 : 1
 
         for s in sim.state.shinies {
@@ -2189,9 +2326,11 @@ public final class HeistScene: SKScene {
             smokeStatus.wallElapsed = smokeWallElapsed
         }
         smokeStatus.fpsSamples = fpsCount
-        smokeStatus.fpsAvg = fpsCount > 0 ? fpsSum / Double(fpsCount) : 0
+        smokeStatus.fpsAvg = (fpsCount > 0 && fpsTimeSum > 0) ? Double(fpsCount) / fpsTimeSum : 0
+        smokeStatus.maxFrameMs = maxFrameMs
         smokeStatus.maskOn = sim.state.bandit.maskMode
         if sim.state.bandit.maskMode { smokeStatus.mask = true }
+        smokeStatus.paused = runPaused || !pauseRoot.isHidden
         // HUD/overlay only — cheap enough to run every status tick.
         smokeStatus.debugLabels = countBannedDebugLabels()
         smokeStatus.combo = max(smokeStatus.combo, sim.state.bestCombo, sim.state.bandit.combo)

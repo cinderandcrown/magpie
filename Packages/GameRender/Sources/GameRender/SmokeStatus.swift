@@ -9,6 +9,8 @@ public struct SmokeStatus: Equatable, Sendable {
     public var boot: String
     public var fpsAvg: Double
     public var fpsSamples: Int
+    /// Longest raw frame gap in milliseconds (freeze detector).
+    public var maxFrameMs: Double
     public var stomps: Int
     public var shinies: Int
     /// Sticky: Mask Mode has been entered at least once (milestone).
@@ -27,12 +29,15 @@ public struct SmokeStatus: Equatable, Sendable {
     public var medals: Int
     public var map: Bool
     public var daily: Bool
+    /// Pause sheet visible (manual or system).
+    public var paused: Bool
 
     public init(
         phase: String = "title",
         boot: String = "loading",
         fpsAvg: Double = 0,
         fpsSamples: Int = 0,
+        maxFrameMs: Double = 0,
         stomps: Int = 0,
         shinies: Int = 0,
         mask: Bool = false,
@@ -45,12 +50,14 @@ public struct SmokeStatus: Equatable, Sendable {
         combo: Int = 0,
         medals: Int = 0,
         map: Bool = false,
-        daily: Bool = false
+        daily: Bool = false,
+        paused: Bool = false
     ) {
         self.phase = phase
         self.boot = boot
         self.fpsAvg = fpsAvg
         self.fpsSamples = fpsSamples
+        self.maxFrameMs = maxFrameMs
         self.stomps = stomps
         self.shinies = shinies
         self.mask = mask
@@ -64,14 +71,15 @@ public struct SmokeStatus: Equatable, Sendable {
         self.medals = medals
         self.map = map
         self.daily = daily
+        self.paused = paused
     }
 
     public var line: String {
         String(
-            format: "phase=%@ boot=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d",
-            phase, boot, fpsAvg, fpsSamples, stomps, shinies,
+            format: "phase=%@ boot=%@ fps=%.1f samples=%d maxFrameMs=%.0f stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d paused=%d",
+            phase, boot, fpsAvg, fpsSamples, maxFrameMs, stomps, shinies,
             mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed, wallElapsed, debugLabels,
-            combo, medals, map ? 1 : 0, daily ? 1 : 0
+            combo, medals, map ? 1 : 0, daily ? 1 : 0, paused ? 1 : 0
         )
     }
 

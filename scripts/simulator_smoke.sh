@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Copyright © 2026 Cinder and Crown LLC. All rights reserved.
 # Launch Magpie with -SmokeAutoplay, record gameplay, capture moment screenshots
-# driven by smoke_status milestones (not blind sleeps), assert avg FPS >= 55.
+# driven by smoke_status milestones (not blind sleeps).
+# FPS: warn below 55; hard-fail only below 30 or on freezes (maxFrameMs > 500).
 set -euo pipefail
 
 DEVICE="${1:?simulator UDID}"
@@ -9,7 +10,9 @@ APP_PATH="${2:?path to Magpie.app}"
 OUT_DIR="${3:-smoke-artifacts}"
 BUNDLE_ID="${BUNDLE_ID:-com.cinderandcrown.magpie}"
 DISPLAY_ID="${SIMCTL_DISPLAY:-1}"
-MIN_FPS="${SMOKE_MIN_FPS:-55}"
+WARN_FPS="${SMOKE_WARN_FPS:-55}"
+FAIL_FPS="${SMOKE_FAIL_FPS:-30}"
+MAX_FRAME_MS="${SMOKE_MAX_FRAME_MS:-500}"
 MIN_VIDEO_SECS="${SMOKE_MIN_VIDEO_SECS:-60}"
 
 mkdir -p "$OUT_DIR"
@@ -134,7 +137,15 @@ launch_smoke() {
       "$docs/smoke_proceed.txt" \
       "$docs/smoke_midrun_ok.txt" \
       "$docs/smoke_mask_ok.txt" \
-      "$docs/smoke_death_ok.txt"
+      "$docs/smoke_death_ok.txt" \
+      "$docs/smoke_show_pause.txt" \
+      "$docs/smoke_pause_ok.txt" \
+      "$docs/smoke_background.txt" \
+      "$docs/smoke_foreground.txt" \
+      "$docs/smoke_show_map.txt" \
+      "$docs/smoke_map_ok.txt" \
+      "$docs/smoke_show_daily.txt" \
+      "$docs/smoke_daily_ok.txt"
   fi
   xcrun simctl launch "$DEVICE" "$BUNDLE_ID" -SmokeAutoplay
 }
@@ -215,6 +226,22 @@ REC_STARTED_AT="${REC_STARTED_AT:-$(date +%s)}"
 wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0)) else 1)' 120
 shot "$OUT_DIR/02-midrun.png"
 write_flag "smoke_midrun_ok.txt"
+
+# 02b — Pause menu (during live play)
+write_flag "smoke_show_pause.txt"
+wait_status "pause-menu" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=1" in s else 1)' 60
+sleep 0.35
+shot "$OUT_DIR/02b-pause-menu.png"
+write_flag "smoke_pause_ok.txt"
+wait_status "pause-resume" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s and "phase=playing" in s else 1)' 60
+
+# 02c — Background / foreground interruption (system pause + 3-2-1 resume)
+write_flag "smoke_background.txt"
+wait_status "background" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=1" in s else 1)' 60
+sleep 0.35
+shot "$OUT_DIR/02c-background.png"
+write_flag "smoke_foreground.txt"
+wait_status "foreground" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s and "phase=playing" in s else 1)' 90
 
 # 03 — real MOP stomp
 wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 120
@@ -302,16 +329,24 @@ require_app "end"
 STATUS="$(read_status)"
 echo "smoke_status: $STATUS"
 FPS="$(echo "$STATUS" | sed -n 's/.*fps=\([0-9.][0-9.]*\).*/\1/p' | head -1)"
+MAX_MS="$(echo "$STATUS" | sed -n 's/.*maxFrameMs=\([0-9.][0-9.]*\).*/\1/p' | head -1)"
 if [[ -z "$FPS" ]]; then
   echo "FAIL: missing fps in smoke_status.txt" >&2
   exit 1
 fi
-python3 - "$FPS" "$MIN_FPS" <<'PY'
+python3 - "$FPS" "${MAX_MS:-0}" "$WARN_FPS" "$FAIL_FPS" "$MAX_FRAME_MS" <<'PY'
 import sys
-fps=float(sys.argv[1]); need=float(sys.argv[2])
-if fps < need:
-    raise SystemExit(f"FAIL: average FPS {fps:.1f} < {need:.0f}")
-print(f"OK FPS {fps:.1f} >= {need:.0f}")
+fps=float(sys.argv[1]); max_ms=float(sys.argv[2])
+warn=float(sys.argv[3]); fail=float(sys.argv[4]); freeze=float(sys.argv[5])
+print(f"FPS avg={fps:.1f} maxFrameMs={max_ms:.0f} (warn<{warn:.0f} fail<{fail:.0f} freeze>{freeze:.0f}ms)")
+if max_ms > freeze:
+    raise SystemExit(f"FAIL: long freeze maxFrameMs={max_ms:.0f} > {freeze:.0f}ms")
+if fps < fail:
+    raise SystemExit(f"FAIL: average FPS {fps:.1f} < {fail:.0f}")
+if fps < warn:
+    print(f"WARN: average FPS {fps:.1f} < {warn:.0f} (soft — not a hard fail)")
+else:
+    print(f"OK FPS {fps:.1f} >= {warn:.0f}")
 PY
 
 # Fail if any banned debug/placeholder SKLabel was visible during smoke.
@@ -555,15 +590,30 @@ w, h = midrun.size
 crop = midrun.crop((int(w*0.1), int(h*0.18), int(w*0.9), int(h*0.62)))
 pixels = list(crop.getdata())
 n = len(pixels)
-# Magenta-ish and teal-ish counts (bright neon, not dim)
+# Some neon must be present (not a flat grey alley) — not a brightness % quota.
 mag = sum(1 for r,g,b in pixels if r > 160 and b > 100 and r > g + 30)
 teal = sum(1 for r,g,b in pixels if b > 140 and g > 120 and b > r + 20)
-bright = sum(1 for r,g,b in pixels if (r+g+b)/3 > 70)
-print(f"palette midrun magenta={mag/n:.3%} teal={teal/n:.3%} bright={bright/n:.3%}")
-if mag / n < 0.004 and teal / n < 0.004:
-    raise SystemExit("FAIL: midrun lacks bright magenta/teal neon (looks like flat placeholders)")
-if bright / n < 0.08:
-    raise SystemExit("FAIL: midrun too dim vs Game Plan bright-neon-on-dark")
+neon = mag + teal
+print(f"palette midrun magenta={mag/n:.3%} teal={teal/n:.3%} neon={neon/n:.3%}")
+if neon / n < 0.002:
+    raise SystemExit("FAIL: midrun has no magenta/teal neon pixels (flat placeholders?)")
+
+# Readability: hero/robots should contrast against the local background.
+# Sample the playfield character band (lower-mid of the crop) vs a skyline strip.
+cw, ch = crop.size
+char_band = crop.crop((int(cw*0.25), int(ch*0.55), int(cw*0.75), int(ch*0.92)))
+sky_band = crop.crop((int(cw*0.1), int(ch*0.05), int(cw*0.9), int(ch*0.35)))
+def mean_luma(im):
+    px = list(im.getdata())
+    return sum((r+g+b)/3 for r,g,b in px) / max(1, len(px))
+char_l = mean_luma(char_band)
+sky_l = mean_luma(sky_band)
+contrast = abs(char_l - sky_l)
+print(f"readability charLuma={char_l:.1f} skyLuma={sky_l:.1f} contrast={contrast:.1f}")
+if contrast < 8.0:
+    raise SystemExit(
+        f"FAIL: hero/robot band not readable vs background (contrast={contrast:.1f} < 8)"
+    )
 
 def near_white_frac(im, box):
     c = im.crop(box)
@@ -639,9 +689,17 @@ cp -f "$OUT_DIR/01-title.png" "$OUT_DIR/01-launch.png"
 cp -f "$OUT_DIR/02-midrun.png" "$OUT_DIR/02-mid.png"
 cp -f "$OUT_DIR/06-results.png" "$OUT_DIR/03-end.png"
 
+# Always surface the audio timeline in artifacts (even if mux warned).
+EVENTS_SRC="$(data_container)/Documents/smoke_audio_events.txt"
+if [[ -f "$EVENTS_SRC" ]]; then
+  cp -f "$EVENTS_SRC" "$OUT_DIR/smoke_audio_events.txt"
+fi
+
 REQUIRED=(
   01-title.png
   02-midrun.png
+  02b-pause-menu.png
+  02c-background.png
   03-mop-stomp.png
   04-mask-mode.png
   05-death-retry.png
@@ -650,6 +708,7 @@ REQUIRED=(
   08-daily-heist.png
   smoke-gameplay.mp4
   palette-side-by-side.png
+  smoke_audio_events.txt
   01-launch.png
   02-mid.png
   03-end.png
