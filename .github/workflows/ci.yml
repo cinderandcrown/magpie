@@ -125,6 +125,7 @@ jobs:
           echo "Simulator: $device"
 
           run_tests() {
+            # Capture stderr too — launch flakes often only appear there, not in tee'd stdout.
             xcodebuild test-without-building \
               -project Magpie.xcodeproj \
               -scheme Magpie \
@@ -132,13 +133,14 @@ jobs:
               -derivedDataPath DerivedData \
               -resultBundlePath TestResults.xcresult \
               -parallel-testing-enabled NO \
+              2>&1 \
             | tee xcodebuild-test.log \
             | xcbeautify --renderer github-actions
           }
 
           # Auto-retry once on simulator boot/launch flakes (XPC / test-host).
           if ! run_tests; then
-            if grep -qiE 'Unable to boot the Simulator|XPC error|failed to launch|Launch failed|Connection interrupted|SimLaunchHostService' xcodebuild-test.log; then
+            if grep -qiE 'Unable to boot the Simulator|XPC error|failed to launch|Launch failed|Connection interrupted|SimLaunchHostService|bootstrapping|Lost pending connection|No such process|Early unexpected exit|TEST EXECUTE FAILED|did not return a process handle' xcodebuild-test.log; then
               echo "WARN: simulator boot/launch flake — retrying unit tests once" >&2
               xcrun simctl shutdown "$device" 2>/dev/null || true
               sleep 2
