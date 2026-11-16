@@ -8,23 +8,46 @@ public struct StoryCatalog: Equatable, Sendable, Codable {
         public var id: String
         public var caption: String
         public var artHint: String
+
+        public init(id: String, caption: String, artHint: String) {
+            self.id = id
+            self.caption = caption
+            self.artHint = artHint
+        }
     }
 
     public struct DistrictBeat: Equatable, Sendable, Codable {
         public var title: String
         public var flavor: String
+
+        public init(title: String, flavor: String) {
+            self.title = title
+            self.flavor = flavor
+        }
     }
 
     public struct CrewMember: Equatable, Sendable, Codable {
         public var id: String
         public var name: String
         public var line: String
+
+        public init(id: String, name: String, line: String) {
+            self.id = id
+            self.name = name
+            self.line = line
+        }
     }
 
     public struct MopLine: Equatable, Sendable, Codable {
         public var id: String
         public var file: String
         public var line: String
+
+        public init(id: String, file: String, line: String) {
+            self.id = id
+            self.file = file
+            self.line = line
+        }
     }
 
     public var premise: String
