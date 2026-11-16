@@ -150,54 +150,98 @@ public enum RetentionChrome {
         root.name = "dailyHeist"
 
         let wash = SKShapeNode(rectOf: CGSize(width: size.width * 2, height: size.height * 2))
-        wash.fillColor = SKColor(red: 0.04, green: 0.02, blue: 0.12, alpha: 0.9)
+        wash.fillColor = SKColor(red: 0.03, green: 0.02, blue: 0.1, alpha: 0.94)
         wash.strokeColor = .clear
         wash.name = "dailyWash"
         root.addChild(wash)
 
+        let board = SKShapeNode(rectOf: CGSize(width: min(340, size.width * 0.86), height: min(460, size.height * 0.62)), cornerRadius: 18)
+        board.fillColor = SKColor(red: 0.05, green: 0.04, blue: 0.14, alpha: 0.97)
+        board.strokeColor = ArtCatalog.neonLime
+        board.lineWidth = 2.2
+        board.glowWidth = 2
+        board.name = "dailyBoard"
+        board.position = CGPoint(x: 0, y: 8)
+        root.addChild(board)
+
+        // Neon corner ticks for identity.
+        for (dx, dy) in [(-1, 1), (1, 1), (-1, -1), (1, -1)] as [(CGFloat, CGFloat)] {
+            let tick = SKShapeNode(rectOf: CGSize(width: 18, height: 3), cornerRadius: 1)
+            tick.fillColor = dx < 0 ? ArtCatalog.neonPink : ArtCatalog.neonCyan
+            tick.strokeColor = .clear
+            tick.position = CGPoint(x: dx * 145, y: dy * 195)
+            board.addChild(tick)
+        }
+
         let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         title.text = "DAILY HEIST"
-        title.fontSize = 30
+        title.fontSize = 28
         title.fontColor = ArtCatalog.neonLime
-        title.position = CGPoint(x: 0, y: size.height * 0.22)
+        title.position = CGPoint(x: 0, y: 175)
         title.name = "dailyTitle"
-        root.addChild(title)
+        board.addChild(title)
 
         let day = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
         day.text = dayKey
         day.fontSize = 15
         day.fontColor = ArtCatalog.neonCyan
-        day.position = CGPoint(x: 0, y: size.height * 0.14)
+        day.position = CGPoint(x: 0, y: 145)
         day.name = "dailyDay"
-        root.addChild(day)
+        board.addChild(day)
 
         let blurb = SKLabelNode(fontNamed: "AvenirNext-Medium")
-        blurb.text = "Same rooftop. Same seed. Beat the city."
-        blurb.fontSize = 14
-        blurb.fontColor = SKColor(white: 0.9, alpha: 1)
-        blurb.position = CGPoint(x: 0, y: size.height * 0.06)
+        blurb.text = "Same heist for everyone"
+        blurb.fontSize = 13
+        blurb.fontColor = SKColor(white: 0.88, alpha: 1)
+        blurb.position = CGPoint(x: 0, y: 118)
         blurb.name = "dailyBlurb"
-        root.addChild(blurb)
+        board.addChild(blurb)
 
-        let clears = SKLabelNode(fontNamed: "AvenirNext-Bold")
-        clears.text = "Clears \(progress.dailyClears)"
-        clears.fontSize = 16
-        clears.fontColor = ArtCatalog.neonOrange
-        clears.position = CGPoint(x: 0, y: -10)
-        clears.name = "dailyClears"
-        root.addChild(clears)
+        let seed = ProgressStore.dailySeed(dayKey: dayKey)
+        let seedLabel = SKLabelNode(fontNamed: "AvenirNext-Medium")
+        seedLabel.text = String(format: "Seed #%04X", seed & 0xFFFF)
+        seedLabel.fontSize = 12
+        seedLabel.fontColor = ArtCatalog.neonPink
+        seedLabel.position = CGPoint(x: 0, y: 96)
+        seedLabel.name = "dailySeed"
+        board.addChild(seedLabel)
 
-        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 88, height: 88))
+        let best = progress.bestSecondsByLevel[ProgressStore.dailyLevelID]
+        let bestLabel = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        bestLabel.text = best.map { String(format: "Your best  %.0fs", $0) } ?? "Your best  —"
+        bestLabel.fontSize = 15
+        bestLabel.fontColor = ArtCatalog.neonOrange
+        bestLabel.position = CGPoint(x: 0, y: 55)
+        bestLabel.name = "dailyBest"
+        board.addChild(bestLabel)
+
+        let streak = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        streak.text = "Streak \(progress.dailyClears)"
+        streak.fontSize = 14
+        streak.fontColor = ArtCatalog.neonCyan
+        streak.position = CGPoint(x: 0, y: 30)
+        streak.name = "dailyClears"
+        board.addChild(streak)
+
+        let boardStub = SKLabelNode(fontNamed: "AvenirNext-Medium")
+        boardStub.text = "City board · live soon"
+        boardStub.fontSize = 11
+        boardStub.fontColor = SKColor(white: 0.55, alpha: 1)
+        boardStub.position = CGPoint(x: 0, y: 8)
+        boardStub.name = "dailyLeaderboard"
+        board.addChild(boardStub)
+
+        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 96, height: 96))
         mascot.name = "dailyBandit"
-        mascot.position = CGPoint(x: 0, y: size.height * 0.0 - 48)
-        root.addChild(mascot)
+        mascot.position = CGPoint(x: 0, y: -55)
+        board.addChild(mascot)
 
         let play = makeChromeButton(title: "RUN HEIST", color: ArtCatalog.neonLime, name: "dailyPlay", wide: true)
-        play.position = CGPoint(x: 0, y: -110)
-        root.addChild(play)
+        play.position = CGPoint(x: 0, y: -145)
+        board.addChild(play)
 
         let back = makeChromeButton(title: "BACK", color: ArtCatalog.neonPink, name: "dailyBack")
-        back.position = CGPoint(x: 0, y: -165)
+        back.position = CGPoint(x: 0, y: -size.height * 0.38)
         root.addChild(back)
         return root
     }
