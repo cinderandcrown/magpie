@@ -75,6 +75,8 @@ public final class HeistScene: SKScene {
     private var fpsTimeSum: Double = 0
     private var fpsCount: Int = 0
     private var maxFrameMs: Double = 0
+    /// Skip one freeze sample after pause/resume so the gap does not look like a hitch.
+    private var skipFreezeSample = false
     private var statusAcc: TimeInterval = 0
     /// Shiny nodes mid collect-anim — sync must not hard-hide them.
     private var shinyCollecting: Set<Int> = []
@@ -938,6 +940,7 @@ public final class HeistScene: SKScene {
             runPaused = true
             pauseFromSystem = system
             resumeCountdown = 0
+            skipFreezeSample = true
             pauseCountLabel?.alpha = 0
             pauseCountLabel?.text = ""
             moveX = 0
@@ -952,6 +955,7 @@ public final class HeistScene: SKScene {
         } else {
             runPaused = false
             pauseFromSystem = false
+            skipFreezeSample = true
             pauseRoot.isHidden = true
             layoutUI()
             if smokeEnabled { writeSmokeStatus() }
@@ -968,6 +972,7 @@ public final class HeistScene: SKScene {
         guard runPaused else { return }
         JuiceSound.shared.playUITap()
         runPaused = false
+        skipFreezeSample = true
         pauseRoot.isHidden = true
         if pauseFromSystem {
             pauseFromSystem = false
@@ -1453,8 +1458,17 @@ public final class HeistScene: SKScene {
         if lastTime == 0 { lastTime = currentTime }
         let rawDt = max(0, currentTime - lastTime)
         lastTime = currentTime
-        // Track freezes from the raw gap before the sim clamp.
-        if smokeEnabled || sim.state.elapsed > 0.5 {
+        // Freeze gate: only sample live gameplay. Ignore pause/resume gaps, death-hold,
+        // and retention screens — simctl screenshots / I/O there inflate rawDt.
+        let livePlay: Bool = {
+            if case .playing = sim.state.phase {
+                return !runPaused && resumeCountdown <= 0 && failOutcomeHold <= 0
+            }
+            return false
+        }()
+        if skipFreezeSample {
+            skipFreezeSample = false
+        } else if livePlay, smokeEnabled || sim.state.elapsed > 0.5 {
             maxFrameMs = max(maxFrameMs, rawDt * 1000)
         }
         var dt = rawDt
@@ -1543,6 +1557,7 @@ public final class HeistScene: SKScene {
             sync(dt: CGFloat(dt))
             updateHUDVisibility()
             if resumeCountdown <= 0 {
+                skipFreezeSample = true
                 layoutUI()
             }
             return
@@ -1698,6 +1713,7 @@ public final class HeistScene: SKScene {
                     writeSmokeStatus()
                 } else {
                     failOutcomeHold = 1.35
+                    skipFreezeSample = true
                     writeSmokeStatus()
                 }
             case .checkpoint:
