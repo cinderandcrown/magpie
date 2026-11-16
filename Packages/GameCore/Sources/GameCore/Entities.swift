@@ -30,6 +30,8 @@ public struct BanditState: Equatable, Sendable {
     public var anim: BanditAnim
     /// While > 0, `anim` stays locked (hurt / death / pickUp one-shots).
     public var animHold: Double
+    /// Suppress duplicate land events (pounce whoosh → land → land).
+    public var landCooldown: Double
 
     public static func spawn(at position: Vec2, hearts: Int) -> BanditState {
         BanditState(
@@ -53,7 +55,8 @@ public struct BanditState: Equatable, Sendable {
             carriedShinies: 0,
             bankedShinies: 0,
             anim: .idle,
-            animHold: 0
+            animHold: 0,
+            landCooldown: 0
         )
     }
 }

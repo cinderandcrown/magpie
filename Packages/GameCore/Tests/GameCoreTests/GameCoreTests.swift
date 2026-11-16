@@ -302,7 +302,7 @@ final class GameCoreTests: XCTestCase {
         SmokeBrain.clearSmokeFlags()
         for name in [
             "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt",
-            "smoke_foreground.txt", "smoke_death_ok.txt",
+            "smoke_mask2_ok.txt", "smoke_foreground.txt", "smoke_death_ok.txt",
         ] {
             SmokeBrain.setSmokeFlag(name, present: true)
         }
@@ -330,7 +330,7 @@ final class GameCoreTests: XCTestCase {
         SmokeBrain.clearSmokeFlags()
         for name in [
             "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt",
-            "smoke_foreground.txt", "smoke_death_ok.txt",
+            "smoke_mask2_ok.txt", "smoke_foreground.txt", "smoke_death_ok.txt",
         ] {
             SmokeBrain.setSmokeFlag(name, present: true)
         }
@@ -676,6 +676,44 @@ final class GameCoreTests: XCTestCase {
         }
         XCTAssertTrue(leftGround)
         XCTAssertEqual(lands, 1, "one jump must produce exactly one land event")
+    }
+
+    func testSinglePounceEmitsExactlyOneLand() throws {
+        let map = try TileMap.parse("""
+        ############
+        #..........#
+        #..........#
+        #...@......#
+        #==========#
+        ############
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        for _ in 0..<30 { sim.step(InputFrame()) }
+        XCTAssertTrue(sim.state.bandit.onGround)
+        // Jump then pounce mid-air — QA saw whoosh → land → land 33/67 ms apart.
+        var lands = 0
+        var sawPounce = false
+        var leftGround = false
+        for i in 0..<200 {
+            if i == 0 {
+                sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+            } else if i < 12 {
+                sim.step(InputFrame(jumpHeld: true))
+            } else if i == 12 {
+                sim.step(InputFrame(pouncePressed: true))
+                sawPounce = sim.state.events.contains { $0.kind == .pounce || $0.kind == .flop }
+                    || sim.state.bandit.pouncing || sim.state.bandit.flopping
+            } else {
+                sim.step(InputFrame())
+            }
+            if !sim.state.bandit.onGround { leftGround = true }
+            lands += sim.state.events.filter { $0.kind == .land }.count
+            if leftGround && sim.state.bandit.onGround && i > 20 { break }
+        }
+        XCTAssertTrue(leftGround)
+        XCTAssertTrue(sawPounce || lands >= 1, "pounce should leave the ground")
+        XCTAssertEqual(lands, 1, "one pounce airborne beat must produce exactly one land event")
     }
 }
 

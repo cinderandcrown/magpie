@@ -134,10 +134,27 @@ public enum RetentionChrome {
             board.addChild(tick)
         }
 
-        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 72, height: 72))
-        mascot.name = "mapBandit"
-        mascot.position = CGPoint(x: 0, y: -size.height * 0.28)
-        root.addChild(mascot)
+        // Raccoon sits on the unlocked Neon Docks node (not floating under the board).
+        if let docks = board.childNode(withName: "district_neon_docks") {
+            let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 48, height: 48))
+            mascot.name = "mapBandit"
+            mascot.position = CGPoint(x: 0, y: 28)
+            mascot.zPosition = 5
+            docks.addChild(mascot)
+        }
+
+        // Soft skyline silhouette behind the district path.
+        for i in 0..<9 {
+            let h = CGFloat(18 + (i % 4) * 14)
+            let bil = SKShapeNode(rectOf: CGSize(width: 18, height: h), cornerRadius: 2)
+            bil.fillColor = SKColor(red: 0.08, green: 0.07, blue: 0.18, alpha: 0.9)
+            bil.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.25)
+            bil.lineWidth = 0.6
+            bil.position = CGPoint(x: -130 + CGFloat(i) * 32, y: -175 + h * 0.5)
+            bil.zPosition = 0
+            bil.name = "mapSkyline\(i)"
+            board.addChild(bil)
+        }
 
         let back = makeChromeButton(title: "BACK", color: ArtCatalog.neonPink, name: "mapBack")
         back.position = CGPoint(x: 0, y: -size.height * 0.38)
@@ -231,9 +248,10 @@ public enum RetentionChrome {
         boardStub.name = "dailyLeaderboard"
         board.addChild(boardStub)
 
-        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 96, height: 96))
+        // Smaller mascot offset so it doesn't cover the board stub text.
+        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 72, height: 72))
         mascot.name = "dailyBandit"
-        mascot.position = CGPoint(x: 0, y: -55)
+        mascot.position = CGPoint(x: 0, y: -70)
         board.addChild(mascot)
 
         let play = makeChromeButton(title: "RUN HEIST", color: ArtCatalog.neonLime, name: "dailyPlay", wide: true)

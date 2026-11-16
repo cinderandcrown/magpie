@@ -67,19 +67,24 @@ public struct Sim: Equatable, Sendable {
         for (i, c) in map.findAll(.shinySpawn).enumerated() {
             shinies.append(ShinyPickup(id: i, position: map.worldCenter(ofX: c.0, y: c.1, tileSize: tile), alive: true))
         }
-        var mops: [MopEnemy] = []
-        for (i, c) in map.findAll(.mopSpawn).enumerated() {
-            let p = map.worldStandOnDeckBelow(ofX: c.0, markerY: c.1, tileSize: tile)
-            // Opening pack: tiny patrol so hop-stomps chain into Mask without side-bags.
-            let span = tile * (i < 6 ? 0.35 : 2.2)
-            mops.append(MopEnemy(
-                id: i, position: p, home: p, patrolSpan: span, phase: Double(i) * 0.85,
-                alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1, stun: 0
-            ))
-        }
         var cps: [Checkpoint] = []
         for (i, c) in map.findAll(.checkpoint).enumerated() {
             cps.append(Checkpoint(id: i, position: map.worldCenter(ofX: c.0, y: c.1, tileSize: tile), activated: false))
+        }
+        var mops: [MopEnemy] = []
+        var mopID = 0
+        for (i, c) in map.findAll(.mopSpawn).enumerated() {
+            let p = map.worldStandOnDeckBelow(ofX: c.0, markerY: c.1, tileSize: tile)
+            // Keep a 4-tile clear zone around spawn / checkpoints so knockback doesn't feed a mob pile-up.
+            if abs(p.x - start.x) < tile * 4 { continue }
+            if cps.contains(where: { abs(p.x - $0.position.x) < tile * 4 }) { continue }
+            // Opening pack: tiny patrol so hop-stomps chain into Mask without side-bags.
+            let span = tile * (mopID < 6 ? 0.35 : 2.2)
+            mops.append(MopEnemy(
+                id: mopID, position: p, home: p, patrolSpan: span, phase: Double(i) * 0.85,
+                alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1, stun: 0
+            ))
+            mopID += 1
         }
 
         self.state = SimState(
@@ -126,6 +131,7 @@ public struct Sim: Equatable, Sendable {
         else if b.jumpBuffer > 0 { b.jumpBuffer = max(0, b.jumpBuffer - dt) }
 
         if b.invuln > 0 { b.invuln = max(0, b.invuln - dt) }
+        if b.landCooldown > 0 { b.landCooldown = max(0, b.landCooldown - dt) }
         if b.animHold > 0 {
             b.animHold = max(0, b.animHold - dt)
             if b.animHold <= 0, b.anim == .hurt || b.anim == .pickUp {
@@ -307,13 +313,15 @@ public struct Sim: Equatable, Sendable {
             if solidAt(bandit.position.x - halfW * 0.6, feet) || solidAt(bandit.position.x + halfW * 0.6, feet) {
                 let ty = Int(floor(feet / tile))
                 bandit.position.y = Double(ty + 1) * tile + halfH
-                // Fire land/dust only on the air → ground transition (plus hard-land shake).
-                if !wasGrounded {
+                // Fire land/dust only on the air → ground transition, with a short cooldown
+                // so pounce whoosh → land → land (20–67 ms) collapses to one event.
+                if !wasGrounded, bandit.landCooldown <= 0 {
                     state.events.append(SimEvent(kind: .land, position: bandit.position))
                     state.events.append(SimEvent(kind: .dust, position: bandit.position))
                     if bandit.velocity.y < -40 {
                         state.events.append(SimEvent(kind: .shake, position: bandit.position))
                     }
+                    bandit.landCooldown = 0.10
                 }
                 bandit.velocity.y = 0
                 bandit.onGround = true
@@ -486,12 +494,22 @@ public struct Sim: Equatable, Sendable {
             if d <= tuning.hurtHitRadius && bandit.invuln <= 0 && !(stompFalling && aboveMop) {
                 bandit.hearts -= 1
                 bandit.invuln = tuning.invulnSeconds
-                let away = bandit.position.x >= state.mops[i].position.x ? 1.0 : -1.0
+                var away = bandit.position.x >= state.mops[i].position.x ? 1.0 : -1.0
+                let minSafe = tile * 5
+                let maxSafe = Double(map.width) * tile - tile * 5
+                var nx = bandit.position.x + away * tile * 1.2
+                // Never knock into the map lip — that pinned him in the camera clamp / mob pile.
+                if nx < minSafe {
+                    away = 1
+                    nx = minSafe
+                } else if nx > maxSafe {
+                    away = -1
+                    nx = maxSafe
+                }
+                bandit.position.x = nx
                 bandit.velocity.y = tuning.jumpVelocity * tuning.tileSize / 3
                 bandit.velocity.x = away * tuning.runSpeed * tuning.tileSize * 0.85
-                // Separate sprites on contact — no half-second overlap.
-                bandit.position.x += away * tuning.tileSize * 1.2
-                state.mops[i].position.x -= away * tuning.tileSize * 0.5
+                state.mops[i].position.x -= away * tile * 0.5
                 state.mops[i].home.x = state.mops[i].position.x
                 state.mops[i].stun = 0.5
                 bandit.anim = .hurt

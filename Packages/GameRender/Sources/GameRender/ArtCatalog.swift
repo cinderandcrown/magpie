@@ -512,6 +512,7 @@ public enum ArtCatalog {
     /// Bright neon storefront signs for the mid parallax band (real art + glow, not flat rectangles).
     public static func neonSignageStrip(width: CGFloat, height: CGFloat) -> SKNode {
         let root = SKNode()
+        root.name = "neonSignageStrip"
         let textures = loadStorefrontSignTextures()
         let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
         var x: CGFloat = -width * 0.42
@@ -520,9 +521,11 @@ public enum ArtCatalog {
             let w = CGFloat(52 + (i % 4) * 18)
             let h = CGFloat(18 + (i % 3) * 8)
             let accent = accents[i % accents.count]
-            let glow = SKSpriteNode(color: accent, size: CGSize(width: w * 1.7, height: h * 2.4))
+            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.8, height: h * 2.6))
             glow.position = CGPoint(x: x, y: CGFloat((i % 4) * 24) - 8)
-            glow.alpha = 0.65
+            glow.color = accent
+            glow.colorBlendFactor = 1
+            glow.alpha = 0.7
             glow.blendMode = .add
             glow.zPosition = 0
             root.addChild(glow)
@@ -534,17 +537,18 @@ public enum ArtCatalog {
             } else {
                 sign = SKSpriteNode(color: accent, size: CGSize(width: w, height: h))
             }
+            sign.name = "storefrontSign"
             sign.position = glow.position
             sign.alpha = 1
             sign.zPosition = 1
             // Magenta bias so the palette gate can't pass on teal alone.
             if i % 2 == 0 {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.55
+                sign.colorBlendFactor = 0.35
                 sign.blendMode = .add
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.35
+                sign.colorBlendFactor = 0.25
                 sign.blendMode = .add
             }
             root.addChild(sign)
@@ -561,6 +565,74 @@ public enum ArtCatalog {
             i += 1
         }
         root.zPosition = -19
+        return root
+    }
+
+    /// World-layer storefront crops along the play corridor (visible in midrun stills, not only parallax).
+    public static func worldStorefrontSigns(mapWidth: CGFloat, tile: CGFloat) -> SKNode {
+        let root = SKNode()
+        root.name = "worldStorefronts"
+        root.zPosition = 2.8
+        let textures = loadStorefrontSignTextures()
+        let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
+        // Place 6 signs across the first ~half of the map at wall height above the deck.
+        let count = max(4, textures.count)
+        for i in 0..<count {
+            let x = tile * 6 + CGFloat(i) * (mapWidth * 0.12)
+            guard x < mapWidth * 0.85 else { break }
+            let w = tile * (2.2 + CGFloat(i % 3) * 0.4)
+            let h = tile * (0.85 + CGFloat(i % 2) * 0.25)
+            let accent = accents[i % accents.count]
+            let y = tile * (4.2 + CGFloat(i % 3) * 0.6)
+
+            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.7, height: h * 2.2))
+            glow.name = "storefrontGlow"
+            glow.position = CGPoint(x: x, y: y)
+            glow.color = accent
+            glow.colorBlendFactor = 1
+            glow.alpha = 0.75
+            glow.blendMode = .add
+            glow.zPosition = 0
+            root.addChild(glow)
+
+            let sign: SKSpriteNode
+            if !textures.isEmpty {
+                sign = SKSpriteNode(texture: textures[i % textures.count], size: CGSize(width: w, height: h))
+            } else {
+                sign = SKSpriteNode(color: accent, size: CGSize(width: w, height: h))
+            }
+            sign.name = "storefrontSign"
+            sign.position = CGPoint(x: x, y: y)
+            sign.zPosition = 1
+            if i % 2 == 0 {
+                sign.color = neonPink
+                sign.colorBlendFactor = 0.3
+            } else {
+                sign.color = neonCyan
+                sign.colorBlendFactor = 0.22
+            }
+            sign.blendMode = .add
+            root.addChild(sign)
+
+            // Wet-floor reflection puddle under the sign.
+            let puddle = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.1, height: tile * 0.4))
+            puddle.name = "storefrontWet"
+            puddle.position = CGPoint(x: x, y: tile * 1.15)
+            puddle.color = accent
+            puddle.colorBlendFactor = 1
+            puddle.alpha = 0.4
+            puddle.blendMode = .add
+            puddle.zPosition = -1
+            root.addChild(puddle)
+
+            if i % 3 == 0 {
+                sign.run(SKAction.repeatForever(SKAction.sequence([
+                    SKAction.fadeAlpha(to: 0.55, duration: 0.1),
+                    SKAction.fadeAlpha(to: 1.0, duration: 0.14),
+                    SKAction.wait(forDuration: 2.4 + Double(i) * 0.3),
+                ])))
+            }
+        }
         return root
     }
 
@@ -975,6 +1047,19 @@ public final class BanditVisual: SKNode {
 
     @available(*, unavailable)
     required init?(coder aDecoder: NSCoder) { fatalError() }
+
+    /// Force GPU residency for KO / Mask / hurt sheets before first combat beat (cuts hitch).
+    public func prewarmCombatTextures() {
+        var warm: [SKTexture] = deathTextures + hurtTextures + attackTextures
+        if let maskTex { warm.append(maskTex) }
+        if let flopTex { warm.append(flopTex) }
+        if !warm.isEmpty {
+            SKTexture.preload(warm) {}
+        }
+        // Touch glow nodes so first Mask frame doesn't allocate them cold.
+        maskGlow.alpha = 0.001
+        rimLight.alpha = 0.001
+    }
 
     public func setFacing(_ facing: Double) {
         facingSign = facing >= 0 ? 1 : -1

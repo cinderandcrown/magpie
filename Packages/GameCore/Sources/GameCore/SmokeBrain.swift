@@ -50,7 +50,8 @@ public struct SmokeBrain: Equatable, Sendable {
 
     public static func clearSmokeFlags() {
         for name in [
-            "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_death_ok.txt",
+            "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_mask2_ok.txt",
+            "smoke_death_ok.txt",
             "smoke_show_pause.txt", "smoke_pause_ok.txt",
             "smoke_background.txt", "smoke_foreground.txt",
             "smoke_show_map.txt", "smoke_map_ok.txt", "smoke_show_daily.txt", "smoke_daily_ok.txt",
@@ -125,12 +126,13 @@ public struct SmokeBrain: Equatable, Sendable {
                     }
                 case .showcaseMask:
                     maskShowcaseFrames += 1
-                    // Hold until harness snaps 04 (mask) AND finishes pause/bg beats.
+                    // Hold until harness snaps 04 + 04b (second Mask) AND finishes pause/bg.
                     // Seeking death right after mask_ok races pause-resume (phase=failed
                     // while the script still waits for phase=playing).
                     let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
+                    let mask2Ok = Self.smokeFlagExists("smoke_mask2_ok.txt")
                     let pauseBgDone = Self.smokeFlagExists("smoke_foreground.txt")
-                    if (maskOk && pauseBgDone) || maskShowcaseFrames >= 3600 {
+                    if (maskOk && mask2Ok && pauseBgDone) || maskShowcaseFrames >= 3600 {
                         act = .seekDeath
                     }
                 default:
@@ -159,6 +161,30 @@ public struct SmokeBrain: Equatable, Sendable {
         }
 
         if act == .showcaseMask {
+            let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
+            let mask2Ok = Self.smokeFlagExists("smoke_mask2_ok.txt")
+            // After first Mask shot: if Mask dropped, hunt MOPs again for re-entry.
+            if maskOk, !mask2Ok, !b.maskMode, let mop = nearestMop(sim: sim) {
+                let dx = mop.position.x - b.position.x
+                var moveX: Double = dx < -8 ? -0.25 : 1.0
+                var jumpPressed = false
+                var jumpHeld = false
+                var pouncePressed = false
+                if b.onGround || b.coyote > 0 {
+                    if abs(dx) < tile * 5.0 { jumpPressed = true; jumpHeld = true }
+                } else if b.velocity.y > 0 {
+                    jumpHeld = true
+                } else if !b.flopping {
+                    pouncePressed = true
+                }
+                if tx <= 5 { moveX = max(moveX, 0.85) }
+                return InputFrame(
+                    moveX: moveX,
+                    jumpPressed: jumpPressed,
+                    jumpHeld: jumpHeld || jumpPressed,
+                    pouncePressed: pouncePressed
+                )
+            }
             // Hold on deck for Mask screenshot — maskTimer keeps maskOn=1 while we wait.
             var moveX: Double = 0.08
             if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 6) {

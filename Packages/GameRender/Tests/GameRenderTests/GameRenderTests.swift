@@ -28,8 +28,8 @@ final class GameRenderTests: XCTestCase {
         XCTAssertTrue(TitleArt.fallbackWordmark.contains("BANDIT"))
         XCTAssertFalse(TitleArt.displayTitle.localizedCaseInsensitiveContains("Trash Panda"))
         XCTAssertFalse(TitleArt.displayTitle.localizedCaseInsensitiveContains("Magpie"))
-        XCTAssertTrue(TitleArt.assetCredits.contains("null-painter-error"))
-        XCTAssertTrue(TitleArt.assetCredits.localizedCaseInsensitiveContains("CC-BY"))
+        XCTAssertTrue(TitleArt.assetCredits.contains("Spriterrific"))
+        XCTAssertTrue(TitleArt.assetCredits.localizedCaseInsensitiveContains("Cinder"))
     }
     #endif
 }

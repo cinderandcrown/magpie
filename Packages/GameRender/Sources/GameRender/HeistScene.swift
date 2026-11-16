@@ -60,6 +60,10 @@ public final class HeistScene: SKScene {
     private var displayedFPS = 0
     private var hitStop: TimeInterval = 0
     private var cameraFocus = CGPoint.zero
+    /// Smoothed facing (−1…1) for the single camera look-ahead (ease ~0.4s on turn).
+    private var cameraFacing: CGFloat = 1
+    /// Smoke: after 04 is snapped, let Mask expire once before holding for 04b re-entry.
+    private var smokeSawMaskDropAfterFirst = false
     private var maskMusicOn = false
     /// MOP ids that already barked `mop_bot_alert` this approach.
     private var mopAlerted: Set<Int> = []
@@ -142,6 +146,10 @@ public final class HeistScene: SKScene {
         }
 
         ArtCatalog.warmAtlases()
+        // Pre-warm KO / Mask / dust so first hurt/Mask entry doesn't hitch ~170ms.
+        _ = ArtCatalog.texture(.raccoonMaskMode)
+        _ = ArtCatalog.texture(.raccoonBellyFlop)
+        _ = ArtCatalog.softCircleTexture()
         // Scene night only — no opaque full-map wash quads (they hid the neon city).
         skyFill.color = ArtCatalog.nightSky
         skyFill.colorBlendFactor = 1
@@ -159,10 +167,13 @@ public final class HeistScene: SKScene {
         buildParallax()
         buildTiles()
         buildMaskVignette()
+        ensureLandDustEmitter()
 
         bandit = ArtCatalog.makeBanditVisual()
         bandit.zPosition = 50
         world.addChild(bandit)
+        // Touch death + Mask sheets once so GPU upload isn't on the KO/Mask frame.
+        bandit.prewarmCombatTextures()
 
         // Real MOP / Shiny art always. Cap only on the huge Neon Docks prop count.
         let shinyCap = smokeEnabled ? sim.state.shinies.count : min(sim.state.shinies.count, 40)
@@ -293,29 +304,35 @@ public final class HeistScene: SKScene {
         rainLayer.addChild(rain)
     }
 
-    /// Wet-floor neon reflections under walkable tops (cyan/magenta strips + puddles).
+    /// Wet-floor neon reflections under walkable tops (soft cyan/magenta puddles, not solid bars).
     private func addWetFloorReflection(at pos: CGPoint, tile: CGFloat) {
-        let cyan = SKSpriteNode(color: ArtCatalog.neonCyan, size: CGSize(width: tile * 0.92, height: 3.5))
-        cyan.position = CGPoint(x: pos.x, y: pos.y + tile * 0.48)
-        cyan.alpha = 0.5
-        cyan.zPosition = 3.05
-        cyan.blendMode = .add
-        world.addChild(cyan)
-        let pink = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.88, height: 3.6))
-        pink.position = CGPoint(x: pos.x + tile * 0.05, y: pos.y + tile * 0.38)
-        pink.alpha = 0.85
-        pink.zPosition = 3.06
-        pink.blendMode = .add
-        world.addChild(pink)
-        // Soft puddle blob so magenta shows up in the play-band crop.
-        let puddle = SKShapeNode(ellipseOf: CGSize(width: tile * 0.95, height: tile * 0.28))
-        puddle.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.55)
-        puddle.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.4)
-        puddle.lineWidth = 0.8
-        puddle.glowWidth = 2.0
-        puddle.position = CGPoint(x: pos.x - tile * 0.08, y: pos.y + tile * 0.3)
+        let puddle = SKSpriteNode(texture: ArtCatalog.softCircleTexture(), size: CGSize(width: tile * 1.1, height: tile * 0.35))
+        puddle.name = "wetFloor"
+        puddle.position = CGPoint(x: pos.x, y: pos.y + tile * 0.42)
+        puddle.color = ArtCatalog.neonPink
+        puddle.colorBlendFactor = 1
+        puddle.alpha = 0.45
+        puddle.blendMode = .add
         puddle.zPosition = 3.04
         world.addChild(puddle)
+        let cyan = SKSpriteNode(texture: ArtCatalog.softCircleTexture(), size: CGSize(width: tile * 0.85, height: tile * 0.22))
+        cyan.name = "wetFloorCyan"
+        cyan.position = CGPoint(x: pos.x + tile * 0.12, y: pos.y + tile * 0.36)
+        cyan.color = ArtCatalog.neonCyan
+        cyan.colorBlendFactor = 1
+        cyan.alpha = 0.4
+        cyan.blendMode = .add
+        cyan.zPosition = 3.05
+        world.addChild(cyan)
+    }
+
+    /// World-space storefront sign crops (SPOTLESS / GLOW MART / …) so midrun stills show real neon.
+    private func placeWorldStorefrontSigns() {
+        let signs = ArtCatalog.worldStorefrontSigns(
+            mapWidth: CGFloat(sim.map.width) * CGFloat(tuning.tileSize),
+            tile: CGFloat(tuning.tileSize)
+        )
+        world.addChild(signs)
     }
 
     private func buildMaskVignette() {
@@ -386,8 +403,9 @@ public final class HeistScene: SKScene {
         }
         world.addChild(mapNode)
         tileMapNode = mapNode
+        placeWorldStorefrontSigns()
 
-        // Kenney CC0 crates/pipes as sparse decoration — never as collision face.
+        // Kenney CC0 crates/pipes as sparse decoration — never as collision face / under-ledge drips.
         let propTextures = ArtCatalog.sidePropTextures()
         var propI = 0
         for y in 0..<sim.map.height {
@@ -398,7 +416,7 @@ public final class HeistScene: SKScene {
                 let below = sim.map.tile(atX: x, y: y - 1)
                 let openBelow = !sim.map.isSolid(below) && below != .water
 
-                // Occasional crate / pipe on walkable tops (sparse — keep FPS headroom).
+                // Occasional crate / pipe on walkable tops only (never hanging under ledges).
                 if !propTextures.isEmpty, !openBelow, (x + y * 5) % 17 == 0 {
                     let tex = propTextures[propI % propTextures.count]
                     propI += 1
@@ -406,47 +424,41 @@ public final class HeistScene: SKScene {
                     n.position = CGPoint(x: pos.x, y: pos.y + tile * 0.55)
                     n.zPosition = 3.2
                     n.alpha = 0.92
+                    // Neutralize any baked green tint from Kenney sheets.
+                    n.color = SKColor(red: 0.75, green: 0.72, blue: 0.82, alpha: 1)
+                    n.colorBlendFactor = 0.35
                     world.addChild(n)
                 }
 
-                // Wet-floor reflections on solid tops (dense magenta puddles for the palette gate).
-                if !openBelow {
+                // Wet-floor reflections (sparse) under solid tops.
+                if !openBelow, (x + y * 3) % 3 == 0 {
                     addWetFloorReflection(at: pos, tile: tile)
                 }
 
-                // Magenta strip light under every floating ledge.
-                if openBelow {
-                    let strip = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.98, height: 4.5))
-                    strip.position = CGPoint(x: pos.x, y: pos.y - tile * 0.42)
-                    strip.alpha = 0.95
+                // Short neon strip lights (1–2 tiles) on every other floating ledge — soft glow, not full pink bars.
+                if openBelow, x % 2 == 0, (x / 2) % 2 == 0 {
+                    let stripW = tile * (1.4 + CGFloat(x % 3) * 0.3)
+                    let strip = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: stripW, height: 3))
+                    strip.name = "neonStrip"
+                    strip.position = CGPoint(x: pos.x + tile * 0.35, y: pos.y - tile * 0.4)
+                    strip.alpha = 0.9
                     strip.blendMode = .add
                     strip.zPosition = 3.1
                     world.addChild(strip)
-                    let stripGlow = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 1.35, height: 12))
-                    stripGlow.position = strip.position
-                    stripGlow.alpha = 0.5
-                    stripGlow.blendMode = .add
-                    stripGlow.zPosition = 3.05
-                    world.addChild(stripGlow)
+                    let glow = SKSpriteNode(texture: ArtCatalog.softCircleTexture(), size: CGSize(width: stripW * 1.6, height: 18))
+                    glow.name = "neonStripGlow"
+                    glow.position = strip.position
+                    glow.color = ArtCatalog.neonPink
+                    glow.colorBlendFactor = 1
+                    glow.alpha = 0.55
+                    glow.blendMode = .add
+                    glow.zPosition = 3.05
+                    world.addChild(glow)
+                    // Wet reflection puddle under the strip light.
+                    addWetFloorReflection(at: CGPoint(x: pos.x + tile * 0.35, y: pos.y - tile * 1.1), tile: tile)
                 }
 
-                // Wall-mounted magenta neon tubes (play-band coverage independent of camera).
-                if kind == .wall, x % 4 == 0, y % 2 == 1 {
-                    let tube = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: 4, height: tile * 0.85))
-                    tube.position = CGPoint(x: pos.x + tile * 0.35, y: pos.y)
-                    tube.alpha = 0.95
-                    tube.blendMode = .add
-                    tube.zPosition = 2.6
-                    world.addChild(tube)
-                    let tubeGlow = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: 14, height: tile * 1.05))
-                    tubeGlow.position = tube.position
-                    tubeGlow.alpha = 0.4
-                    tubeGlow.blendMode = .add
-                    tubeGlow.zPosition = 2.55
-                    world.addChild(tubeGlow)
-                }
-
-                // Supports under every floating ledge (scaffold / pipe), denser than before.
+                // Dark metal brackets under floating ledges (no green Kenney drips).
                 if openBelow, x % 2 == 0 {
                     var drop = 1
                     while y - drop >= 0 {
@@ -456,28 +468,17 @@ public final class HeistScene: SKScene {
                     }
                     guard drop >= 2 else { continue }
                     let span = CGFloat(drop) * tile
-                    if let girder = ArtCatalog.sidePropTexture(index: 24 + (x % 3)) {
-                        let n = SKSpriteNode(texture: girder, size: CGSize(width: tile * 0.28, height: span - 6))
-                        n.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
-                        n.zPosition = 1.2
-                        n.alpha = 0.7
-                        n.color = SKColor(red: 0.1, green: 0.09, blue: 0.18, alpha: 1)
-                        n.colorBlendFactor = 0.45
-                        world.addChild(n)
-                    } else {
-                        let pipe = SKShapeNode(rectOf: CGSize(width: tile * 0.14, height: span - 6), cornerRadius: 1)
-                        pipe.fillColor = SKColor(red: 0.12, green: 0.11, blue: 0.2, alpha: 0.85)
-                        pipe.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.25)
-                        pipe.lineWidth = 0.5
-                        pipe.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
-                        pipe.zPosition = 1.2
-                        world.addChild(pipe)
-                    }
-                    // Cross-brace near the ledge underside.
-                    let brace = SKShapeNode(rectOf: CGSize(width: tile * 0.7, height: 3), cornerRadius: 1)
-                    brace.fillColor = SKColor(red: 0.18, green: 0.16, blue: 0.28, alpha: 0.9)
-                    brace.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.35)
-                    brace.lineWidth = 0.6
+                    let pipe = SKShapeNode(rectOf: CGSize(width: tile * 0.12, height: span - 6), cornerRadius: 1)
+                    pipe.fillColor = SKColor(red: 0.14, green: 0.14, blue: 0.18, alpha: 0.9)
+                    pipe.strokeColor = SKColor(white: 0.25, alpha: 0.5)
+                    pipe.lineWidth = 0.5
+                    pipe.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
+                    pipe.zPosition = 1.2
+                    world.addChild(pipe)
+                    let brace = SKShapeNode(rectOf: CGSize(width: tile * 0.55, height: 2.5), cornerRadius: 1)
+                    brace.fillColor = SKColor(red: 0.16, green: 0.16, blue: 0.2, alpha: 0.95)
+                    brace.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.2)
+                    brace.lineWidth = 0.4
                     brace.position = CGPoint(x: pos.x, y: pos.y - tile * 0.2)
                     brace.zPosition = 1.25
                     world.addChild(brace)
@@ -541,7 +542,7 @@ public final class HeistScene: SKScene {
                     world.addChild(gem)
                 case .stash, .exit:
                     let door = SKShapeNode(rectOf: CGSize(width: tile * 1.2, height: tile * 1.6), cornerRadius: 4)
-                    door.fillColor = SKColor(red: 0.12, green: 0.4, blue: 0.28, alpha: 0.95)
+                    door.fillColor = SKColor(red: 0.1, green: 0.12, blue: 0.22, alpha: 0.95)
                     door.strokeColor = ArtCatalog.neonLime
                     door.lineWidth = 2
                     door.glowWidth = 1
@@ -681,9 +682,9 @@ public final class HeistScene: SKScene {
     private func setupTitle() {
         titleRoot.zPosition = 300
         overlay.addChild(titleRoot)
-        // Light wash — brighten the neon rooftop behind the logo (not a dim plate).
+        // Opaque title plate — hide the live level (no MOP/shiny peeking through).
         let bg = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
-        bg.fillColor = SKColor(red: 0.04, green: 0.02, blue: 0.12, alpha: 0.22)
+        bg.fillColor = SKColor(red: 0.04, green: 0.02, blue: 0.12, alpha: 0.94)
         bg.strokeColor = .clear
         bg.name = "titleWash"
         titleRoot.addChild(bg)
@@ -717,8 +718,8 @@ public final class HeistScene: SKScene {
 
         let play = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         play.name = "tapToStart"
-        play.text = "TAP TO START"
-        play.fontSize = 22
+        play.text = "PLAY"
+        play.fontSize = 28
         play.fontColor = .white
         titleRoot.addChild(play)
         play.run(SKAction.repeatForever(SKAction.sequence([
@@ -763,14 +764,6 @@ public final class HeistScene: SKScene {
         )
         muteBtn.position = CGPoint(x: 0, y: -210)
         titleRoot.addChild(muteBtn)
-
-        let credits = SKLabelNode(fontNamed: "AvenirNext-Medium")
-        credits.name = "titleCredits"
-        credits.text = TitleArt.assetCredits
-        credits.fontSize = 10
-        credits.fontColor = SKColor(white: 1, alpha: 0.55)
-        credits.verticalAlignmentMode = .center
-        titleRoot.addChild(credits)
 
         layoutTitleChrome()
     }
@@ -870,7 +863,6 @@ public final class HeistScene: SKScene {
         titleRoot.childNode(withName: "titleMap")?.position = CGPoint(x: -78, y: -150)
         titleRoot.childNode(withName: "titleDaily")?.position = CGPoint(x: 78, y: -150)
         titleRoot.childNode(withName: "titleMute")?.position = CGPoint(x: 0, y: -210)
-        titleRoot.childNode(withName: "titleCredits")?.position = CGPoint(x: 0, y: -hh + bottomSafe + 18)
 
         // Runtime + unit-testable gate: logo frame must sit inside safe area.
         let frame = logo.calculateAccumulatedFrame()
@@ -909,7 +901,7 @@ public final class HeistScene: SKScene {
         wash.name = "pauseWash"
         pauseRoot.addChild(wash)
 
-        let card = SKShapeNode(rectOf: CGSize(width: 272, height: 290), cornerRadius: 14)
+        let card = SKShapeNode(rectOf: CGSize(width: 288, height: 360), cornerRadius: 14)
         card.fillColor = SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 0.96)
         card.strokeColor = ArtCatalog.neonCyan
         card.lineWidth = 2.5
@@ -922,33 +914,48 @@ public final class HeistScene: SKScene {
         title.text = "PAUSED"
         title.fontSize = 26
         title.fontColor = ArtCatalog.neonCyan
-        title.position = CGPoint(x: 0, y: 108)
+        title.position = CGPoint(x: 0, y: 148)
         card.addChild(title)
 
         let resume = makeOutcomeButton(title: "RESUME", color: ArtCatalog.neonLime, name: "pauseResume", wide: true)
-        resume.position = CGPoint(x: 0, y: 48)
+        resume.position = CGPoint(x: 0, y: 92)
         card.addChild(resume)
         let restart = makeOutcomeButton(title: "RESTART", color: ArtCatalog.neonOrange, name: "pauseRestart", wide: true)
-        restart.position = CGPoint(x: 0, y: -12)
+        restart.position = CGPoint(x: 0, y: 38)
         card.addChild(restart)
+
+        // Music / SFX volume sliders
+        card.addChild(makePauseVolumeRow(
+            label: "MUSIC",
+            namePrefix: "pauseMusic",
+            y: -8,
+            value: JuiceSound.shared.musicVolume
+        ))
+        card.addChild(makePauseVolumeRow(
+            label: "SFX",
+            namePrefix: "pauseSfx",
+            y: -48,
+            value: JuiceSound.shared.sfxVolume
+        ))
+
         let mute = makeOutcomeButton(
             title: JuiceSound.shared.muted ? "UNMUTE" : "MUTE",
             color: ArtCatalog.neonPink,
             name: "pauseMute",
             wide: true
         )
-        mute.position = CGPoint(x: 0, y: -72)
+        mute.position = CGPoint(x: 0, y: -100)
         card.addChild(mute)
         let home = makeOutcomeButton(title: "HOME", color: ArtCatalog.neonPink, name: "pauseHome", wide: true)
-        home.position = CGPoint(x: 0, y: -132)
+        home.position = CGPoint(x: 0, y: -152)
         card.addChild(home)
 
         let note = SKLabelNode(fontNamed: "AvenirNext-Medium")
         note.name = "pauseVolumeNote"
-        note.text = JuiceSound.shared.muted ? "Audio muted" : "Music + SFX on"
-        note.fontSize = 11
-        note.fontColor = SKColor(white: 1, alpha: 0.65)
-        note.position = CGPoint(x: 0, y: -168)
+        note.text = JuiceSound.shared.muted ? "Audio muted" : TitleArt.assetCredits
+        note.fontSize = 10
+        note.fontColor = SKColor(white: 1, alpha: 0.55)
+        note.position = CGPoint(x: 0, y: -188)
         card.addChild(note)
 
         let count = SKLabelNode(fontNamed: "AvenirNext-Heavy")
@@ -962,6 +969,65 @@ public final class HeistScene: SKScene {
         pauseCountLabel = count
     }
 
+    private func makePauseVolumeRow(label: String, namePrefix: String, y: CGFloat, value: Float) -> SKNode {
+        let row = SKNode()
+        row.name = "\(namePrefix)Row"
+        row.position = CGPoint(x: 0, y: y)
+
+        let lab = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        lab.text = label
+        lab.fontSize = 11
+        lab.fontColor = ArtCatalog.neonCyan
+        lab.horizontalAlignmentMode = .left
+        lab.verticalAlignmentMode = .center
+        lab.position = CGPoint(x: -118, y: 0)
+        lab.name = "\(namePrefix)Label"
+        row.addChild(lab)
+
+        let track = SKShapeNode(rectOf: CGSize(width: 110, height: 6), cornerRadius: 3)
+        track.fillColor = SKColor(white: 0.2, alpha: 0.9)
+        track.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.4)
+        track.lineWidth = 1
+        track.position = CGPoint(x: 10, y: 0)
+        track.name = "\(namePrefix)Track"
+        row.addChild(track)
+
+        let fillW = CGFloat(max(0.05, min(1, value))) * 110
+        let fill = SKShapeNode(rectOf: CGSize(width: fillW, height: 6), cornerRadius: 3)
+        fill.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.85)
+        fill.strokeColor = .clear
+        fill.position = CGPoint(x: 10 - (110 - fillW) * 0.5, y: 0)
+        fill.name = "\(namePrefix)Fill"
+        row.addChild(fill)
+
+        let minus = makeFaceButton(title: "−", color: ArtCatalog.neonPink)
+        minus.name = "\(namePrefix)Minus"
+        minus.childNode(withName: "btnLabel")?.name = "\(namePrefix)Minus"
+        minus.setScale(0.55)
+        minus.position = CGPoint(x: -52, y: 0)
+        row.addChild(minus)
+
+        let plus = makeFaceButton(title: "+", color: ArtCatalog.neonLime)
+        plus.name = "\(namePrefix)Plus"
+        plus.childNode(withName: "btnLabel")?.name = "\(namePrefix)Plus"
+        plus.setScale(0.55)
+        plus.position = CGPoint(x: 78, y: 0)
+        row.addChild(plus)
+
+        return row
+    }
+
+    private func refreshPauseVolumeRows() {
+        guard let card = pauseRoot.childNode(withName: "pauseCard") else { return }
+        for (prefix, value) in [("pauseMusic", JuiceSound.shared.musicVolume), ("pauseSfx", JuiceSound.shared.sfxVolume)] {
+            guard let row = card.childNode(withName: "\(prefix)Row"),
+                  let fill = row.childNode(withName: "\(prefix)Fill") as? SKShapeNode else { continue }
+            let fillW = CGFloat(max(0.05, min(1, value))) * 110
+            fill.path = CGPath(roundedRect: CGRect(x: -fillW * 0.5, y: -3, width: fillW, height: 6), cornerWidth: 3, cornerHeight: 3, transform: nil)
+            fill.position = CGPoint(x: 10 - (110 - fillW) * 0.5, y: 0)
+        }
+    }
+
     private func refreshPauseMuteButton() {
         guard let card = pauseRoot.childNode(withName: "pauseCard") else { return }
         if let mute = card.childNode(withName: "pauseMute"),
@@ -969,8 +1035,9 @@ public final class HeistScene: SKScene {
             label.text = JuiceSound.shared.muted ? "UNMUTE" : "MUTE"
         }
         if let note = card.childNode(withName: "pauseVolumeNote") as? SKLabelNode {
-            note.text = JuiceSound.shared.muted ? "Audio muted" : "Music + SFX on"
+            note.text = JuiceSound.shared.muted ? "Audio muted" : TitleArt.assetCredits
         }
+        refreshPauseVolumeRows()
     }
 
     private func setPaused(_ on: Bool, system: Bool = false) {
@@ -1356,6 +1423,30 @@ public final class HeistScene: SKScene {
                     doRetry()
                     return
                 }
+                if hitNames.contains("pauseMusicMinus") {
+                    JuiceSound.shared.musicVolume = max(0, JuiceSound.shared.musicVolume - 0.1)
+                    refreshPauseVolumeRows()
+                    JuiceSound.shared.playUITap()
+                    return
+                }
+                if hitNames.contains("pauseMusicPlus") {
+                    JuiceSound.shared.musicVolume = min(1, JuiceSound.shared.musicVolume + 0.1)
+                    refreshPauseVolumeRows()
+                    JuiceSound.shared.playUITap()
+                    return
+                }
+                if hitNames.contains("pauseSfxMinus") {
+                    JuiceSound.shared.sfxVolume = max(0, JuiceSound.shared.sfxVolume - 0.1)
+                    refreshPauseVolumeRows()
+                    JuiceSound.shared.playUITap()
+                    return
+                }
+                if hitNames.contains("pauseSfxPlus") {
+                    JuiceSound.shared.sfxVolume = min(1, JuiceSound.shared.sfxVolume + 0.1)
+                    refreshPauseVolumeRows()
+                    JuiceSound.shared.playUITap()
+                    return
+                }
                 if hitNames.contains("pauseMute") {
                     JuiceSound.shared.toggleMute()
                     refreshPauseMuteButton()
@@ -1660,13 +1751,22 @@ public final class HeistScene: SKScene {
             if case .playing = sim.state.phase {
                 sim.step(input)
                 handle(sim.state.events)
-                // Hold Mask Mode open until the harness snaps 04 — screenshot I/O
+                // Hold Mask Mode open until the harness snaps 04 / 04b — screenshot I/O
                 // can take seconds of wall time while the sim keeps ticking.
-                if smokeEnabled,
-                   sim.state.bandit.maskMode,
-                   !SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
-                {
-                    sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
+                if smokeEnabled {
+                    let mask1Pending = !SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
+                    let mask2Pending = SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
+                        && !SmokeBrain.smokeFlagExists("smoke_mask2_ok.txt")
+                    if !sim.state.bandit.maskMode, !mask1Pending {
+                        smokeSawMaskDropAfterFirst = true
+                    }
+                    if sim.state.bandit.maskMode {
+                        let holdFirst = mask1Pending
+                        let holdSecond = mask2Pending && smokeSawMaskDropAfterFirst
+                        if holdFirst || holdSecond {
+                            sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
+                        }
+                    }
                 }
             }
             accumulator -= tuning.dt
@@ -1934,10 +2034,10 @@ public final class HeistScene: SKScene {
                 let stamp = SKLabelNode(fontNamed: "AvenirNext-Heavy")
                 stamp.name = "newBestStamp"
                 stamp.text = "NEW BEST"
-                stamp.fontSize = 16
+                stamp.fontSize = 14
                 stamp.fontColor = ArtCatalog.neonOrange
-                // Below the star row so stars stay readable.
-                stamp.position = CGPoint(x: 36, y: 52)
+                // Clear of All Shinies label + gear count — slam beside the count, angled.
+                stamp.position = CGPoint(x: 78, y: 18)
                 stamp.zRotation = -0.14
                 stamp.alpha = 0
                 stamp.setScale(1.4)
@@ -2086,21 +2186,23 @@ public final class HeistScene: SKScene {
             }
         }
 
-        // Keep the hero at ~30–38% of screen width with ~35% look-ahead (not pinned to the left cut-off).
-        let leadTiles = max(tuning.cameraLeadTiles, 2.6)
-        let lead = CGFloat(b.facing * leadTiles * tuning.tileSize)
+        // Single look-ahead: facing × 0.18×viewW → hero at ~32% (right) / ~68% (left).
+        // Do NOT also add cameraLeadTiles — that stacked and pinned him off the left edge.
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
         let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
         let viewW = size.width / Self.worldZoom
         let viewH = size.height / Self.worldZoom
-        let heroBias = viewW * (b.facing >= 0 ? 0.18 : -0.12)
+        let wantFace: CGFloat = b.facing >= 0 ? 1 : -1
+        let faceBlend = min(1, CGFloat(dt) / 0.4)
+        cameraFacing += (wantFace - cameraFacing) * faceBlend
+        let lead = cameraFacing * 0.18 * viewW
         var target = CGPoint(
-            x: CGFloat(b.position.x) + lead + heroBias,
+            x: CGFloat(b.position.x) + lead,
             y: CGFloat(b.position.y) + 56
         )
-        // Allow the camera to leave the left clamp near spawn so Mask/stomp stay framed.
-        let minX = viewW * 0.28
-        let maxX = max(minX, mapW - viewW * 0.35)
+        // Soft left clamp so spawn/Mask still frames at ~32% (not pinned off-screen).
+        let minX = viewW * 0.18
+        let maxX = max(minX, mapW - viewW * 0.18)
         let minY = viewH * 0.38
         let maxY = max(minY, mapH - viewH * 0.25)
         target.x = min(max(target.x, minX), maxX)
@@ -2110,6 +2212,15 @@ public final class HeistScene: SKScene {
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
+        // Hero screen-x fraction (0 = left edge, 1 = right) for the smoke framing gate.
+        // Sample while facing right — gate expects ~30–35% (20–45% band).
+        let banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
+        let heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
+        if case .playing = sim.state.phase, !runPaused, resumeCountdown <= 0, cameraFacing > 0.5 {
+            smokeStatus.heroX = heroFrac
+            smokeStatus.heroXMin = min(smokeStatus.heroXMin, heroFrac)
+            smokeStatus.heroXMax = max(smokeStatus.heroXMax, heroFrac)
+        }
         // Slow parallax — keep plates covering the view (tiled in buildParallax).
         parallaxFar.position = CGPoint(x: cameraFocus.x * 0.88, y: cameraFocus.y * 0.96)
         parallaxMid.position = CGPoint(x: cameraFocus.x * 0.72, y: cameraFocus.y * 0.92)

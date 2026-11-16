@@ -139,6 +139,7 @@ launch_smoke() {
       "$docs/smoke_proceed.txt" \
       "$docs/smoke_midrun_ok.txt" \
       "$docs/smoke_mask_ok.txt" \
+      "$docs/smoke_mask2_ok.txt" \
       "$docs/smoke_death_ok.txt" \
       "$docs/smoke_show_pause.txt" \
       "$docs/smoke_pause_ok.txt" \
@@ -262,6 +263,12 @@ if [[ "$MASK_SHOT_OK" -ne 1 ]]; then
   exit 1
 fi
 write_flag "smoke_mask_ok.txt"
+
+# 04b — Second Mask entry (re-entry sting + visuals after first Mask ends)
+wait_status "mask-off" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=0" in s and "phase=playing" in s) else 1)' 90 || true
+wait_status "mask-2" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=1" in s and "phase=playing" in s) else 1)' 120
+shot "$OUT_DIR/04b-mask-mode-2.png"
+write_flag "smoke_mask2_ok.txt"
 
 # 02b — Pause menu (after Mask shot so the LED beat is not racing the timer)
 write_flag "smoke_show_pause.txt"
@@ -774,29 +781,66 @@ if (( MEDALS < 1 || MAP < 1 || DAILY < 1 || COMBO < 1 )); then
 fi
 
 # Land SFX must only fire on air→ground (not every grounded frame). Fail if >3/s over live play.
-python3 - "$OUT_DIR/smoke_audio_events.txt" "$OUT_DIR/smoke_timer_log.txt" <<'PY'
+# Use audio-log live-play span (not wall timer which includes menus / holds).
+python3 - "$OUT_DIR/smoke_audio_events.txt" <<'PY'
 import sys
-events_path, timer_path = sys.argv[1], sys.argv[2]
-lands = 0
+events_path = sys.argv[1]
+lands = []
+t_min = None
+t_max = None
 with open(events_path, encoding="utf-8", errors="replace") as f:
     for line in f:
-        if "sfx land" in line.lower():
-            lands += 1
-play_s = 1.0
-try:
-    vals = [float(x.strip()) for x in open(timer_path, encoding="utf-8") if x.strip()]
-    if vals:
-        play_s = max(1.0, vals[-1])
-except OSError:
-    play_s = 60.0
-rate = lands / play_s
-print(f"land_sfx count={lands} play_s={play_s:.1f} rate={rate:.2f}/s")
+        parts = line.strip().split()
+        if len(parts) < 2:
+            continue
+        try:
+            t = float(parts[0])
+        except ValueError:
+            continue
+        t_min = t if t_min is None else min(t_min, t)
+        t_max = t if t_max is None else max(t_max, t)
+        if "sfx" in parts and "land" in line.lower():
+            lands.append(t)
+play_s = max(1.0, (t_max - t_min) if t_min is not None and t_max is not None else 60.0)
+rate = len(lands) / play_s
+print(f"land_sfx count={len(lands)} play_s={play_s:.1f} rate={rate:.2f}/s")
 if rate > 3.0:
     raise SystemExit(f"FAIL: land SFX {rate:.2f}/s > 3/s (land-every-frame regression?)")
+# Double-land detector: two lands < 100 ms apart fail (pounce whoosh→land→land).
+dupes = 0
+for i in range(1, len(lands)):
+    if lands[i] - lands[i - 1] < 0.100:
+        dupes += 1
+print(f"land_sfx doubles_lt_100ms={dupes}")
+if dupes > 0:
+    raise SystemExit(f"FAIL: {dupes} land SFX pairs < 100 ms apart (one airborne beat ≠ one landing)")
 print("OK land SFX rate")
 PY
 
+# Hero framing: while facing right, screen-x must stay in 20–45% during live play.
+HERO_STATUS="$(read_status)"
+STATUS_LINE="$HERO_STATUS" python3 - <<'PY'
+import os, re, sys
+line = os.environ.get("STATUS_LINE", "")
+mn = re.search(r"heroXMin=([0-9.]+)", line)
+mx = re.search(r"heroXMax=([0-9.]+)", line)
+hx = re.search(r"heroX=([0-9.]+)", line)
+if not mn or not mx:
+    raise SystemExit(f"FAIL: smoke_status missing heroXMin/Max (line={line[:160]!r})")
+lo, hi = float(mn.group(1)), float(mx.group(1))
+cur = float(hx.group(1)) if hx else lo
+print(f"heroX={cur:.3f} heroXMin={lo:.3f} heroXMax={hi:.3f}")
+if lo > hi or lo >= 1.0:
+    raise SystemExit(f"FAIL: heroX never sampled during play (min={lo:.3f} max={hi:.3f})")
+if lo < 0.20 or hi > 0.45:
+    raise SystemExit(
+        f"FAIL: hero framing out of 20–45% band (min={lo:.3f} max={hi:.3f})"
+    )
+print("OK hero framing")
+PY
+
 # Daily Heist board must actually render (lime neon border in the centre), not a bare level shot.
+# Require lime ≥ 2.5% with NO cyan fallback (bare-level shots pass on cyan alone).
 "$PALETTE_PY" - "$OUT_DIR/08-daily-heist.png" <<'PY'
 import sys
 from PIL import Image
@@ -808,14 +852,29 @@ px = list(im.crop(box).getdata())
 n = max(1, len(px))
 # Lime border / title: high G, moderate R, low-ish B relative to G.
 lime = sum(1 for r, g, b in px if g > 160 and g > r + 20 and g > b + 20)
-# Also accept cyan accents on the board.
-cyan = sum(1 for r, g, b in px if b > 150 and g > 120 and b > r + 20)
-print(f"daily-board lime={lime/n:.3%} cyan={cyan/n:.3%}")
-if lime / n < 0.0015 and cyan / n < 0.004:
+print(f"daily-board lime={lime/n:.3%}")
+if lime / n < 0.025:
     raise SystemExit(
-        "FAIL: 08-daily-heist missing Daily Heist board chrome (map↔daily flip?)"
+        f"FAIL: 08-daily-heist lime={lime/n:.3%} < 2.5% (map↔daily flip / bare level?)"
     )
 print("OK daily heist board visible")
+PY
+
+# Storefront neon must show in midrun (magenta from signs/strips, not grey alley).
+"$PALETTE_PY" - "$OUT_DIR/02-midrun.png" <<'PY'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB")
+w, h = im.size
+# Upper play band where world storefronts hang.
+box = (int(w * 0.08), int(h * 0.12), int(w * 0.92), int(h * 0.48))
+px = list(im.crop(box).getdata())
+n = max(1, len(px))
+mag = sum(1 for r, g, b in px if r > 160 and b > 90 and r > g + 25)
+print(f"storefront-band magenta={mag/n:.3%}")
+if mag / n < 0.004:
+    raise SystemExit(f"FAIL: midrun storefront band magenta={mag/n:.3%} < 0.4% (signs missing?)")
+print("OK storefront neon visible")
 PY
 
 # 04 must be Mask Mode gameplay, not the death/results card — assert it differs from 05.
