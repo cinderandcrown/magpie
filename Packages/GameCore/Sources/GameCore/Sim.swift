@@ -5,6 +5,7 @@ import Foundation
 public struct SimEvent: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case jump, land, pounce, flop, stomp, shiny, bank, maskOn, hurt, win, fail(FailReason), checkpoint, dust, shake
+        case crewFreed(crewID: String)
     }
     public var kind: Kind
     public var position: Vec2
@@ -17,6 +18,7 @@ public struct SimState: Equatable, Sendable {
     public var shinies: [ShinyPickup]
     public var mops: [MopEnemy]
     public var checkpoints: [Checkpoint]
+    public var crewCages: [CrewCage]
     public var spawn: Vec2
     public var phase: RunPhase
     public var controlVariant: ControlVariant
@@ -71,6 +73,16 @@ public struct Sim: Equatable, Sendable {
         for (i, c) in map.findAll(.checkpoint).enumerated() {
             cps.append(Checkpoint(id: i, position: map.worldCenter(ofX: c.0, y: c.1, tileSize: tile), activated: false))
         }
+        var cages: [CrewCage] = []
+        let crewIDs = ["scrapz", "glitch", "fizz", "pip"]
+        for (i, c) in map.findAll(.crewCage).enumerated() {
+            cages.append(CrewCage(
+                id: i,
+                position: map.worldCenter(ofX: c.0, y: c.1, tileSize: tile),
+                freed: false,
+                crewID: crewIDs[i % crewIDs.count]
+            ))
+        }
         var mops: [MopEnemy] = []
         var mopID = 0
         for (i, c) in map.findAll(.mopSpawn).enumerated() {
@@ -94,6 +106,7 @@ public struct Sim: Equatable, Sendable {
             shinies: shinies,
             mops: mops,
             checkpoints: cps,
+            crewCages: cages,
             spawn: start,
             phase: .title,
             controlVariant: variant,
@@ -137,10 +150,23 @@ public struct Sim: Equatable, Sendable {
             b.invuln = max(b.invuln, b.onGround ? 0.2 : 0.15)
         }
         if b.landCooldown > 0 { b.landCooldown = max(0, b.landCooldown - dt) }
+        if b.dropThrough > 0 { b.dropThrough = max(0, b.dropThrough - dt) }
         if b.animHold > 0 {
             b.animHold = max(0, b.animHold - dt)
             if b.animHold <= 0, b.anim == .hurt || b.anim == .pickUp {
                 b.anim = .idle
+            }
+        }
+
+        // Drop through one-ways: hold down on a one-way deck.
+        if b.onGround, input.moveY < -0.45 {
+            let tile = tuning.tileSize
+            let feet = b.position.y - halfH - 1
+            let tx = Int(floor(b.position.x / tile))
+            let ty = Int(floor(feet / tile))
+            if map.tile(atX: tx, y: ty) == .oneWay {
+                b.dropThrough = 0.22
+                b.onGround = false
             }
         }
 
@@ -162,6 +188,7 @@ public struct Sim: Equatable, Sendable {
         collide(bandit: &b)
         updateAnim(bandit: &b)
         collectShinies(bandit: &b)
+        collectCrew(bandit: &b)
         updateCheckpoints(bandit: &b)
         bankAndExit(bandit: &b)
         updateMops(bandit: &b, dt: dt, stompFalling: stompFalling, jumpHeld: input.jumpHeld)
@@ -335,11 +362,24 @@ public struct Sim: Equatable, Sendable {
         bandit.onWallLeft = false
         bandit.onWallRight = false
 
-        // Sample corners + mid edges
+        // Full solids block sides / head. One-ways only block feet when falling (and not dropping).
         func solidAt(_ wx: Double, _ wy: Double) -> Bool {
             let tx = Int(floor(wx / tile))
             let ty = Int(floor(wy / tile))
             return map.isSolid(map.tile(atX: tx, y: ty))
+        }
+        func landableAt(_ wx: Double, _ wy: Double) -> Bool {
+            let tx = Int(floor(wx / tile))
+            let ty = Int(floor(wy / tile))
+            let kind = map.tile(atX: tx, y: ty)
+            if map.isSolid(kind) { return true }
+            if kind == .oneWay {
+                if bandit.dropThrough > 0 { return false }
+                // Only when approaching from above the platform top.
+                let top = Double(ty + 1) * tile
+                return bandit.velocity.y <= 0 && (bandit.position.y - halfH) <= top + 2
+            }
+            return false
         }
 
         // Horizontal
@@ -365,15 +405,15 @@ public struct Sim: Equatable, Sendable {
         let corner = tuning.feel.cornerCorrectPx
         if bandit.velocity.y <= 0 {
             let feet = bandit.position.y - halfH
-            let footL = solidAt(bandit.position.x - halfW * 0.6, feet)
-            let footR = solidAt(bandit.position.x + halfW * 0.6, feet)
+            let footL = landableAt(bandit.position.x - halfW * 0.6, feet)
+            let footR = landableAt(bandit.position.x + halfW * 0.6, feet)
             if footL || footR {
                 // Near-miss landing: only one foot catches a ledge — nudge onto the solid.
                 if footL != footR, corner > 0 {
                     let dir: Double = footR ? 1 : -1
                     for step in stride(from: 1.0, through: corner, by: 1.0) {
                         let nx = bandit.position.x + dir * step
-                        if solidAt(nx - halfW * 0.6, feet), solidAt(nx + halfW * 0.6, feet) {
+                        if landableAt(nx - halfW * 0.6, feet), landableAt(nx + halfW * 0.6, feet) {
                             bandit.position.x = nx
                             break
                         }
@@ -479,6 +519,21 @@ public struct Sim: Equatable, Sendable {
                 bandit.anim = .pickUp
                 bandit.animHold = 0.35
                 state.events.append(SimEvent(kind: .shiny, position: state.shinies[i].position))
+            }
+        }
+    }
+
+    private mutating func collectCrew(bandit: inout BanditState) {
+        let r = tuning.tileSize * 0.85
+        for i in state.crewCages.indices where !state.crewCages[i].freed {
+            if state.crewCages[i].position.distance(to: bandit.position) <= r {
+                state.crewCages[i].freed = true
+                bandit.anim = .pickUp
+                bandit.animHold = 0.55
+                state.events.append(SimEvent(
+                    kind: .crewFreed(crewID: state.crewCages[i].crewID),
+                    position: state.crewCages[i].position
+                ))
             }
         }
     }

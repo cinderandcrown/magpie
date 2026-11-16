@@ -81,6 +81,19 @@ public final class HeistScene: SKScene {
     private var maxFrameMs: Double = 0
     /// Skip one freeze sample after pause/resume so the gap does not look like a hitch.
     private var skipFreezeSample = false
+    /// One title→play transition frame may be up to this many ms without failing the freeze gate.
+    private var transitionBudgetMs: Double = 0
+    private let titlePlayTransitionBudgetMs: Double = 250
+    private var moveY: Double = 0
+    private var story = StoryCatalog.load()
+    private var introRoot = SKNode()
+    private var introPanelIndex = 0
+    private var showingIntro = false
+    private var districtCardRoot = SKNode()
+    private var showingDistrictCard = false
+    private var crewNodes: [Int: SKNode] = [:]
+    private var pendingDistrict: DistrictID = .neonDocks
+    private var mopChatterAcc: TimeInterval = 0
     private var statusAcc: TimeInterval = 0
     /// Shiny nodes mid collect-anim — sync must not hard-hide them.
     private var shinyCollecting: Set<Int> = []
@@ -150,6 +163,8 @@ public final class HeistScene: SKScene {
         _ = ArtCatalog.texture(.raccoonMaskMode)
         _ = ArtCatalog.texture(.raccoonBellyFlop)
         _ = ArtCatalog.softCircleTexture()
+        // Preload gameplay textures while title is up so beginPlay stays within the 250ms budget.
+        ArtCatalog.preloadGameplayTextures()
         // Scene night only — no opaque full-map wash quads (they hid the neon city).
         skyFill.color = ArtCatalog.nightSky
         skyFill.colorBlendFactor = 1
@@ -192,6 +207,13 @@ public final class HeistScene: SKScene {
             world.addChild(n)
             mopNodes[m.id] = n
         }
+        for c in sim.state.crewCages {
+            let n = makeCrewCageNode(crewID: c.crewID)
+            n.position = cg(c.position)
+            n.zPosition = 28
+            world.addChild(n)
+            crewNodes[c.id] = n
+        }
 
         addChild(hud)
         hud.addChild(playHUD)
@@ -199,6 +221,7 @@ public final class HeistScene: SKScene {
         setupControls()
         setupHUD()
         setupTitle()
+        setupStoryOverlays()
         setupOutcome()
         setupPauseMenu()
         setupRetention()
@@ -555,6 +578,20 @@ public final class HeistScene: SKScene {
                     t.fontColor = ArtCatalog.neonLime
                     t.verticalAlignmentMode = .center
                     door.addChild(t)
+                case .oneWay:
+                    let plank = SKShapeNode(rectOf: CGSize(width: tile * 0.98, height: tile * 0.18), cornerRadius: 2)
+                    plank.fillColor = SKColor(red: 0.18, green: 0.22, blue: 0.32, alpha: 0.95)
+                    plank.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.7)
+                    plank.lineWidth = 1
+                    plank.position = CGPoint(x: pos.x, y: pos.y + tile * 0.32)
+                    plank.zPosition = 4.5
+                    world.addChild(plank)
+                    let bolts = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.55), size: CGSize(width: tile * 0.9, height: 2))
+                    bolts.position = plank.position
+                    bolts.zPosition = 4.6
+                    world.addChild(bolts)
+                case .crewCage:
+                    break // live node from crewNodes
                 default:
                     break
                 }
@@ -1084,7 +1121,7 @@ public final class HeistScene: SKScene {
         pauseRoot.addChild(wash)
 
         // Tall enough for RESUME / RESTART / volume rows / MUTE / HOME + credit note + padding.
-        let card = SKShapeNode(rectOf: CGSize(width: 300, height: 460), cornerRadius: 14)
+        let card = SKShapeNode(rectOf: CGSize(width: 300, height: 520), cornerRadius: 14)
         card.fillColor = SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 0.96)
         card.strokeColor = ArtCatalog.neonCyan
         card.lineWidth = 2.5
@@ -1133,8 +1170,11 @@ public final class HeistScene: SKScene {
         )
         mute.position = CGPoint(x: 0, y: -78)
         card.addChild(mute)
+        let storyBtn = makeOutcomeButton(title: "STORY", color: ArtCatalog.neonCyan, name: "pauseStory", wide: true)
+        storyBtn.position = CGPoint(x: 0, y: -134)
+        card.addChild(storyBtn)
         let home = makeOutcomeButton(title: "HOME", color: ArtCatalog.neonPink, name: "pauseHome", wide: true)
-        home.position = CGPoint(x: 0, y: -134)
+        home.position = CGPoint(x: 0, y: -190)
         card.addChild(home)
 
         let note = SKLabelNode(fontNamed: "AvenirNext-Medium")
@@ -1142,7 +1182,7 @@ public final class HeistScene: SKScene {
         note.text = JuiceSound.shared.muted ? "Audio muted" : TitleArt.assetCredits
         note.fontSize = 10
         note.fontColor = SKColor(white: 1, alpha: 0.55)
-        note.position = CGPoint(x: 0, y: -188)
+        note.position = CGPoint(x: 0, y: -236)
         card.addChild(note)
 
         let count = SKLabelNode(fontNamed: "AvenirNext-Heavy")
@@ -1296,7 +1336,7 @@ public final class HeistScene: SKScene {
         wash.name = "outcomeWash"
         outcomeRoot.addChild(wash)
 
-        let card = SKShapeNode(rectOf: CGSize(width: 292, height: 318), cornerRadius: 14)
+        let card = SKShapeNode(rectOf: CGSize(width: 292, height: 340), cornerRadius: 14)
         card.fillColor = SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 0.96)
         card.strokeColor = ArtCatalog.neonCyan
         card.lineWidth = 2.5
@@ -1353,8 +1393,20 @@ public final class HeistScene: SKScene {
         meta.name = "outcomeMeta"
         meta.fontSize = 15
         meta.fontColor = SKColor(white: 0.92, alpha: 1)
-        meta.position = CGPoint(x: 0, y: -18)
+        meta.position = CGPoint(x: 0, y: -8)
         card.addChild(meta)
+
+        let pa = SKLabelNode(fontNamed: "AvenirNext-Medium")
+        pa.name = "outcomePA"
+        pa.fontSize = 11
+        pa.fontColor = ArtCatalog.neonPink
+        pa.preferredMaxLayoutWidth = 260
+        pa.numberOfLines = 2
+        pa.verticalAlignmentMode = .center
+        pa.horizontalAlignmentMode = .center
+        pa.position = CGPoint(x: 0, y: -36)
+        pa.isHidden = true
+        card.addChild(pa)
 
         // Keep legacy name for count-up path compatibility.
         let stats = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
@@ -1363,14 +1415,14 @@ public final class HeistScene: SKScene {
         card.addChild(stats)
 
         let primary = makeOutcomeButton(title: "RETRY", color: ArtCatalog.neonLime, name: "retryBtn", wide: true)
-        primary.position = CGPoint(x: 0, y: -52)
+        primary.position = CGPoint(x: 0, y: -68)
         card.addChild(primary)
         let next = makeOutcomeButton(title: "NEXT", color: ArtCatalog.neonLime, name: "nextBtn", wide: true)
-        next.position = CGPoint(x: 0, y: -52)
+        next.position = CGPoint(x: 0, y: -68)
         next.isHidden = true
         card.addChild(next)
         let home = makeOutcomeButton(title: "HOME", color: ArtCatalog.neonPink, name: "homeBtn", wide: false)
-        home.position = CGPoint(x: 0, y: -118)
+        home.position = CGPoint(x: 0, y: -132)
         card.addChild(home)
     }
 
@@ -1511,6 +1563,151 @@ public final class HeistScene: SKScene {
 
     private func cg(_ v: Vec2) -> CGPoint { CGPoint(x: v.x, y: v.y) }
 
+
+    private func setupStoryOverlays() {
+        introRoot.zPosition = 360
+        introRoot.isHidden = true
+        introRoot.name = "introRoot"
+        overlay.addChild(introRoot)
+        districtCardRoot.zPosition = 350
+        districtCardRoot.isHidden = true
+        districtCardRoot.name = "districtCardRoot"
+        overlay.addChild(districtCardRoot)
+
+        // First launch: comic intro before title chrome takes taps.
+        if !smokeEnabled, !progressStore.load().sawIntro {
+            presentIntro(fromScratch: true)
+        }
+    }
+
+    private func makeCrewCageNode(crewID: String) -> SKNode {
+        let root = SKNode()
+        root.name = "crewCage_\(crewID)"
+        let tile = CGFloat(tuning.tileSize)
+        let bars = SKShapeNode(rectOf: CGSize(width: tile * 0.95, height: tile * 1.2), cornerRadius: 4)
+        bars.fillColor = SKColor(red: 0.12, green: 0.14, blue: 0.2, alpha: 0.85)
+        bars.strokeColor = ArtCatalog.neonOrange
+        bars.lineWidth = 2
+        root.addChild(bars)
+        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: tile * 0.7, height: tile * 0.7))
+        mascot.setScale(0.7)
+        mascot.position = CGPoint(x: 0, y: -4)
+        root.addChild(mascot)
+        let tag = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        tag.text = story.crew(id: crewID)?.name ?? "CREW"
+        tag.fontSize = 8
+        tag.fontColor = ArtCatalog.neonLime
+        tag.position = CGPoint(x: 0, y: tile * 0.55)
+        root.addChild(tag)
+        return root
+    }
+
+    private func presentIntro(fromScratch: Bool) {
+        if fromScratch { introPanelIndex = 0 }
+        showingIntro = true
+        introRoot.removeAllChildren()
+        introRoot.isHidden = false
+        titleRoot.isHidden = true
+        let comic = StoryChrome.makeIntroComic(size: size, story: story, panelIndex: introPanelIndex)
+        introRoot.addChild(comic)
+        if smokeEnabled {
+            smokeStatus.phase = "intro"
+            smokeStatus.write()
+        }
+    }
+
+    private func advanceIntro() {
+        introPanelIndex += 1
+        if introPanelIndex >= story.introPanels.count {
+            dismissIntro()
+            return
+        }
+        presentIntro(fromScratch: false)
+    }
+
+    private func dismissIntro() {
+        showingIntro = false
+        introRoot.isHidden = true
+        introRoot.removeAllChildren()
+        progressStore.markIntroSeen()
+        showTitleScreen()
+        if smokeEnabled {
+            smokeStatus.phase = "title"
+            smokeStatus.boot = "ready"
+            smokeStatus.write()
+        }
+    }
+
+    private func presentDistrictCardThenPlay() {
+        showingDistrictCard = true
+        titleRoot.isHidden = true
+        districtCardRoot.removeAllChildren()
+        districtCardRoot.isHidden = false
+        let card = StoryChrome.makeDistrictCard(size: size, district: pendingDistrict, story: story)
+        districtCardRoot.addChild(card)
+        // Auto-advance after a short beat so smoke / impatient taps still flow.
+        districtCardRoot.removeAction(forKey: "districtAuto")
+        districtCardRoot.run(SKAction.sequence([
+            SKAction.wait(forDuration: smokeEnabled ? 0.35 : 1.4),
+            SKAction.run { [weak self] in self?.finishDistrictCardAndPlay() },
+        ]), withKey: "districtAuto")
+    }
+
+    private func finishDistrictCardAndPlay() {
+        guard showingDistrictCard else { return }
+        showingDistrictCard = false
+        districtCardRoot.removeAction(forKey: "districtAuto")
+        districtCardRoot.isHidden = true
+        districtCardRoot.removeAllChildren()
+        beginPlay()
+    }
+
+    private func reloadDistrictMap(_ id: DistrictID) {
+        do {
+            let map = try DistrictLevels.load(id)
+            sim = Sim(map: map, tuning: tuning, seed: smokeEnabled ? 7 : 11)
+            // Soft reload: respawn pickups/enemies/crew for the new district layout.
+            shinyNodes.values.forEach { $0.removeFromParent() }
+            shinyNodes.removeAll()
+            mopNodes.values.forEach { $0.removeFromParent() }
+            mopNodes.removeAll()
+            crewNodes.values.forEach { $0.removeFromParent() }
+            crewNodes.removeAll()
+            for s in sim.state.shinies.prefix(smokeEnabled ? sim.state.shinies.count : min(sim.state.shinies.count, 40)) {
+                let n = ArtCatalog.makeShinyNode()
+                n.position = cg(s.position)
+                n.zPosition = 20
+                world.addChild(n)
+                shinyNodes[s.id] = n
+            }
+            for m in sim.state.mops.prefix(smokeEnabled ? sim.state.mops.count : min(sim.state.mops.count, 24)) {
+                let n = ArtCatalog.makeMopNode()
+                n.position = cg(m.position)
+                n.zPosition = 30
+                world.addChild(n)
+                mopNodes[m.id] = n
+            }
+            for c in sim.state.crewCages {
+                let n = makeCrewCageNode(crewID: c.crewID)
+                n.position = cg(c.position)
+                n.zPosition = 28
+                world.addChild(n)
+                crewNodes[c.id] = n
+            }
+        } catch {
+            // Keep current map on load failure.
+        }
+    }
+
+    private func requestBeginPlay() {
+        // Smoke skips the district card so title→play timing stays in the freeze budget.
+        if smokeEnabled {
+            beginPlay()
+            return
+        }
+        presentDistrictCardThenPlay()
+    }
+
     private func showTitleScreen() {
         titleRoot.isHidden = false
         if let rain = titleRoot.childNode(withName: "//titleRain") as? SKEmitterNode {
@@ -1537,8 +1734,9 @@ public final class HeistScene: SKScene {
         mopAlerted.removeAll()
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
-        // Title → play coincides with smoke recordVideo warm-up; skip that I/O gap (same as pause).
-        skipFreezeSample = true
+        // Keep the freeze sample — allow one ≤250ms title→play transition frame (preload should
+        // keep real devices under that; simctl recordVideo may still brush the budget).
+        transitionBudgetMs = titlePlayTransitionBudgetMs
         titleRoot.isHidden = true
         // Stop title rain so hidden emitters do not keep burning GPU during play.
         if let rain = titleRoot.childNode(withName: "//titleRain") as? SKEmitterNode {
@@ -1655,15 +1853,41 @@ public final class HeistScene: SKScene {
                     JuiceSound.shared.playUITap()
                     hideRetention()
                     progressStore.recordDailyClear(dayKey: ProgressStore.dayKey())
-                    beginPlay()
+                    requestBeginPlay()
                     return
                 }
-                if hitNames.contains("district_neon_docks") || hitNames.contains("districtLabel") {
+                for d in DistrictID.allCases {
+                    if hitNames.contains("district_\(d.rawValue)") {
+                        JuiceSound.shared.playUITap()
+                        hideRetention()
+                        pendingDistrict = d
+                        reloadDistrictMap(d)
+                        requestBeginPlay()
+                        return
+                    }
+                }
+                if hitNames.contains("districtLabel") {
                     JuiceSound.shared.playUITap()
                     hideRetention()
-                    beginPlay()
+                    requestBeginPlay()
                     return
                 }
+                return
+            }
+            if showingIntro {
+                let hitNames = Set(nodes(at: touch.location(in: self)).compactMap(\.name))
+                if hitNames.contains("introSkip") {
+                    JuiceSound.shared.playUITap()
+                    dismissIntro()
+                    return
+                }
+                JuiceSound.shared.playUITap()
+                advanceIntro()
+                return
+            }
+            if showingDistrictCard {
+                JuiceSound.shared.playUITap()
+                finishDistrictCardAndPlay()
                 return
             }
             if case .title = sim.state.phase {
@@ -1686,7 +1910,7 @@ public final class HeistScene: SKScene {
                     showDailyHeist()
                     return
                 }
-                beginPlay()
+                requestBeginPlay()
                 return
             }
             if !pauseRoot.isHidden, let card = pauseRoot.childNode(withName: "pauseCard") {
@@ -1730,6 +1954,13 @@ public final class HeistScene: SKScene {
                     JuiceSound.shared.toggleMute()
                     refreshPauseMuteButton()
                     if !JuiceSound.shared.muted { JuiceSound.shared.playUITap() }
+                    return
+                }
+                if hitNames.contains("pauseStory") {
+                    JuiceSound.shared.playUITap()
+                    setPaused(false)
+                    pauseRoot.isHidden = true
+                    presentIntro(fromScratch: true)
                     return
                 }
                 if hitNames.contains("pauseHome") {
@@ -1819,6 +2050,7 @@ public final class HeistScene: SKScene {
             if touch === stickTouch {
                 stickTouch = nil
                 moveX = 0
+                moveY = 0
                 stickKnob.position = stickBase.position
                 stickBase.alpha = 0.22
                 stickKnob.alpha = 0.22
@@ -1846,14 +2078,22 @@ public final class HeistScene: SKScene {
             dy = dy / len * maxR
         }
         stickKnob.position = CGPoint(x: stickOrigin.x + dx, y: stickOrigin.y + dy)
-        // Radial dead zone + analog ramp on the X axis (touch-anywhere-left stick).
+        // Radial dead zone + analog ramp on X/Y (down holds drop-through on one-ways).
         let nx = Double(dx / maxR)
+        let ny = Double(dy / maxR)
         let ax = abs(nx)
         if ax <= dead {
             moveX = 0
         } else {
             let remapped = (ax - dead) / max(0.05, 1 - dead)
             moveX = (nx < 0 ? -1 : 1) * min(1, remapped)
+        }
+        let ay = abs(ny)
+        if ay <= dead {
+            moveY = 0
+        } else {
+            let remapped = (ay - dead) / max(0.05, 1 - dead)
+            moveY = (ny < 0 ? -1 : 1) * min(1, remapped)
         }
         if dy > maxR * 0.72 && !jumpHeld {
             jumpPressed = true
@@ -1885,9 +2125,8 @@ public final class HeistScene: SKScene {
         if lastTime == 0 { lastTime = currentTime }
         let rawDt = max(0, currentTime - lastTime)
         lastTime = currentTime
-        // Freeze gate: only sample live gameplay. Ignore pause/resume gaps, death-hold,
-        // retention screens, and the first 0.5s after beginPlay — simctl screenshots /
-        // recordVideo warm-up inflate rawDt (title→play especially).
+        // Freeze gate: sample live gameplay. Ignore pause/resume gaps + death-hold.
+        // Title→play gets one transition budget (250ms); preload during title keeps devices under it.
         let livePlay: Bool = {
             if case .playing = sim.state.phase {
                 return !runPaused && resumeCountdown <= 0 && failOutcomeHold <= 0
@@ -1896,8 +2135,16 @@ public final class HeistScene: SKScene {
         }()
         if skipFreezeSample {
             skipFreezeSample = false
-        } else if livePlay, sim.state.elapsed > 0.5 {
-            maxFrameMs = max(maxFrameMs, rawDt * 1000)
+        } else if livePlay {
+            let ms = rawDt * 1000
+            if transitionBudgetMs > 0 {
+                if ms > transitionBudgetMs {
+                    maxFrameMs = max(maxFrameMs, ms)
+                }
+                transitionBudgetMs = 0
+            } else {
+                maxFrameMs = max(maxFrameMs, ms)
+            }
         }
         var dt = rawDt
         if dt > 0.1 { dt = 0.1 }
@@ -2030,7 +2277,7 @@ public final class HeistScene: SKScene {
             return 2
         }()
         while accumulator >= tuning.dt && steps < maxSteps {
-            var input = InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
+            var input = InputFrame(moveX: moveX, moveY: moveY, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
             jumpPressed = false
             pouncePressed = false
 
@@ -2195,6 +2442,35 @@ public final class HeistScene: SKScene {
                 dust(at: e.position)
             case .shake:
                 shake(0.3)
+            case .crewFreed(let crewID):
+                progressStore.recordCrewFreed(crewID)
+                let member = story.crew(id: crewID)
+                let toast = StoryChrome.makeCrewToast(
+                    name: member?.name ?? "Crew",
+                    line: member?.line ?? "Back on the heist."
+                )
+                toast.position = CGPoint(x: 0, y: size.height * 0.22)
+                toast.zPosition = 400
+                overlay.addChild(toast)
+                toast.setScale(0.7)
+                toast.alpha = 0
+                toast.run(SKAction.sequence([
+                    SKAction.group([SKAction.fadeIn(withDuration: 0.15), SKAction.scale(to: 1, duration: 0.2)]),
+                    SKAction.wait(forDuration: 1.6),
+                    SKAction.fadeOut(withDuration: 0.25),
+                    SKAction.removeFromParent(),
+                ]))
+                JuiceSound.shared.playUITap()
+                neonBurst(at: e.position, color: ArtCatalog.neonLime, count: 16)
+                for (id, node) in crewNodes {
+                    guard let cage = sim.state.crewCages.first(where: { $0.id == id }),
+                          cage.crewID == crewID, cage.freed else { continue }
+                    node.run(SKAction.sequence([
+                        SKAction.group([SKAction.fadeOut(withDuration: 0.35), SKAction.scale(to: 1.3, duration: 0.35)]),
+                        SKAction.removeFromParent(),
+                    ]))
+                    crewNodes.removeValue(forKey: id)
+                }
             }
         }
         smokeStatus.maskOn = sim.state.bandit.maskMode
@@ -2234,6 +2510,11 @@ public final class HeistScene: SKScene {
             title.text = "RESULTS"
             shinyCount.text = "0"
             meta.text = String(format: "⏱ %.0fs    ✦ combo x%d", seconds, combo)
+            if let pa = card.childNode(withName: "outcomePA") as? SKLabelNode {
+                let idx = progressStore.load().freedCrewIDs.count
+                pa.text = story.paTaunt(index: max(0, idx))
+                pa.isHidden = pa.text?.isEmpty != false
+            }
             let finalShinies = shinyTotal
             shinyCount.removeAction(forKey: "count")
             if shinyCount.userData == nil { shinyCount.userData = NSMutableDictionary() }
@@ -2425,6 +2706,11 @@ public final class HeistScene: SKScene {
             if shinyCollecting.contains(s.id) { continue }
             node.isHidden = !s.alive
         }
+        for c in sim.state.crewCages {
+            guard let node = crewNodes[c.id] else { continue }
+            node.position = cg(c.position)
+            node.isHidden = c.freed
+        }
         for m in sim.state.mops {
             guard let node = mopNodes[m.id] else { continue }
             if node.userData?["squashing"] as? Bool == true { continue }
@@ -2441,6 +2727,7 @@ public final class HeistScene: SKScene {
                     if !mopAlerted.contains(m.id) {
                         mopAlerted.insert(m.id)
                         JuiceSound.shared.playMopAlert()
+                        JuiceSound.shared.playMopChatter(story.mopChatter.map(\.file))
                     }
                 } else if !near {
                     mopAlerted.remove(m.id)
@@ -2876,6 +3163,8 @@ public final class HeistScene: SKScene {
         }
         if retentionMode == "map" { smokeStatus.map = true }
         if retentionMode == "daily" { smokeStatus.daily = true }
+        let streetY = sim.map.findFirst(.start).map { Double($0.1) * tuning.tileSize } ?? 0
+        smokeStatus.roof = sim.state.bandit.position.y > streetY + tuning.tileSize * 2.5
         smokeStatus.write()
     }
 

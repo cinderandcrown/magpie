@@ -60,6 +60,8 @@ jobs:
       - name: GameCore tests
         working-directory: Packages/GameCore
         run: swift test
+      - name: Level reachability validator
+        run: ./scripts/validate_level_reachability.sh
       - name: Services tests
         working-directory: Packages/Services
         run: swift test

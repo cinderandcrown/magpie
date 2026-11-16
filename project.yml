@@ -94,9 +94,22 @@ targets:
           test -f "${MUSIC_DEST}/main_theme.m4a"
           test -f "${MUSIC_DEST}/menu_theme.m4a"
           test -f "${MUSIC_DEST}/boss_theme.m4a"
+          # Story + optional MOP voice lines (README lists ElevenLabs filenames).
+          STORY_SRC="${SRCROOT}/Assets/Story"
+          STORY_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Story"
+          mkdir -p "$STORY_DEST"
+          rsync -a --delete "${STORY_SRC}/" "${STORY_DEST}/"
+          test -f "${STORY_DEST}/Story.json"
+          VOICE_SRC="${SRCROOT}/Assets/Audio/voice"
+          VOICE_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Audio/voice"
+          if [[ -d "$VOICE_SRC" ]]; then
+            mkdir -p "$VOICE_DEST"
+            rsync -a --delete "${VOICE_SRC}/" "${VOICE_DEST}/"
+          fi
           echo "Copied Generated -> $DEST"
           echo "Copied SFX -> $SFX_DEST"
           echo "Copied music -> $MUSIC_DEST"
+          echo "Copied Story -> $STORY_DEST"
     settings:
       base:
         INFOPLIST_FILE: Magpie/Info.plist

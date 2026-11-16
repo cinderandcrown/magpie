@@ -12,12 +12,21 @@ public enum ControlVariant: Equatable, Sendable {
 public struct InputFrame: Equatable, Sendable {
     /// Horizontal intent −1…1.
     public var moveX: Double
+    /// Vertical stick intent −1…1 (negative = down). Used to drop through one-way platforms.
+    public var moveY: Double
     public var jumpPressed: Bool
     public var jumpHeld: Bool
     public var pouncePressed: Bool
 
-    public init(moveX: Double = 0, jumpPressed: Bool = false, jumpHeld: Bool = false, pouncePressed: Bool = false) {
+    public init(
+        moveX: Double = 0,
+        moveY: Double = 0,
+        jumpPressed: Bool = false,
+        jumpHeld: Bool = false,
+        pouncePressed: Bool = false
+    ) {
         self.moveX = moveX
+        self.moveY = moveY
         self.jumpPressed = jumpPressed
         self.jumpHeld = jumpHeld
         self.pouncePressed = pouncePressed

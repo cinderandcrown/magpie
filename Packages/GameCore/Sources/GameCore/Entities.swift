@@ -36,6 +36,8 @@ public struct BanditState: Equatable, Sendable {
     public var jumpCutArmed: Bool
     /// Frames remaining where near-apex still counts as a stomp window.
     public var apexStompFrames: Int
+    /// While > 0, one-way platforms do not collide (drop-through).
+    public var dropThrough: Double
 
     public static func spawn(at position: Vec2, hearts: Int) -> BanditState {
         BanditState(
@@ -62,9 +64,17 @@ public struct BanditState: Equatable, Sendable {
             animHold: 0,
             landCooldown: 0,
             jumpCutArmed: false,
-            apexStompFrames: 0
+            apexStompFrames: 0,
+            dropThrough: 0
         )
     }
+}
+
+public struct CrewCage: Equatable, Sendable, Identifiable {
+    public var id: Int
+    public var position: Vec2
+    public var freed: Bool
+    public var crewID: String
 }
 
 public struct ShinyPickup: Equatable, Sendable, Identifiable {

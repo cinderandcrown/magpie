@@ -39,7 +39,10 @@ public struct GameFeel: Equatable, Sendable {
     public var apexHangMul: Double = 0.5
     /// |vy| (tiles/s scaled later) under which apex hang applies.
     public var apexHangSpeed: Double = 2.2
-    public var jumpVelocity: Double = 15.6
+    /// Peak jump impulse — scaled in Sim by `tileSize/2.2`.
+    /// 30 ≈ 2.3 tile full-hold height so Neon Docks rooftops stay reachable
+    /// (15.6 only cleared ~0.6 tiles and made upper decks pointless).
+    public var jumpVelocity: Double = 30.0
     /// Early JUMP release multiplies upward velocity by this (50% cut → 0.5).
     public var jumpCutFraction: Double = 0.5
     public var coyoteSeconds: Double = 0.10
@@ -51,7 +54,7 @@ public struct GameFeel: Equatable, Sendable {
 
     public var wallSlideSpeed: Double = 3.2
     public var wallJumpVelocityX: Double = 8.5
-    public var wallJumpVelocityY: Double = 14.0
+    public var wallJumpVelocityY: Double = 26.0
     public var wallClingSeconds: Double = 0.12
 
     // MARK: Pounce / stomp
@@ -59,7 +62,7 @@ public struct GameFeel: Equatable, Sendable {
     public var pounceBoostX: Double = 3.5
     public var pounceBoostY: Double = 4.0
     public var bellyFlopFallBoost: Double = 18
-    public var stompBounceVelocity: Double = 13.5
+    public var stompBounceVelocity: Double = 15.0
     /// Holding JUMP on stomp multiplies bounce by this (chain assist).
     public var stompBounceHoldMul: Double = 1.45
     /// MOP sprite width in tiles — stomp box is `stompWidthMul` × this.

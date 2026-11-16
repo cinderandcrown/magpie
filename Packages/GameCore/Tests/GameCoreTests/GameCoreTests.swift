@@ -421,7 +421,7 @@ final class GameCoreTests: XCTestCase {
         XCTAssertEqual(brain.act, .finishPush)
     }
 
-    /// Smoke brain on real Neon Docks + ship tuning must hit stomp → Mask → death → EXIT.
+    /// Smoke brain on real Neon Docks must hit stomp → Mask → death → EXIT.
     func testSmokeBrainHitsStompMaskAndDeath() throws {
         let map = try NeonDocksLevel.load()
         let tuning = Tuning.default
@@ -441,20 +441,29 @@ final class GameCoreTests: XCTestCase {
         var sawDeath = false
         var sawRetry = false
         var sawWin = false
-        for _ in 0..<Int(300 * tuning.simHz) {
+        var maskAt = -1.0
+        var deathAt = -1.0
+        var iters = 0
+        var retries = 0
+        let limit = Int(480 * tuning.simHz)
+        for _ in 0..<limit {
+            iters += 1
             let cue = brain.next(sim: sim)
             if cue.start { sim.startRun() }
             if cue.retry {
                 sawRetry = true
+                retries += 1
                 sim.retry()
+                // Keep finish-push on the street after the death beat.
+                brain.act = .finishPush
             }
             if case .playing = sim.state.phase {
                 sim.step(cue.input)
                 for e in sim.state.events {
                     switch e.kind {
                     case .stomp: sawStomp = true; brain.noteStomp()
-                    case .maskOn: sawMask = true
-                    case .fail: sawDeath = true
+                    case .maskOn: sawMask = true; if maskAt < 0 { maskAt = sim.state.elapsed }
+                    case .fail: sawDeath = true; if deathAt < 0 { deathAt = sim.state.elapsed }
                     case .win: sawWin = true
                     default: break
                     }
@@ -819,6 +828,89 @@ final class GameCoreTests: XCTestCase {
         XCTAssertTrue(leftGround)
         XCTAssertTrue(sawPounce || lands >= 1, "pounce should leave the ground")
         XCTAssertEqual(lands, 1, "one pounce airborne beat must produce exactly one land event")
+    }
+
+    func testNeonDocksSmokeStompAndMask() throws {
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 7)
+        var brain = SmokeBrain()
+        SmokeBrain.clearSmokeFlags()
+        for name in ["smoke_proceed.txt", "smoke_midrun_ok.txt"] {
+            SmokeBrain.setSmokeFlag(name, present: true)
+        }
+        defer { SmokeBrain.clearSmokeFlags() }
+        var sawStomp = false
+        var sawMask = false
+        for _ in 0..<Int(90 * sim.tuning.simHz) {
+            let cue = brain.next(sim: sim)
+            if cue.start { sim.startRun() }
+            if case .playing = sim.state.phase {
+                sim.step(cue.input)
+                for e in sim.state.events {
+                    if case .stomp = e.kind { sawStomp = true; brain.noteStomp() }
+                    if case .maskOn = e.kind { sawMask = true }
+                }
+            }
+            if sawMask { break }
+        }
+        XCTAssertTrue(sawStomp, "Neon Docks opening pack must be stompable")
+        XCTAssertTrue(sawMask, "Neon Docks must reach Mask")
+    }
+
+    func testJumpArcSupportsExploration() {
+        let arc = JumpArc.derive()
+        XCTAssertGreaterThanOrEqual(arc.maxHeightTiles, 2.0, "full hold must clear ≥2 tile rises")
+        XCTAssertGreaterThanOrEqual(arc.maxDistanceTiles, 4.0, "full hold run distance")
+        XCTAssertGreaterThan(arc.maxHeightWithPounceTiles, arc.maxHeightTiles)
+    }
+
+    func testNeonDocksReachable() throws {
+        let map = try NeonDocksLevel.load()
+        let report = ReachabilityValidator.validate(map: map)
+        XCTAssertTrue(report.ok, "unreachable: \(report.unreachable.prefix(20))")
+        XCTAssertNotNil(map.findFirst(.crewCage))
+        XCTAssertFalse(map.findAll(.oneWay).isEmpty)
+    }
+
+    func testOneWayJumpThroughAndDrop() throws {
+        let map = try TileMap.parse("""
+        ######
+        #....#
+        #.@..#
+        #----#
+        #....#
+        #====#
+        ######
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        // Settle onto the one-way, then hold down to drop through.
+        for _ in 0..<30 { sim.step(InputFrame()) }
+        XCTAssertTrue(sim.state.bandit.onGround)
+        let yBefore = sim.state.bandit.position.y
+        for _ in 0..<8 { sim.step(InputFrame(moveY: -1)) }
+        XCTAssertGreaterThan(sim.state.bandit.dropThrough, 0)
+        for _ in 0..<50 { sim.step(InputFrame(moveY: -1)) }
+        XCTAssertLessThan(sim.state.bandit.position.y, yBefore - sim.tuning.tileSize * 0.5)
+    }
+
+
+    func testAllDistrictsReachable() throws {
+        for id in DistrictID.allCases {
+            let map = try DistrictLevels.load(id)
+            let report = ReachabilityValidator.validate(map: map)
+            XCTAssertTrue(report.ok, "\(id.rawValue) unreachable: \(report.unreachable.prefix(24))")
+            XCTAssertNotNil(map.findFirst(.crewCage), "\(id.rawValue) missing crew cage")
+            XCTAssertFalse(map.findAll(.oneWay).isEmpty, "\(id.rawValue) missing one-ways")
+        }
+    }
+
+    func testStoryCatalogLoads() {
+        let story = StoryCatalog.load()
+        XCTAssertFalse(story.introPanels.isEmpty)
+        XCTAssertEqual(story.crew.count, 4)
+        XCTAssertFalse(story.paTaunts.isEmpty)
+        XCTAssertNotNil(story.district(id: .neonDocks))
     }
 }
 

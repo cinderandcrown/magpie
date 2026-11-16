@@ -249,6 +249,34 @@ public final class SFXManager: @unchecked Sendable {
     public func playPounce() { play("pounce_whoosh") }
     public func playHurt() { play("raccoon_hurt") }
     public func playKO() { play("raccoon_ko") }
+
+    /// Play a one-shot from Audio/voice/ if present (MOP chatter).
+    public func playVoiceFile(_ fileName: String) {
+        lock.lock()
+        let mutedNow = muted
+        let vol = volume
+        lock.unlock()
+        guard !mutedNow else { return }
+        let candidates: [URL] = {
+            var urls: [URL] = []
+            if let u = Bundle.main.url(forResource: fileName.replacingOccurrences(of: ".m4a", with: ""), withExtension: "m4a", subdirectory: "Audio/voice") {
+                urls.append(u)
+            }
+            if let root = Bundle.main.resourceURL?.appendingPathComponent("Audio/voice").appendingPathComponent(fileName) {
+                urls.append(root)
+            }
+            return urls
+        }()
+        guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
+              let data = try? Data(contentsOf: url),
+              let player = makePlayer(from: data, loop: false) else { return }
+        player.volume = vol
+        player.play()
+        lock.lock()
+        oneshotPools["voice"] = (oneshotPools["voice"] ?? []) + [player]
+        lock.unlock()
+    }
+
     public func playMopAlert() { play("mop_bot_alert") }
     public func playMopHit() { play("mop_bot_hit") }
     public func playUITap() { play("ui_tap") }

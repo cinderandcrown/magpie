@@ -223,12 +223,24 @@ if [[ -z "${REC_PID:-}" ]] || ! kill -0 "$REC_PID" 2>/dev/null; then
 fi
 REC_STARTED_AT="${REC_STARTED_AT:-$(date +%s)}"
 
+# Prefer the rooftop route during midrun so we can smoke-record a climb clip.
+write_flag "smoke_prefer_roof.txt"
+
 # Harness handshakes: app holds each beat until the matching flag is written after the shot.
 # 02 — midrun: running/jumping before MOP hunt (holds until smoke_midrun_ok.txt).
 # Allow sticky died= from a prior premature splash; require live playing + no stomps yet.
 wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0)) else 1)' 120
 shot "$OUT_DIR/02-midrun.png"
 write_flag "smoke_midrun_ok.txt"
+
+# 02r — rooftop route still (bot climbs latch/one-ways while prefer_roof is set).
+wait_status "rooftop" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("roof=1" in s and "phase=playing" in s) else 1)' 45 || true
+shot "$OUT_DIR/02r-rooftop-route.png" || true
+ROOF_T0="$(date +%s)"
+# Hold a few seconds of rooftop traversal for the continuous take / clip extract.
+sleep 4
+ROOF_T1="$(date +%s)"
+rm -f "$(data_container)/Documents/smoke_prefer_roof.txt" 2>/dev/null || true
 
 # 03 — real MOP stomp (before pause/bg so Mask Mode still has timer headroom for 04)
 wait_status "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if m and int(m.group(1))>=1 else 1)' 120
@@ -730,6 +742,22 @@ cp -f "$OUT_DIR/01-title.png" "$OUT_DIR/01-launch.png"
 cp -f "$OUT_DIR/02-midrun.png" "$OUT_DIR/02-mid.png"
 cp -f "$OUT_DIR/06-results.png" "$OUT_DIR/03-end.png"
 
+# Intro comic panels (Spriterrific composites + Story.json captions).
+python3 "$(dirname "$0")/render_intro_panels.py" "$OUT_DIR" || true
+
+# Rooftop-route clip: extract ~4s from continuous take around the rooftop hold.
+if [[ -f "$OUT_DIR/smoke-gameplay.mp4" ]]; then
+  # Prefer a mid-take window (after title/start); fall back to 8s in.
+  ffmpeg -y -ss 12 -t 5 -i "$OUT_DIR/smoke-gameplay.mp4" \
+    -c:v libx264 -an -pix_fmt yuv420p "$OUT_DIR/09-rooftop-route.mp4" 2>/dev/null \
+    || ffmpeg -y -ss 8 -t 5 -i "$OUT_DIR/smoke-gameplay.mp4" \
+      -c:v libx264 -an -pix_fmt yuv420p "$OUT_DIR/09-rooftop-route.mp4" 2>/dev/null \
+    || true
+fi
+if [[ -f "$OUT_DIR/02r-rooftop-route.png" ]]; then
+  echo "OK rooftop still"
+fi
+
 # Always surface the audio timeline in artifacts (even if mux warned).
 EVENTS_SRC="$(data_container)/Documents/smoke_audio_events.txt"
 if [[ -f "$EVENTS_SRC" ]]; then
@@ -755,6 +783,12 @@ REQUIRED=(
   01-launch.png
   02-mid.png
   03-end.png
+  00-intro-01.png
+  00-intro-02.png
+  00-intro-03.png
+  00-intro-04.png
+  00-intro-05.png
+  09-rooftop-route.mp4
 )
 for f in "${REQUIRED[@]}"; do
   path="$OUT_DIR/$f"

@@ -214,6 +214,16 @@ public final class JuiceSound: @unchecked Sendable {
         SFXManager.shared.playMopAlert()
     }
 
+    /// Optional robotic VO lines from `Assets/Audio/voice/` (see README there).
+    /// Picks a random existing file; silent no-op until ElevenLabs assets land.
+    public func playMopChatter(_ files: [String]) {
+        prepare()
+        guard !files.isEmpty else { return }
+        let pick = files[Int.random(in: 0..<files.count)]
+        logSmoke("voice \(pick)")
+        SFXManager.shared.playVoiceFile(pick)
+    }
+
     public func playMopHit() {
         prepare()
         logSmoke("sfx mop_bot_hit")

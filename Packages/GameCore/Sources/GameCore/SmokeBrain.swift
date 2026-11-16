@@ -25,6 +25,7 @@ public struct SmokeBrain: Equatable, Sendable {
     public var failWait: Int = 0
     public var stompCount: Int = 0
     public var maskShowcaseFrames: Int = 0
+    public var seekDeathFrames: Int = 0
 
     public init() {}
 
@@ -162,6 +163,7 @@ public struct SmokeBrain: Equatable, Sendable {
         let ty = Int(floor(b.position.y / tile))
 
         if act == .seekDeath {
+            seekDeathFrames += 1
             return seekDeathInput(sim: sim, tx: tx, ty: ty)
         }
 
@@ -249,7 +251,7 @@ public struct SmokeBrain: Equatable, Sendable {
         return showcaseRunInput(sim: sim, tx: tx, ty: ty)
     }
 
-    /// Clear Neon Docks after the death beat: run the main deck to EXIT, hop the canal, avoid MOP bags.
+    /// Clear Neon Docks after the death beat: stay on the street deck to EXIT.
     private func finishPushInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
@@ -258,7 +260,18 @@ public struct SmokeBrain: Equatable, Sendable {
         let targetX = exit?.x ?? (Double(sim.map.width - 2) * tile)
         let targetY = exit?.y ?? b.position.y
         let dx = targetX - b.position.x
-        let dy = targetY - b.position.y
+        let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? targetY
+
+        // If we overshot onto a roof after the high jump buff, drop back to street.
+        if b.position.y > streetY + tile * 0.45 {
+            let edgeR = !sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty - 1))
+                || sim.map.tile(atX: tx + 1, y: ty - 1) == .oneWay
+            if edgeR || !b.onGround {
+                return InputFrame(moveX: 1, moveY: -1)
+            }
+            // Walk toward the nearest ledge (prefer right / exit).
+            return InputFrame(moveX: 1, moveY: -1, jumpPressed: false, jumpHeld: false)
+        }
 
         // Hard right on the main deck; only ease if we overshoot EXIT.
         var moveX: Double = dx < -tile * 0.5 ? -0.55 : 1.0
@@ -266,20 +279,15 @@ public struct SmokeBrain: Equatable, Sendable {
         var jumpHeld = false
         var pouncePressed = false
 
-        let needClimb = dy > tile * 0.9
         let gapNear = gapAhead(sim: sim, tx: tx, ty: ty) || gapWithin(sim: sim, tx: tx, ty: ty, reach: 4)
         let hazard = hazardAhead(sim: sim, tx: tx, ty: ty, reach: 6)
+        let solidAhead = sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty))
 
-        // Canal / pits — jump early from a few tiles back and hold through the apex.
-        if gapNear || hazard {
+        // Hop crates / 3-tile canal. Hold through apex so we clear water, then cut so we stay low.
+        if solidAhead || gapNear || hazard {
             jumpPressed = b.onGround || b.coyote > 0
-            jumpHeld = true
+            jumpHeld = !b.onGround && b.velocity.y > 0
             moveX = 1.0
-            // Stay committed while airborne over the canal.
-            if !b.onGround { jumpHeld = b.velocity.y > -10 }
-        } else if needClimb, b.onGround {
-            jumpPressed = true
-            jumpHeld = true
         }
         if b.onWallLeft || b.onWallRight, !b.onGround {
             jumpPressed = true
@@ -287,28 +295,26 @@ public struct SmokeBrain: Equatable, Sendable {
             moveX = b.onWallRight ? -0.4 : 1
         }
 
-        // Same-deck MOP: hop-stomp. Higher MOPs: stay low and run under (no cadence hops).
+        // After the death beat, do NOT stomp-farm — bounce loops stall the EXIT run.
+        // Hop over same-deck MOPs; ignore elevated ones.
         if let mop = nearestMop(sim: sim) {
             let mdx = mop.position.x - b.position.x
             let mdy = mop.position.y - b.position.y
-            if mdx > -tile, mdx < tile * 3.0, abs(mdy) < tile * 1.1 {
-                if b.onGround {
-                    jumpPressed = true
-                    jumpHeld = true
-                } else if !b.flopping, b.velocity.y <= 0, b.position.y >= mop.position.y - 4 {
-                    pouncePressed = true
-                }
-            } else if mdx > 0, mdx < tile * 2.5, mdy > tile * 0.8 {
-                // MOP above — do not jump into its bag hitbox.
+            if mdx > 0, mdx < tile * 2.8, abs(mdy) < tile * 1.0, b.onGround {
+                jumpPressed = true
+                jumpHeld = false // short hop over, then keep running
+            } else if mdy > tile * 0.8 {
                 jumpPressed = false
                 jumpHeld = false
             }
+            _ = mdx
         }
+        pouncePressed = false
 
         return InputFrame(
             moveX: moveX,
             jumpPressed: jumpPressed,
-            jumpHeld: jumpHeld || jumpPressed,
+            jumpHeld: jumpHeld,
             pouncePressed: pouncePressed
         )
     }
@@ -356,6 +362,26 @@ public struct SmokeBrain: Equatable, Sendable {
         if tx <= 5 {
             moveX = max(moveX, 0.9)
         }
+        // Rooftop showcase: climb latch poles / one-ways when the harness asks (or mid-map).
+        let preferRoof = Self.smokeFlagExists("smoke_prefer_roof.txt")
+            || (tx >= 20 && tx <= 55 && sim.state.elapsed > 4 && sim.state.elapsed < 28)
+        if preferRoof {
+            let above = sim.map.tile(atX: tx, y: ty + 1)
+            let latchNear = sim.map.tile(atX: tx, y: ty) == .latch
+                || sim.map.tile(atX: tx + 1, y: ty) == .latch
+                || sim.map.tile(atX: tx - 1, y: ty) == .latch
+            let oneWayAbove = above == .oneWay || sim.map.tile(atX: tx, y: ty + 2) == .oneWay
+            if latchNear || oneWayAbove || b.onWallLeft || b.onWallRight {
+                jumpPressed = b.onGround || b.coyote > 0 || b.onWallLeft || b.onWallRight
+                jumpHeld = true
+                moveX = b.onWallRight ? -0.35 : 0.85
+            } else if b.onGround {
+                // Hop onto the next stepping stone toward the roof run.
+                jumpPressed = phase % 40 == 0
+                jumpHeld = jumpPressed || (!b.onGround && b.velocity.y > 0)
+                moveX = max(moveX, 0.9)
+            }
+        }
         if b.onWallLeft || b.onWallRight, !b.onGround {
             jumpPressed = tick % 20 == 0
             jumpHeld = true
@@ -367,38 +393,38 @@ public struct SmokeBrain: Equatable, Sendable {
     private func seekDeathInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
-        let here = sim.map.tile(atX: tx, y: ty)
-        let under = sim.map.tile(atX: tx, y: ty - 1)
-        let right = sim.map.tile(atX: tx + 1, y: ty)
-        let left = sim.map.tile(atX: tx - 1, y: ty)
-        let underR = sim.map.tile(atX: tx + 1, y: ty - 1)
-        let underL = sim.map.tile(atX: tx - 1, y: ty - 1)
-        if here == .spike || here == .water || under == .spike || under == .water
-            || right == .spike || right == .water || left == .spike || left == .water
-            || underR == .water || underL == .water {
-            // Commit into the trap — walk off, no jump.
-            let dir: Double = (left == .spike || left == .water || underL == .water) ? -1 : 1
-            return InputFrame(moveX: dir)
-        }
-        // Steer toward the canal; jump gaps/walls so we don't soft-lock on a ledge.
-        if let hx = nearestHazardX(sim: sim) {
-            let dx = Double(hx) * tile - b.position.x
-            var moveX: Double = dx >= 0 ? 1 : -1
-            var jumpPressed = false
-            var jumpHeld = false
-            if b.onWallLeft || b.onWallRight, !b.onGround {
-                jumpPressed = true
-                jumpHeld = true
-                moveX = b.onWallRight ? -1 : 1
-            } else if gapAhead(sim: sim, tx: tx, ty: ty), dx > 0 {
-                // Leap toward the canal across platform gaps.
-                jumpPressed = b.onGround || b.coyote > 0
-                jumpHeld = true
-            } else if !sim.map.isSolid(under), under != .water, abs(dx) > tile * 2 {
-                // Already airborne over a gap — keep moving toward the hazard.
-                moveX = dx >= 0 ? 1 : -1
+        let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? b.position.y
+        // Get down to the street first — walk off ledges / drop one-ways.
+        if b.position.y > streetY + tile * 0.45 {
+            if !b.onGround {
+                // Belly-flop down if we're floating above the street.
+                return InputFrame(moveX: 1, moveY: -1, pouncePressed: !b.flopping)
             }
-            return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld)
+            let edgeR = !sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty - 1))
+            let edgeL = !sim.map.isSolid(sim.map.tile(atX: tx - 1, y: ty - 1))
+            if edgeR { return InputFrame(moveX: 1, moveY: -1) }
+            if edgeL { return InputFrame(moveX: -1, moveY: -1) }
+            if b.onWallLeft || b.onWallRight {
+                return InputFrame(moveX: b.onWallRight ? -1 : 1, jumpPressed: true, jumpHeld: true)
+            }
+            // After ~3s still perched, keep marching; after ~8s prefer left ledges too.
+            let dir: Double = (seekDeathFrames % 240) < 180 ? 1 : -1
+            return InputFrame(moveX: dir, moveY: -1)
+        }
+        // Street: run into the canal spike/water. Never jump a water/spike lip.
+        let underR = sim.map.tile(atX: tx + 1, y: ty - 1)
+        let ahead = sim.map.tile(atX: tx + 1, y: ty)
+        let lipIsHazard = underR == .water || underR == .spike || underR == .empty
+            || ahead == .water || ahead == .spike
+            || sim.map.tile(atX: tx + 1, y: ty - 2) == .water
+        if lipIsHazard || seekDeathFrames > 600 {
+            return InputFrame(moveX: 1) // walk off / commit
+        }
+        if b.onWallRight || sim.map.isSolid(ahead) {
+            return InputFrame(moveX: 1, jumpPressed: b.onGround || b.coyote > 0, jumpHeld: false)
+        }
+        if b.onWallLeft || b.onWallRight, !b.onGround {
+            return InputFrame(moveX: b.onWallRight ? -1 : 1, jumpPressed: true, jumpHeld: true)
         }
         return InputFrame(moveX: 1)
     }

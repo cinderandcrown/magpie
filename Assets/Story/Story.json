@@ -1,0 +1,104 @@
+{
+  "premise": "Neon City's mega-corp OmniClean rolled out MOP robots to 'sanitize' the streets. They're sweeping up every stray, and Bandit's raccoon crew got hauled off toward the MOP-9000's trash plant. Bandit steals back through each district to free the crew and shut the shine down.",
+  "introPanels": [
+    {
+      "id": "party",
+      "caption": "Neon Docks after-hours: the crew was living large.",
+      "artHint": "raccoon crew partying in alley neon"
+    },
+    {
+      "id": "raid",
+      "caption": "Then OmniClean's MOPs crashed the party.",
+      "artHint": "MOP robots swoop into alley"
+    },
+    {
+      "id": "bagged",
+      "caption": "One by one, the crew got bagged for 'sanitation.'",
+      "artHint": "crew stuffed into MOP bags"
+    },
+    {
+      "id": "escape",
+      "caption": "Bandit slipped the net. Barely.",
+      "artHint": "Bandit escaping down wet alley"
+    },
+    {
+      "id": "mask",
+      "caption": "Mask on. Time to clean up.",
+      "artHint": "Bandit puts on the mask"
+    }
+  ],
+  "districts": {
+    "neon_docks": {
+      "title": "Neon Docks",
+      "flavor": "Where the trash tide meets the neon — and OmniClean wants both spotless."
+    },
+    "arcade_row": {
+      "title": "Arcade Row",
+      "flavor": "High scores, higher stakes. The lights never blink — the MOPs do."
+    },
+    "rooftops": {
+      "title": "Rooftops",
+      "flavor": "Jump the skyline. Don't look down. Definitely don't look at the scrubbers."
+    },
+    "sewer_grid": {
+      "title": "Sewer Grid",
+      "flavor": "OmniClean's dirty secret: the shine starts underground."
+    }
+  },
+  "crew": [
+    {
+      "id": "scrapz",
+      "name": "Scrapz",
+      "line": "If it's bolted down, it's a suggestion."
+    },
+    {
+      "id": "glitch",
+      "name": "Glitch",
+      "line": "I speak fluent static — and terrible advice."
+    },
+    {
+      "id": "fizz",
+      "name": "Fizz",
+      "line": "Shake me and I explode... with enthusiasm."
+    },
+    {
+      "id": "pip",
+      "name": "Pip",
+      "line": "Small paws, big heists."
+    }
+  ],
+  "mopChatter": [
+    {
+      "id": "pest",
+      "file": "mop_pest_detected.m4a",
+      "line": "Pest detected."
+    },
+    {
+      "id": "sanitize",
+      "file": "mop_sanitizing.m4a",
+      "line": "Sanitizing."
+    },
+    {
+      "id": "resist",
+      "file": "mop_do_not_resist.m4a",
+      "line": "Do not resist cleanliness."
+    },
+    {
+      "id": "sweep",
+      "file": "mop_sweep_protocol.m4a",
+      "line": "Sweep protocol engaged."
+    },
+    {
+      "id": "shine",
+      "file": "mop_please_hold_still.m4a",
+      "line": "Please hold still for polishing."
+    }
+  ],
+  "paTaunts": [
+    "OmniClean PA: Spotless is progress. Vermin is... unfinished business.",
+    "OmniClean PA: Reminder — raccoons are not a recognized municipal asset.",
+    "OmniClean PA: Your shine rating just dropped. How unfortunate.",
+    "OmniClean PA: The MOP-9000 sends its regards. And a dustpan.",
+    "OmniClean PA: Resistance detected. Applying industrial-strength pep talk."
+  ]
+}

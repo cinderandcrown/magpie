@@ -51,6 +51,10 @@ public struct PlayerProgress: Equatable, Sendable, Codable {
     public var bestSecondsByLevel: [String: Double]
     /// Soft XP from medals / clears — drives the results level-up sting.
     public var xp: Int
+    /// Freed crew member IDs (from Story.json).
+    public var freedCrewIDs: [String]
+    /// First-launch comic intro completed / skipped.
+    public var sawIntro: Bool
 
     public init(
         medalsByLevel: [String: LevelMedals] = [:],
@@ -59,7 +63,9 @@ public struct PlayerProgress: Equatable, Sendable, Codable {
         dailyClears: Int = 0,
         lastDailyDay: String? = nil,
         bestSecondsByLevel: [String: Double] = [:],
-        xp: Int = 0
+        xp: Int = 0,
+        freedCrewIDs: [String] = [],
+        sawIntro: Bool = false
     ) {
         self.medalsByLevel = medalsByLevel
         self.unlockedDistricts = unlockedDistricts
@@ -68,6 +74,8 @@ public struct PlayerProgress: Equatable, Sendable, Codable {
         self.lastDailyDay = lastDailyDay
         self.bestSecondsByLevel = bestSecondsByLevel
         self.xp = xp
+        self.freedCrewIDs = freedCrewIDs
+        self.sawIntro = sawIntro
     }
 
     public var rankLevel: Int { max(1, xp / 3 + 1) }
@@ -164,6 +172,21 @@ public struct ProgressStore: Sendable {
             progress.lastDailyDay = dayKey
             save(progress)
         }
+    }
+
+    public func recordCrewFreed(_ crewID: String) {
+        var progress = load()
+        if !progress.freedCrewIDs.contains(crewID) {
+            progress.freedCrewIDs.append(crewID)
+            progress.xp += 2
+            save(progress)
+        }
+    }
+
+    public func markIntroSeen() {
+        var progress = load()
+        progress.sawIntro = true
+        save(progress)
     }
 
     /// Stable UTC day key for Daily Heist (same seed for everyone that day).

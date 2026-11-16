@@ -64,6 +64,29 @@ public enum ArtCatalog {
         _ = loadStorefrontSignTextures()
     }
 
+    /// Preload level textures / atlases while the title screen is up so beginPlay stays
+    /// within the 250ms transition freeze budget on a real phone.
+    public static func preloadGameplayTextures() {
+        warmAtlases()
+        var warm: [SKTexture] = []
+        for key in AssetManifest.runCycle + AssetManifest.shinyFrames + [
+            .raccoonIdle, .raccoonJump, .raccoonFall, .raccoonPounce, .raccoonBellyFlop, .raccoonMaskMode,
+            .mopIdle, .mopPatrol, .mopAlert, .logo,
+        ] {
+            if let tex = texture(key) { warm.append(tex) }
+        }
+        for i in 1...27 {
+            if let tex = tileTexture(index: i) { warm.append(tex) }
+        }
+        warm.append(contentsOf: sidePropTextures())
+        _ = background(.farSkyline, height: 920, maxPixel: 1024)
+        _ = background(.midBuildings, height: 780, maxPixel: 1100)
+        _ = background(.nearRooftops, height: 720, maxPixel: 1100)
+        if !warm.isEmpty {
+            SKTexture.preload(warm) {}
+        }
+    }
+
     public static func texture(_ key: AssetKey) -> SKTexture? {
         if let cached = textureCache[key] { return cached }
         let atlasName = key.rawValue.replacingOccurrences(of: "/", with: "_")
