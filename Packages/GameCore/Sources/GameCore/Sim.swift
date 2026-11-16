@@ -70,8 +70,10 @@ public struct Sim: Equatable, Sendable {
         var mops: [MopEnemy] = []
         for (i, c) in map.findAll(.mopSpawn).enumerated() {
             let p = map.worldStandOnDeckBelow(ofX: c.0, markerY: c.1, tileSize: tile)
+            // Stagger phase + tighter patrol so opening packs stay chain-stompable.
+            let span = tile * (i < 6 ? 1.2 : 2.2)
             mops.append(MopEnemy(
-                id: i, position: p, home: p, patrolSpan: tile * 2.5, phase: Double(i) * 0.7,
+                id: i, position: p, home: p, patrolSpan: span, phase: Double(i) * 0.85,
                 alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1
             ))
         }

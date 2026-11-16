@@ -118,7 +118,8 @@ public struct SmokeBrain: Equatable, Sendable {
                     if sawMask {
                         act = .showcaseMask
                         maskShowcaseFrames = 0
-                    } else if sim.state.elapsed > 35 {
+                    } else if sim.state.elapsed > 120 {
+                        // Ship Mask needs combo 5 on Neon Docks — give the hunt time.
                         act = .seekDeath
                     }
                 case .showcaseMask:
@@ -168,22 +169,24 @@ public struct SmokeBrain: Equatable, Sendable {
         }
 
         if act == .finishPush {
-            // Always press right — never turn back to re-hunt respawning MOPs.
+            // Always press right on Neon Docks — never reverse (soft-locks the clear).
             let moveX = 1.0
             var jumpPressed = false
             var jumpHeld = false
             var pouncePressed = false
 
+            // Periodic hop to climb ledges toward the upper exit route.
+            if b.onGround, tick % 20 == 0 {
+                jumpPressed = true
+                jumpHeld = true
+            }
             if let mop = nearestMop(sim: sim) {
                 let dx = mop.position.x - b.position.x
                 if dx > 0, dx < tile * 2.2, abs(mop.position.y - b.position.y) < tile * 1.5 {
-                    // Hop-stomp only when a MOP is immediately ahead, then keep moving.
                     if b.onGround { jumpPressed = true; jumpHeld = true }
                     else if b.velocity.y <= 0 { pouncePressed = true; jumpHeld = true }
                 }
             }
-
-            // Leap the 2-tile canal pit (water sits one row below the deck).
             if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 5) || gapAhead(sim: sim, tx: tx, ty: ty) {
                 jumpPressed = jumpPressed || b.onGround || b.coyote > 0
                 jumpHeld = true
@@ -192,8 +195,8 @@ public struct SmokeBrain: Equatable, Sendable {
                 jumpPressed = true
                 jumpHeld = true
             }
-            if let exit = sim.map.findFirst(.exit), b.position.x > Double(exit.0 - 6) * tile {
-                jumpPressed = false
+            if let exit = sim.map.findFirst(.exit), b.position.x > Double(exit.0 - 8) * tile {
+                jumpPressed = b.velocity.y > 0 ? false : jumpPressed
                 jumpHeld = b.velocity.y > 0
             }
             return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
@@ -206,7 +209,7 @@ public struct SmokeBrain: Equatable, Sendable {
             return showcaseRunInput(sim: sim, tx: tx, ty: ty)
         }
 
-        // Beat 2 — hunt MOPs for stomp → Mask Mode.
+        // Beat 2 — hunt MOPs for stomp → Mask Mode (ship combo 5 on Neon Docks).
         if let mop = nearestMop(sim: sim), !sawMask {
             let dx = mop.position.x - b.position.x
             let dy = mop.position.y - b.position.y
@@ -215,8 +218,15 @@ public struct SmokeBrain: Equatable, Sendable {
             var jumpHeld = false
             var pouncePressed = false
 
+            // Climb toward higher decks when the nearest MOP is above.
+            if dy > tile * 0.6, b.onGround {
+                jumpPressed = true
+                jumpHeld = true
+                if abs(dx) < tile * 1.2 { moveX = b.facing }
+            }
+
             // Hop then belly-flop so the stomp contact frame always arms above the MOP.
-            if abs(dx) < tile * 2.2, abs(dy) < tile * 1.8 {
+            if abs(dx) < tile * 2.6, abs(dy) < tile * 2.4 {
                 if b.onGround {
                     jumpPressed = true
                     jumpHeld = true
@@ -225,8 +235,9 @@ public struct SmokeBrain: Equatable, Sendable {
                     jumpHeld = b.velocity.y > 0
                 } else {
                     jumpHeld = true
+                    if dy > 0 { jumpHeld = true }
                 }
-            } else if abs(dx) < tile * 3.5, b.onGround, tick % 14 < 4 {
+            } else if abs(dx) < tile * 4.0, b.onGround, tick % 10 < 5 {
                 jumpPressed = true
                 jumpHeld = true
             } else if gapAhead(sim: sim, tx: tx, ty: ty), !hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
@@ -259,16 +270,14 @@ public struct SmokeBrain: Equatable, Sendable {
     private func showcaseRunInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
-        // Beat showcase: idle → walk (slight stick) → run (full) → hop, before MOP hunt.
-        // Cycles every ~3.5s so the smoke video reads each sheet.
+        // Midrun beat: keep moving so the screenshot shows a running ship build (no wall-idle).
+        // Cycle walk → run → hop every ~3.5s for sheet coverage.
         let phase = tick % 210
         var moveX: Double
         var jumpPressed = false
         var jumpHeld = false
-        if phase < 36 {
-            moveX = 0 // idle sheet
-        } else if phase < 100 {
-            moveX = 0.35 // walk (below walkRunStickThreshold)
+        if phase < 90 {
+            moveX = 0.4 // walk
         } else if phase < 170 {
             moveX = 1.0 // run
         } else {
@@ -280,12 +289,11 @@ public struct SmokeBrain: Equatable, Sendable {
                 jumpHeld = b.velocity.y > 0
             }
         }
-        // Stay well left of the MOP pack so midrun never accidentally stomps before the hunt beat.
+        // Softly keep clear of MOPs without pinning to a wall.
         if let mop = nearestMop(sim: sim) {
             let dx = mop.position.x - b.position.x
-            if dx < tile * 4.5 {
-                moveX = dx < tile * 2.0 ? -0.85 : -0.25
-                return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false, pouncePressed: false)
+            if dx > 0, dx < tile * 3.5 {
+                moveX = min(moveX, 0.15)
             }
         }
         if gapAhead(sim: sim, tx: tx, ty: ty), !hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
@@ -294,30 +302,52 @@ public struct SmokeBrain: Equatable, Sendable {
             moveX = max(moveX, 0.85)
         }
         if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 2) {
-            moveX = min(abs(moveX), 0.15) * (moveX < 0 ? -1 : 1)
+            moveX = -0.35
             jumpPressed = false
         }
         if b.onWallLeft || b.onWallRight, !b.onGround {
             jumpPressed = tick % 20 == 0
             jumpHeld = true
-            moveX = b.onWallRight ? -0.35 : 0.85
+            moveX = b.onWallRight ? -0.55 : 0.85
         }
         return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed)
     }
 
     private func seekDeathInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
+        let b = sim.state.bandit
+        let tile = sim.tuning.tileSize
         let here = sim.map.tile(atX: tx, y: ty)
+        let under = sim.map.tile(atX: tx, y: ty - 1)
         let right = sim.map.tile(atX: tx + 1, y: ty)
         let left = sim.map.tile(atX: tx - 1, y: ty)
-        if here == .spike || here == .water || right == .spike || right == .water || left == .spike || left == .water {
-            // Commit into the trap — no jump.
-            let dir: Double = (left == .spike || left == .water) ? -0.55 : 0.55
+        let underR = sim.map.tile(atX: tx + 1, y: ty - 1)
+        let underL = sim.map.tile(atX: tx - 1, y: ty - 1)
+        if here == .spike || here == .water || under == .spike || under == .water
+            || right == .spike || right == .water || left == .spike || left == .water
+            || underR == .water || underL == .water {
+            // Commit into the trap — walk off, no jump.
+            let dir: Double = (left == .spike || left == .water || underL == .water) ? -1 : 1
             return InputFrame(moveX: dir)
         }
-        // Steer toward the nearest hazard; never jump during seekDeath.
+        // Steer toward the canal; jump gaps/walls so we don't soft-lock on a ledge.
         if let hx = nearestHazardX(sim: sim) {
-            let dx = Double(hx) * sim.tuning.tileSize - sim.state.bandit.position.x
-            return InputFrame(moveX: dx >= 0 ? 1 : -1)
+            let dx = Double(hx) * tile - b.position.x
+            var moveX: Double = dx >= 0 ? 1 : -1
+            var jumpPressed = false
+            var jumpHeld = false
+            if b.onWallLeft || b.onWallRight, !b.onGround {
+                jumpPressed = true
+                jumpHeld = true
+                moveX = b.onWallRight ? -1 : 1
+            } else if gapAhead(sim: sim, tx: tx, ty: ty), dx > 0 {
+                // Leap toward the canal across platform gaps.
+                jumpPressed = b.onGround || b.coyote > 0
+                jumpHeld = true
+            } else if !sim.map.isSolid(under), under != .water, abs(dx) > tile * 2 {
+                // Already airborne over a gap — keep moving toward the hazard.
+                moveX = dx >= 0 ? 1 : -1
+            }
+            return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld)
         }
         return InputFrame(moveX: 1)
     }

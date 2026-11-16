@@ -17,9 +17,9 @@ public final class HeistScene: SKScene {
     private let world = SKNode()
     /// Must use the color initializer — bare `SKSpriteNode()` keeps a white texture at blendFactor 0.
     private let skyFill = SKSpriteNode(color: ArtCatalog.nightSky, size: CGSize(width: 4, height: 4))
-    /// Opaque night plate in stage space so camera pans never expose a clear/white gap.
-    private let stageBackdrop = SKSpriteNode(color: ArtCatalog.nightSky, size: CGSize(width: 4, height: 4))
     private let parallaxFar = SKNode()
+    /// Physics body center → foot-anchor visual offset (matches Sim halfH).
+    private let bodyCenterToFeet: CGFloat = 14
     private let parallaxMid = SKNode()
     private let parallaxNear = SKNode()
     private let rainLayer = SKNode()
@@ -108,11 +108,7 @@ public final class HeistScene: SKScene {
         if ProcessInfo.processInfo.arguments.contains("-SmokeAutoplay") {
             smokeEnabled = true
         }
-        if smokeEnabled {
-            // One stomp → Mask Mode in the demo window (combo grace is too short for spaced stomps).
-            tuning.maskModeAtCombo = 1
-            tuning.comboGroundGrace = 4
-        }
+        // Smoke uses ship tuning + real Neon Docks — only input source / seed / status flags differ.
         view.preferredFramesPerSecond = 60
         view.ignoresSiblingOrder = true
         view.shouldCullNonVisibleNodes = true
@@ -124,8 +120,7 @@ public final class HeistScene: SKScene {
         }
         #endif
         do {
-            // Smoke uses the compact demo rooftop so CI can hit stomp/mask/death in-window.
-            let map = smokeEnabled ? try SmokeDemoLevel.load() : try NeonDocksLevel.load()
+            let map = try NeonDocksLevel.load()
             sim = Sim(map: map, tuning: tuning, seed: smokeEnabled ? 7 : 11)
         } catch {
             sim = Sim(map: try! TileMap.parse("###\n#@#\n###"), tuning: tuning)
@@ -140,18 +135,13 @@ public final class HeistScene: SKScene {
         }
 
         ArtCatalog.warmAtlases()
-        // Screen-space sky fill — colorBlendFactor 1 so nightSky actually tints (else = white quad).
+        // Scene night only — no opaque full-map wash quads (they hid the neon city).
         skyFill.color = ArtCatalog.nightSky
         skyFill.colorBlendFactor = 1
         skyFill.zPosition = -100
         addChild(skyFill)
         stage.setScale(Self.worldZoom)
         addChild(stage)
-        stageBackdrop.color = ArtCatalog.nightSky
-        stageBackdrop.colorBlendFactor = 1
-        stageBackdrop.zPosition = -40
-        stageBackdrop.name = "stageBackdrop"
-        stage.addChild(stageBackdrop)
         stage.addChild(parallaxFar)
         stage.addChild(parallaxMid)
         stage.addChild(parallaxNear)
@@ -159,7 +149,6 @@ public final class HeistScene: SKScene {
         world.addChild(rainLayer)
         view.allowsTransparency = false
         backgroundColor = ArtCatalog.nightSky
-        buildAtmosphere()
         buildParallax()
         buildTiles()
         buildMaskVignette()
@@ -199,10 +188,10 @@ public final class HeistScene: SKScene {
         setupDebugTuning()
         #endif
         // Defer AVAudioSession until after atlases warm / title is up — early prepare jetsams
-        // the sim. Smoke still gets music+SFX once play starts so the gameplay video has audio.
+        // the sim. Same path for smoke and ship (parity): jingle → menu theme.
+        JuiceSound.shared.prepare()
+        JuiceSound.shared.playTitleSting()
         if !smokeEnabled {
-            JuiceSound.shared.prepare()
-            JuiceSound.shared.playTitleSting()
             hapticLight.prepare(); hapticMed.prepare(); hapticHeavy.prepare()
         }
         layoutUI()
@@ -228,62 +217,45 @@ public final class HeistScene: SKScene {
 
     // MARK: - Atmosphere / Parallax
 
-    /// Opaque night wash behind tiles so empty map cells never flash white/clear.
-    private func buildAtmosphere() {
-        let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
-        let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
-        let wash = SKSpriteNode(
-            color: ArtCatalog.nightSky,
-            size: CGSize(width: mapW + 400, height: mapH + 320)
-        )
-        wash.colorBlendFactor = 1
-        wash.position = CGPoint(x: mapW * 0.5, y: mapH * 0.5)
-        wash.zPosition = -8
-        wash.name = "worldNightWash"
-        world.addChild(wash)
-    }
-
     private func buildParallax() {
-        let h = max(size.height / Self.worldZoom * 1.15, 620)
-        // ImageIO-downsampled masters (≤1280px) — real neon city, safe GPU footprint.
-        // Smoke uses smaller plates so city textures stay resident beside juice SFX.
-        let maxPx: CGFloat = smokeEnabled ? 768 : 1280
+        // Cover the full viewport height so the neon city is visible behind platforms.
+        let viewH = size.height / Self.worldZoom
+        let h = max(viewH * 1.35, 720)
+        let maxPx: CGFloat = 1280
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
 
         func tileLayer(_ node: SKSpriteNode, into parent: SKNode, y: CGFloat, z: CGFloat, brighten: Bool) {
-            // Triple the plate horizontally so camera pans never expose the nightSky gap.
             let width = max(node.size.width, 1)
             let copies = max(3, Int(ceil((mapW + size.width) / width)) + 1)
             for i in 0..<copies {
                 let plate = node.copy() as? SKSpriteNode ?? SKSpriteNode(texture: node.texture, size: node.size)
                 plate.position = CGPoint(x: CGFloat(i) * width * 0.92, y: y)
                 plate.zPosition = z
-                // Keep tint mild — never rely on a bright white tint as a purge fallback.
-                if brighten {
-                    plate.color = SKColor(red: 1.08, green: 1.02, blue: 1.1, alpha: 1)
-                    plate.colorBlendFactor = smokeEnabled ? 0.08 : 0.16
-                }
+                // Slightly desaturate/darken so sprites pop (QA P1-2).
+                plate.color = SKColor(red: 0.75, green: 0.72, blue: 0.95, alpha: 1)
+                plate.colorBlendFactor = brighten ? 0.22 : 0.18
+                plate.alpha = brighten ? 0.92 : 0.88
                 parent.addChild(plate)
             }
         }
 
+        // Anchor plates so they fill from below the HUD skyline through the playfield.
+        let midY = viewH * 0.08
         if let far = ArtCatalog.background(.farSkyline, height: h, maxPixel: maxPx) {
-            tileLayer(far, into: parallaxFar, y: 48, z: -30, brighten: false)
+            tileLayer(far, into: parallaxFar, y: midY + 40, z: -30, brighten: false)
         }
-        // Subtle perspective grid horizon behind the skyline (one baked additive plate).
         let gridW = max(mapW + size.width, 1400)
-        let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.55)
-        grid.position = CGPoint(x: gridW * 0.28, y: 20)
+        let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.7)
+        grid.position = CGPoint(x: gridW * 0.28, y: midY - 20)
+        grid.alpha = 0.35
         parallaxFar.addChild(grid)
-        if let mid = ArtCatalog.background(.midBuildings, height: h * 0.92, maxPixel: maxPx) {
-            tileLayer(mid, into: parallaxMid, y: 0, z: -20, brighten: true)
+        if let mid = ArtCatalog.background(.midBuildings, height: h * 1.05, maxPixel: maxPx) {
+            tileLayer(mid, into: parallaxMid, y: midY - 10, z: -20, brighten: true)
         }
-        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.75, maxPixel: maxPx) {
-            near.alpha = 0.92
-            tileLayer(near, into: parallaxNear, y: -40, z: -10, brighten: false)
+        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.9, maxPixel: maxPx) {
+            tileLayer(near, into: parallaxNear, y: midY - 50, z: -10, brighten: false)
         }
 
-        // Rain via capped SKEmitterNode (not a 2560 overlay blit).
         let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: size.width / Self.worldZoom, height: h))
         rainLayer.addChild(rain)
     }
@@ -322,7 +294,15 @@ public final class HeistScene: SKScene {
         let tileSize = CGSize(width: tile, height: tile)
         let tileSet = ArtCatalog.makePlatformTileSet(tileSize: tileSize)
         let groups = tileSet.tileGroups
-        guard !groups.isEmpty else { return }
+        guard groups.count >= 16 else { return }
+
+        func isGroundSolid(_ kind: Tile) -> Bool {
+            kind == .ground || kind == .wall || kind == .latch || kind == .crate
+        }
+        func solidNeighbor(x: Int, y: Int) -> Bool {
+            guard x >= 0, y >= 0, x < sim.map.width, y < sim.map.height else { return true }
+            return isGroundSolid(sim.map.tile(atX: x, y: y))
+        }
 
         let mapNode = SKTileMapNode(
             tileSet: tileSet,
@@ -333,65 +313,69 @@ public final class HeistScene: SKScene {
         mapNode.anchorPoint = CGPoint(x: 0, y: 0)
         mapNode.position = .zero
         mapNode.zPosition = 2
-        var tileIdx = 0
         for y in 0..<sim.map.height {
             for x in 0..<sim.map.width {
                 let kind = sim.map.tile(atX: x, y: y)
-                switch kind {
-                case .ground, .wall, .latch:
-                    let group = groups[tileIdx % groups.count]
-                    mapNode.setTileGroup(group, forColumn: x, row: y)
-                    tileIdx += 1
-                default:
-                    break
-                }
+                guard isGroundSolid(kind) else { continue }
+                // 4-neighbour mask: N=1 E=2 S=4 W=8
+                var mask = 0
+                if solidNeighbor(x: x, y: y + 1) { mask |= 1 }
+                if solidNeighbor(x: x + 1, y: y) { mask |= 2 }
+                if solidNeighbor(x: x, y: y - 1) { mask |= 4 }
+                if solidNeighbor(x: x - 1, y: y) { mask |= 8 }
+                mapNode.setTileGroup(groups[mask], forColumn: x, row: y)
             }
         }
         world.addChild(mapNode)
         tileMapNode = mapNode
 
-        // Decorative props + scaffolds under floating ledges so the route reads as a rooftop.
-        let propTextures = (18...27).compactMap { ArtCatalog.tileTexture(index: $0) }
+        // Kenney CC0 crates/pipes as sparse decoration — never as collision face.
+        let propTextures = ArtCatalog.sidePropTextures()
         var propI = 0
         for y in 0..<sim.map.height {
             for x in 0..<sim.map.width {
                 let kind = sim.map.tile(atX: x, y: y)
                 guard kind == .ground || kind == .wall || kind == .latch else { continue }
                 let pos = cg(sim.map.worldCenter(ofX: x, y: y, tileSize: tuning.tileSize))
-                if !propTextures.isEmpty, (x + y * 3) % 9 == 0 {
+                let below = sim.map.tile(atX: x, y: y - 1)
+                let openBelow = !sim.map.isSolid(below) && below != .water
+
+                // Occasional crate / pipe on walkable tops (not every tile).
+                if !propTextures.isEmpty, !openBelow, (x + y * 5) % 11 == 0 {
                     let tex = propTextures[propI % propTextures.count]
                     propI += 1
-                    let n = SKSpriteNode(texture: tex, size: CGSize(width: tile * 0.9, height: tile * 0.55))
-                    n.position = CGPoint(x: pos.x, y: pos.y + tile * 0.35)
-                    n.zPosition = 3
+                    let n = SKSpriteNode(texture: tex, size: CGSize(width: tile * 0.7, height: tile * 0.7))
+                    n.position = CGPoint(x: pos.x, y: pos.y + tile * 0.55)
+                    n.zPosition = 3.2
+                    n.alpha = 0.92
                     world.addChild(n)
                 }
-                // Pipes / scaffolds: drop supports from floating ledges down to the next solid deck.
-                let below = sim.map.tile(atX: x, y: y - 1)
-                if !sim.map.isSolid(below), below != .water {
+
+                // Sparse dark girders under floating ledges (every 3–4 cols) — no cyan stroke.
+                if openBelow, x % 4 == 0 {
                     var drop = 1
                     while y - drop >= 0 {
                         let t = sim.map.tile(atX: x, y: y - drop)
                         if sim.map.isSolid(t) || t == .water { break }
                         drop += 1
                     }
+                    guard drop >= 2 else { continue }
                     let span = CGFloat(drop) * tile
-                    let pipe = SKShapeNode(rectOf: CGSize(width: tile * 0.16, height: span - 4), cornerRadius: 2)
-                    pipe.fillColor = SKColor(red: 0.12, green: 0.1, blue: 0.22, alpha: 0.95)
-                    pipe.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.7)
-                    pipe.lineWidth = 1.4
-                    pipe.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
-                    pipe.zPosition = 1.4
-                    world.addChild(pipe)
-                    // Cross-brace every other column so ledges read as scaffolding, not free-floating tiles.
-                    if x % 2 == 0, drop >= 2 {
-                        let brace = SKShapeNode(rectOf: CGSize(width: tile * 0.95, height: 3), cornerRadius: 1)
-                        brace.fillColor = SKColor(red: 0.18, green: 0.12, blue: 0.28, alpha: 0.9)
-                        brace.strokeColor = ArtCatalog.neonPink.withAlphaComponent(0.55)
-                        brace.lineWidth = 1
-                        brace.position = CGPoint(x: pos.x + tile * 0.35, y: pos.y - tile * 0.55)
-                        brace.zPosition = 1.3
-                        world.addChild(brace)
+                    if let girder = ArtCatalog.sidePropTexture(index: 24 + (x % 3)) {
+                        let n = SKSpriteNode(texture: girder, size: CGSize(width: tile * 0.28, height: span - 6))
+                        n.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
+                        n.zPosition = 1.2
+                        n.alpha = 0.55
+                        n.color = SKColor(red: 0.08, green: 0.07, blue: 0.14, alpha: 1)
+                        n.colorBlendFactor = 0.55
+                        world.addChild(n)
+                    } else {
+                        let pipe = SKShapeNode(rectOf: CGSize(width: tile * 0.12, height: span - 6), cornerRadius: 1)
+                        pipe.fillColor = SKColor(red: 0.1, green: 0.09, blue: 0.16, alpha: 0.75)
+                        pipe.strokeColor = .clear
+                        pipe.position = CGPoint(x: pos.x, y: pos.y - span * 0.5)
+                        pipe.zPosition = 1.2
+                        world.addChild(pipe)
                     }
                 }
             }
@@ -405,14 +389,16 @@ public final class HeistScene: SKScene {
                 case .ground, .wall, .latch:
                     break
                 case .crate:
-                    if let tex = ArtCatalog.tileTexture(index: 22) {
+                    let tex = ArtCatalog.sidePropTexture(index: 20)
+                        ?? ArtCatalog.sidePropTexture(index: 21)
+                        ?? ArtCatalog.tileTexture(index: 22)
+                    if let tex {
                         let n = SKSpriteNode(texture: tex, size: CGSize(width: tile * 0.95, height: tile * 0.95))
                         n.position = pos
                         n.zPosition = 4
                         world.addChild(n)
                     }
                 case .water:
-                    // Canal pool: dark body + neon surface line (no flat cyan placeholder slabs).
                     let body = SKShapeNode(rectOf: CGSize(width: tile * 1.02, height: tile * 0.85), cornerRadius: 2)
                     body.fillColor = SKColor(red: 0.05, green: 0.12, blue: 0.28, alpha: 0.92)
                     body.strokeColor = .clear
@@ -1070,16 +1056,14 @@ public final class HeistScene: SKScene {
         skyFill.position = .zero
         skyFill.color = ArtCatalog.nightSky
         skyFill.colorBlendFactor = 1
-        stageBackdrop.color = ArtCatalog.nightSky
-        stageBackdrop.colorBlendFactor = 1
 
         let rightSafe = max(insets.right, 0)
-        // Dock / rest position stays inside safe area (smoke + idle hint).
+        // Dock / rest position stays inside safe area (same look in smoke + ship).
         if stickTouch == nil {
             stickBase.position = CGPoint(x: -hw + 72 + leftSafe, y: -hh + 96 + bottomSafe * 0.4)
             stickKnob.position = stickBase.position
-            stickBase.alpha = smokeEnabled ? 1 : 0.22
-            stickKnob.alpha = smokeEnabled ? 1 : 0.22
+            stickBase.alpha = 0.22
+            stickKnob.alpha = 0.22
         }
         // Separated capsule buttons — right half, inside safe area (no island/home clip).
         jumpBtn.position = CGPoint(x: hw - 64 - rightSafe, y: -hh + 118 + bottomSafe * 0.4)
@@ -1138,7 +1122,7 @@ public final class HeistScene: SKScene {
                 node?.alpha = 0
             }
         } else if playing, resumeCountdown <= 0 {
-            let stickA: CGFloat = stickTouch == nil ? (smokeEnabled ? 1 : 0.22) : 1
+            let stickA: CGFloat = stickTouch == nil ? 0.22 : 1
             stickBase?.alpha = stickA
             stickKnob?.alpha = stickA
             jumpBtn?.alpha = 1
@@ -1161,7 +1145,8 @@ public final class HeistScene: SKScene {
         }
         JuiceSound.shared.prepare()
         JuiceSound.shared.playUITap()
-        JuiceSound.shared.startLevelMusic(district: smokeEnabled ? .rooftops : .neonDocks)
+        // Gameplay bed: main_theme with alt rotation. District beds via startLevelMusic(district:).
+        JuiceSound.shared.startLevelMusic()
         mopAlerted.removeAll()
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
@@ -1176,7 +1161,7 @@ public final class HeistScene: SKScene {
         setPaused(false)
         JuiceSound.shared.prepare()
         JuiceSound.shared.playUITap()
-        JuiceSound.shared.startLevelMusic(district: smokeEnabled ? .rooftops : .neonDocks)
+        JuiceSound.shared.startLevelMusic()
         mopAlerted.removeAll()
         sim.retry()
         hideOutcome()
@@ -1526,70 +1511,64 @@ public final class HeistScene: SKScene {
         updateHUDVisibility()
     }
 
-    /// Smoke keeps music + hero SFX (stomp/mask/fail/win) so the video has a soundtrack,
-    /// but skips per-jump/land spam — AVAudioPlayer decode on every event tanks sim FPS below 55.
-    private func playSFX(_ key: AssetKey, smokeHero: Bool = false) {
-        if smokeEnabled, !smokeHero { return }
+    private func playSFX(_ key: AssetKey) {
         JuiceSound.shared.play(key)
-    }
-
-    private func playJuice(_ body: () -> Void, smokeHero: Bool = false) {
-        if smokeEnabled, !smokeHero { return }
-        body()
     }
 
     private func handle(_ events: [SimEvent]) {
         for e in events {
             switch e.kind {
             case .jump:
-                playJuice({ JuiceSound.shared.playJump() })
+                JuiceSound.shared.playJump()
                 if !smokeEnabled { hapticLight.impactOccurred() }
                 squash(0.78, 1.28)
             case .land:
-                playJuice({ JuiceSound.shared.playLand() })
+                JuiceSound.shared.playLand()
                 squash(1.35, 0.65)
                 dust(at: e.position)
             case .pounce:
-                playJuice({ JuiceSound.shared.playPounce() })
+                JuiceSound.shared.playPounce()
                 if !smokeEnabled { hapticMed.impactOccurred() }
                 shake(0.4)
             case .flop:
-                playJuice({ JuiceSound.shared.playLand() })
+                JuiceSound.shared.playLand()
                 squash(1.4, 0.55)
             case .stomp:
                 smoke.noteStomp()
                 // Midrun hold: ignore accidental pre-hunt stomps in the smoke counter/wait gate.
                 let midrunOk = !smokeEnabled || SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
                 if midrunOk { smokeStatus.stomps += 1 }
-                playJuice({ JuiceSound.shared.playStomp() }, smokeHero: true)
+                JuiceSound.shared.playStomp()
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
-                // 70ms hit-stop + shake + sparks + MOP squash + score pop (must read in smoke video).
-                hitStop = 0.10
-                shake(0.9)
+                // Hit-stop pop: 90ms normal, 150ms at combo ≥3 — then debris, not a sideways slide.
+                hitStop = sim.state.bandit.combo >= 3 ? 0.15 : 0.09
+                shake(0.95)
                 squash(1.42, 0.48)
-                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 6 : 14)
-                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 3 : 8)
+                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 14)
+                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 8)
                 dust(at: e.position)
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
                 scorePop(at: e.position, text: "+\(max(1, sim.state.bandit.combo))", color: ArtCatalog.neonLime)
             case .shiny:
                 let combo = sim.state.bandit.combo
-                playJuice({ JuiceSound.shared.playCollect(combo: max(1, combo), loot: false) })
+                JuiceSound.shared.playCollect(combo: max(1, combo), loot: false)
                 collectShinyJuice(at: e.position)
             case .bank:
                 let combo = max(1, sim.state.bandit.combo)
-                playJuice({ JuiceSound.shared.playCollect(combo: combo, loot: true) })
+                JuiceSound.shared.playCollect(combo: combo, loot: true)
                 shinySparkle(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonLime)
             case .maskOn:
                 smoke.sawMask = true
                 smokeStatus.mask = true
+                // De-stack from stomp_crunch: wait 90ms, then sting + flash.
+                hitStop = max(hitStop, 0.12)
                 run(SKAction.sequence([
                     SKAction.wait(forDuration: 0.09),
                     SKAction.run { [weak self] in
                         guard let self else { return }
-                        self.playSFX(.sfxMaskModeOn, smokeHero: true)
+                        self.playSFX(.sfxMaskModeOn)
                         if !self.maskMusicOn {
                             self.maskMusicOn = true
                             JuiceSound.shared.setMaskModeMusic(true)
@@ -1599,32 +1578,32 @@ public final class HeistScene: SKScene {
                     },
                 ]))
             case .hurt:
-                playJuice({ JuiceSound.shared.playHurt() }, smokeHero: true)
+                JuiceSound.shared.playHurt()
                 damageFlash()
                 shake(0.35)
             case .win:
                 smokeStatus.won = true
-                playSFX(.sfxWin, smokeHero: true)
+                playSFX(.sfxWin)
                 JuiceSound.shared.setMaskModeMusic(false)
                 clearMaskGrade()
                 showOutcome()
                 writeSmokeStatus()
             case .fail:
                 smokeStatus.died = true
-                playJuice({ JuiceSound.shared.playKO() }, smokeHero: true)
+                JuiceSound.shared.playKO()
                 JuiceSound.shared.setMaskModeMusic(false)
                 clearMaskGrade()
-                // Smoke: never overlay SPLASHED during the Mask beat capture window.
+                // Hold so death pose plays before SPLASHED. Smoke still defers the card
+                // until the Mask screenshot flag lands (harness timing only).
                 let maskOk = SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
                 if smokeEnabled, !maskOk {
                     writeSmokeStatus()
                 } else {
-                    failOutcomeHold = smokeEnabled ? 0.35 : 0.55
+                    failOutcomeHold = 0.85
                     writeSmokeStatus()
                 }
             case .checkpoint:
                 playSFX(.sfxCheckpoint)
-                // No debug text — tiny sparkle only.
                 hitSpark(at: e.position, color: ArtCatalog.neonLime)
             case .dust:
                 dust(at: e.position)
@@ -1777,9 +1756,10 @@ public final class HeistScene: SKScene {
 
     private func sync(dt: CGFloat) {
         let b = sim.state.bandit
-        bandit.position = cg(b.position)
+        // Physics uses body center; foot-anchored sprites need the feet on the deck.
+        bandit.position = CGPoint(x: CGFloat(b.position.x), y: CGFloat(b.position.y) - bodyCenterToFeet)
         bandit.setFacing(b.facing)
-        bandit.show(anim: b.anim, maskMode: b.maskMode, dt: dt, smokeLite: smokeEnabled)
+        bandit.show(anim: b.anim, maskMode: b.maskMode, dt: dt, smokeLite: false)
         bandit.alpha = b.invuln > 0 && Int(b.invuln * 20) % 2 == 0 ? 0.4 : 1
 
         for s in sim.state.shinies {
@@ -1790,7 +1770,8 @@ public final class HeistScene: SKScene {
         for m in sim.state.mops {
             guard let node = mopNodes[m.id] else { continue }
             if node.userData?["squashing"] as? Bool == true { continue }
-            node.position = cg(m.position)
+            // MOP home is already foot-on-deck; nudge 1px into the tile top.
+            node.position = CGPoint(x: CGFloat(m.position.x), y: CGFloat(m.position.y) - 1)
             if m.alive {
                 node.isHidden = false
                 node.alpha = 1
@@ -1799,7 +1780,7 @@ public final class HeistScene: SKScene {
                     && abs(m.position.y - b.position.y) < 60
                 if pose == .walk, near {
                     pose = .attack
-                    if !mopAlerted.contains(m.id), !smokeEnabled {
+                    if !mopAlerted.contains(m.id) {
                         mopAlerted.insert(m.id)
                         JuiceSound.shared.playMopAlert()
                     }
@@ -1808,9 +1789,8 @@ public final class HeistScene: SKScene {
                 }
                 node.show(anim: pose, facing: m.facing)
             } else if m.anim == .death, m.animHold > 0 {
-                node.isHidden = false
-                node.alpha = CGFloat(max(0.15, m.animHold / 0.8))
-                node.show(anim: .death, facing: m.facing)
+                // Stomp juice owns the pop — don't play the tip-over death slide.
+                node.isHidden = true
             } else {
                 node.isHidden = true
             }
@@ -1844,30 +1824,20 @@ public final class HeistScene: SKScene {
             (label.childNode(withName: "hudOutline") as? SKLabelNode)?.text = label.text
             (label.childNode(withName: "hudGlow") as? SKLabelNode)?.text = label.text
         }
-        // Mask Mode: trail + soft edge pulse (no full-screen cyan plate).
+        // Mask Mode: trail + soft edge pulse (no full-screen cyan plate / wash).
         if b.maskMode {
             maskParticleAcc += dt
             maskGradePulse += dt
-            if maskParticleAcc >= (smokeEnabled ? 0.14 : 0.07) {
+            if maskParticleAcc >= 0.07 {
                 maskParticleAcc = 0
-                if !smokeEnabled {
-                    neonBurst(at: b.position, color: ArtCatalog.neonCyan, count: 2)
-                }
                 bandit.emitMaskTrail()
             }
             maskVignette.alpha = 1
             if let edge = maskVignette.childNode(withName: "vignetteEdge") as? SKSpriteNode {
                 edge.alpha = 0.18 + 0.06 * sin(maskGradePulse * 3.5)
             }
-            // Keep night plates pinned — never let a tint/purge path bleach them cyan.
             skyFill.color = ArtCatalog.nightSky
             skyFill.colorBlendFactor = 1
-            stageBackdrop.color = ArtCatalog.nightSky
-            stageBackdrop.colorBlendFactor = 1
-            if let night = world.childNode(withName: "worldNightWash") as? SKSpriteNode {
-                night.color = ArtCatalog.nightSky
-                night.colorBlendFactor = 1
-            }
             if !lastMaskMode {
                 applyMaskParallaxGrade(active: true, pulse: 1)
             }
@@ -1897,9 +1867,6 @@ public final class HeistScene: SKScene {
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
-        // Opaque night plate tracks the camera — never a white gap behind the playfield.
-        stageBackdrop.position = cameraFocus
-        stageBackdrop.size = CGSize(width: viewW * 1.6, height: viewH * 1.6)
         // Slow parallax — keep plates covering the view (tiled in buildParallax).
         parallaxFar.position = CGPoint(x: cameraFocus.x * 0.88, y: cameraFocus.y * 0.96)
         parallaxMid.position = CGPoint(x: cameraFocus.x * 0.72, y: cameraFocus.y * 0.92)
@@ -1925,8 +1892,7 @@ public final class HeistScene: SKScene {
     }
 
     private func dust(at pos: Vec2) {
-        let count = smokeEnabled ? 3 : 8
-        for _ in 0..<count {
+        for _ in 0..<8 {
             let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 2.5...5))
             p.fillColor = ArtCatalog.neonOrange.withAlphaComponent(0.8)
             p.strokeColor = .clear
@@ -1945,15 +1911,12 @@ public final class HeistScene: SKScene {
     }
 
     private func shinySparkle(at pos: Vec2) {
-        let count = smokeEnabled ? 4 : 9
-        for _ in 0..<count {
+        for _ in 0..<9 {
             let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 1.8...4))
             p.fillColor = ArtCatalog.neonOrange
-            p.strokeColor = smokeEnabled ? .clear : ArtCatalog.neonCyan.withAlphaComponent(0.85)
-            if !smokeEnabled {
-                p.lineWidth = 0.8
-                p.glowWidth = 1.5
-            }
+            p.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.85)
+            p.lineWidth = 0.8
+            p.glowWidth = 1.5
             p.position = cg(pos)
             p.zPosition = 55
             world.addChild(p)
@@ -2007,11 +1970,11 @@ public final class HeistScene: SKScene {
         ]))
     }
 
-    /// Compact score/combo floater at the hit (not a giant debug word).
+    /// Score/combo floater at the hit — large enough to read in smoke video.
     private func scorePop(at pos: Vec2, text: String, color: SKColor) {
         let l = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         l.text = text
-        l.fontSize = 22
+        l.fontSize = 26
         l.fontColor = color
         l.position = cg(pos)
         l.zPosition = 63
@@ -2023,7 +1986,7 @@ public final class HeistScene: SKScene {
             SKAction.group([
                 SKAction.fadeIn(withDuration: 0.05),
                 SKAction.scale(to: 1.55, duration: 0.12),
-                SKAction.moveBy(x: 0, y: 18, duration: 0.12),
+                SKAction.moveBy(x: 0, y: 30, duration: 0.12),
             ]),
             SKAction.group([
                 SKAction.moveBy(x: 0, y: 28, duration: 0.38),
@@ -2066,24 +2029,53 @@ public final class HeistScene: SKScene {
         if node.userData == nil { node.userData = NSMutableDictionary() }
         node.userData?["squashing"] = true
         node.removeAllActions()
-        let face = (node.xScale >= 0 ? 1 : -1)
-        node.xScale = face
+        node.isHidden = false
+        node.alpha = 1
+        let face: CGFloat = node.xScale >= 0 ? 1 : -1
+        // White flash → flat squash pop → debris (no sideways tip/slide).
         node.run(SKAction.sequence([
+            SKAction.colorize(with: .white, colorBlendFactor: 1.0, duration: 0.0),
+            SKAction.wait(forDuration: 1.0 / 60.0),
             SKAction.group([
-                SKAction.scaleX(to: 1.08 * face, y: 0.22, duration: 0.06),
-                SKAction.fadeAlpha(to: 0.65, duration: 0.06),
+                SKAction.scaleX(to: 1.4 * face, y: 0.3, duration: 0.05),
+                SKAction.colorize(withColorBlendFactor: 0, duration: 0.05),
             ]),
             SKAction.group([
-                SKAction.scaleX(to: 1.2 * face, y: 0.06, duration: 0.1),
-                SKAction.fadeOut(withDuration: 0.12),
+                SKAction.scaleX(to: 1.55 * face, y: 0.08, duration: 0.08),
+                SKAction.fadeOut(withDuration: 0.08),
             ]),
-            SKAction.run { [weak node] in
+            SKAction.run { [weak self, weak node] in
                 node?.isHidden = true
                 node?.setScale(1)
                 node?.alpha = 1
+                node?.colorBlendFactor = 0
                 node?.userData?["squashing"] = false
+                self?.mopDebris(at: target)
             },
         ]))
+    }
+
+    private func mopDebris(at worldPos: CGPoint) {
+        for _ in 0..<8 {
+            let bit = SKShapeNode(rectOf: CGSize(width: CGFloat.random(in: 3...7), height: CGFloat.random(in: 2...5)), cornerRadius: 1)
+            bit.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.9)
+            bit.strokeColor = .clear
+            bit.position = worldPos
+            bit.zPosition = 45
+            world.addChild(bit)
+            bit.run(SKAction.sequence([
+                SKAction.group([
+                    SKAction.moveBy(
+                        x: CGFloat.random(in: -40...40),
+                        y: CGFloat.random(in: 8...36),
+                        duration: 0.28
+                    ),
+                    SKAction.fadeOut(withDuration: 0.28),
+                    SKAction.scale(to: 0.2, duration: 0.28),
+                ]),
+                SKAction.removeFromParent(),
+            ]))
+        }
     }
 
     private func collectShinyJuice(at pos: Vec2) {
@@ -2148,16 +2140,22 @@ public final class HeistScene: SKScene {
 
     private func shake(_ amount: CGFloat) {
         // Shake world (child of stage) so sync's stage.position rewrite does not cancel it.
-        let a = amount * (smokeEnabled ? 8.0 : 6.5)
+        let a = amount * 7.0
         world.removeAction(forKey: "shake")
         world.position = .zero
-        world.run(SKAction.sequence([
-            SKAction.moveBy(x: a, y: a * 0.45, duration: 0.035),
-            SKAction.moveBy(x: -2.2 * a, y: -a * 0.8, duration: 0.05),
-            SKAction.moveBy(x: 1.7 * a, y: a * 0.5, duration: 0.045),
-            SKAction.moveBy(x: -0.5 * a, y: -a * 0.15, duration: 0.035),
-            SKAction.run { [weak self] in self?.world.position = .zero },
-        ]), withKey: "shake")
+        // Light trauma decay (not a fixed 4-step wiggle).
+        let steps: [(CGFloat, CGFloat, TimeInterval)] = [
+            (1.0, 0.55, 0.03),
+            (-1.6, -0.9, 0.04),
+            (1.1, 0.6, 0.04),
+            (-0.7, -0.35, 0.035),
+            (0.35, 0.2, 0.03),
+        ]
+        var actions: [SKAction] = steps.map { dx, dy, dur in
+            SKAction.moveBy(x: a * dx, y: a * dy, duration: dur)
+        }
+        actions.append(SKAction.run { [weak self] in self?.world.position = .zero })
+        world.run(SKAction.sequence(actions), withKey: "shake")
     }
 
     private func writeSmokeStatus() {
@@ -2257,7 +2255,7 @@ public final class HeistScene: SKScene {
     }
 
     private func flashMask() {
-        // Brief ≤100ms low-alpha flash, then edge grade only. Gameplay stays readable.
+        // Crisp Mask beat: LED glints + rim + short afterimage — no blurry ghost head.
         maskVignette.isHidden = false
         maskVignette.alpha = 1
         if let edge = maskVignette.childNode(withName: "vignetteEdge") as? SKSpriteNode {
@@ -2265,10 +2263,39 @@ public final class HeistScene: SKScene {
         }
         applyMaskParallaxGrade(active: true, pulse: 1)
         _ = tryFullscreenFlash(color: ArtCatalog.neonCyan, peakAlpha: 0.08, duration: 0.08)
-        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 3 : 12)
-        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 1 : 6)
-        let rings = smokeEnabled ? 2 : 3
-        for i in 0..<rings {
+        bandit.flashMaskEntry()
+        // Camera punch-in.
+        let z = Self.worldZoom
+        stage.removeAction(forKey: "maskPunch")
+        stage.setScale(z)
+        stage.run(SKAction.sequence([
+            SKAction.scale(to: z * 1.06, duration: 0.08),
+            SKAction.scale(to: z, duration: 0.18),
+        ]), withKey: "maskPunch")
+        // MASK MODE stamp.
+        let stamp = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        stamp.text = "MASK MODE"
+        stamp.fontSize = 34
+        stamp.fontColor = ArtCatalog.neonCyan
+        stamp.zPosition = 280
+        stamp.setScale(1.6)
+        stamp.alpha = 0
+        overlay.addChild(stamp)
+        stamp.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.fadeIn(withDuration: 0.06),
+                SKAction.scale(to: 1.0, duration: 0.1),
+            ]),
+            SKAction.wait(forDuration: 0.28),
+            SKAction.group([
+                SKAction.fadeOut(withDuration: 0.16),
+                SKAction.scale(to: 0.85, duration: 0.16),
+            ]),
+            SKAction.removeFromParent(),
+        ]))
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: 10)
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: 5)
+        for i in 0..<3 {
             let ring = SKShapeNode(circleOfRadius: 16 + CGFloat(i) * 12)
             ring.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.75 - CGFloat(i) * 0.15)
             ring.fillColor = .clear
@@ -2285,7 +2312,7 @@ public final class HeistScene: SKScene {
                 SKAction.removeFromParent(),
             ]))
         }
-        for _ in 0..<(smokeEnabled ? 3 : 5) { bandit.emitMaskTrail() }
+        for _ in 0..<3 { bandit.emitMaskTrail() }
         hitSpark(at: sim.state.bandit.position, color: ArtCatalog.neonCyan)
     }
 }

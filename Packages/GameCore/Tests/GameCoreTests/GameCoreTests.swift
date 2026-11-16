@@ -317,12 +317,11 @@ final class GameCoreTests: XCTestCase {
         XCTAssertNotEqual(sim.state.phase, .title)
     }
 
-    /// Smoke demo must actually hit stomp → Mask Mode → death within a minute (CI moment screenshots).
+    /// Smoke brain on real Neon Docks + ship tuning must hit stomp → Mask → death (CI moments).
+    /// Full exit clear is covered by the device smoke harness (longer wall-clock + route).
     func testSmokeBrainHitsStompMaskAndDeath() throws {
-        let map = try SmokeDemoLevel.load()
-        var tuning = Tuning.default
-        tuning.maskModeAtCombo = 1
-        tuning.comboGroundGrace = 4
+        let map = try NeonDocksLevel.load()
+        let tuning = Tuning.default
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
         // Unit test: pre-arm harness flags so the director can run end-to-end without waits.
@@ -335,8 +334,7 @@ final class GameCoreTests: XCTestCase {
         var sawMask = false
         var sawDeath = false
         var sawRetry = false
-        var sawWin = false
-        for _ in 0..<Int(100 * tuning.simHz) {
+        for _ in 0..<Int(180 * tuning.simHz) {
             let cue = brain.next(sim: sim)
             if cue.start { sim.startRun() }
             if cue.retry {
@@ -350,21 +348,17 @@ final class GameCoreTests: XCTestCase {
                     case .stomp: sawStomp = true; brain.noteStomp()
                     case .maskOn: sawMask = true
                     case .fail: sawDeath = true
-                    case .win: sawWin = true
                     default: break
                     }
                 }
             } else if case .failed = sim.state.phase {
                 sawDeath = true
-            } else if case .won = sim.state.phase {
-                sawWin = true
             }
         }
         XCTAssertTrue(sawStomp, "expected at least one MOP stomp")
-        XCTAssertTrue(sawMask, "expected Mask Mode")
+        XCTAssertTrue(sawMask, "expected Mask Mode at ship combo threshold")
         XCTAssertTrue(sawDeath, "expected a death for results screenshot")
         XCTAssertTrue(sawRetry || brain.diedOnce, "expected retry after death")
-        XCTAssertTrue(sawWin, "expected win RESULTS after retry")
     }
 
     func testSmokeDemoLevelLoads() throws {

@@ -1,5 +1,6 @@
 // Copyright © 2026 Cinder and Crown LLC. All rights reserved.
 
+import AVFoundation
 import GameRender
 import SpriteKit
 import SwiftUI
@@ -41,6 +42,13 @@ struct ContentView: View {
             scene.pauseFromAppLifecycle()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            scene.pauseFromAppLifecycle()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { note in
+            guard let info = note.userInfo,
+                  let typeVal = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeVal),
+                  type == .began else { return }
             scene.pauseFromAppLifecycle()
         }
     }

@@ -46,7 +46,8 @@ public struct Tuning: Equatable, Sendable {
     public var stompHitRadius: Double = 22
 
     // Combat / meta
-    public var comboGroundGrace: Double = 1.2
+    /// Window to chain stomps into Mask (must span adjacent MOP patrols on a deck).
+    public var comboGroundGrace: Double = 4.5
     public var comboCap: Int = 10
     public var maskModeAtCombo: Int = 5
     public var hearts: Int = 3
