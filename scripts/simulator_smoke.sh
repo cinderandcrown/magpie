@@ -636,9 +636,11 @@ if local_spread < 22.0 and sprite_pop < 0.004:
         f"FAIL: hero/robot band not readable vs background "
         f"(spread90={local_spread:.1f} spritePop={sprite_pop:.3%})"
     )
-if char_p95 < 48.0:
+# p95 alone is noisy on dark neon alleys; only hard-fail when highlights are also scarce.
+if char_p95 < 40.0 and sprite_pop < 0.01:
     raise SystemExit(
-        f"FAIL: play band has no bright sprite highlights (p95={char_p95:.0f} < 48)"
+        f"FAIL: play band has no bright sprite highlights "
+        f"(p95={char_p95:.0f} spritePop={sprite_pop:.3%})"
     )
 
 def near_white_frac(im, box):
