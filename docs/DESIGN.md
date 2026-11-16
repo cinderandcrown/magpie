@@ -14,10 +14,11 @@ A cocky masked raccoon runs short neon-city heists: pounce, belly-flop MOPs, ban
 
 ### Core fun first (30-second loop)
 
-- **Tight controls:** coyote time, jump buffer, variable jump height, pounce dash with a satisfying arc.
-- **Chain-stomps:** stomping MOPs without touching the ground builds combos with escalating pitch SFX and multipliers; Mask Mode at combo threshold.
+- **Tight controls:** coyote time, jump buffer, variable jump height, pounce dash with a satisfying arc. **Floating left stick** (appears where you touch); slight push = walk, full = run; JUMP/POUNCE on the right inside the safe area (`docs/VIBEGAMEDEV_METHODS.md` v2).
+- **Chain-stomps:** stomping MOPs without touching the ground builds combos with escalating pitch SFX and multipliers; Mask Mode at combo threshold. Stomp hitbox live on the contact / committed-fall frame only.
 - **Medals (3 per level, shown up front):** (1) finish, (2) collect all Shinies, (3) beat par time. Stars/medals appear on **level clear only** — never on the death card.
 - **Crew:** 1 hidden crew member per level (“Free the crew”) in a secret spot.
+- **FTUE (pre-release):** teach move, jump, stomp, Mask in &lt;30s. Juicy vertical slice — no feature sprawl.
 
 ### Progression
 

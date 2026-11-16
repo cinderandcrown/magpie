@@ -46,3 +46,16 @@ Native Swift + SpriteKit + StoreKit 2 only. Do not scaffold Phaser/Three/Capacit
 - After every pass, a continuous deterministic smoke video (seeded RNG, an explicit ready signal instead of sleeps, a meaningful outcome assertion, fail on unexpected logs) plus screenshots. Green CI is not the same as fun.
 - Describe bugs by what's visible ("raccoon slides after a stomp"), then fix that.
 - No leftover debug strings.
+
+## V2 — Chong-U methods (apply every pass)
+
+- Keep a short GDD and a mobile-aware technical design in `docs/` and update them per pass (`docs/DESIGN.md`, `docs/TECHNICAL_DESIGN.md`).
+- Touch controls are placement-insensitive: touch anywhere on the left half and the stick appears there; a slight push walks, a full push runs. Jump / Pounce on the right.
+- Fix HUD occlusion: every control stays inside the safe area.
+- One gym per system (character, tiles/collision, enemies, background). Stomp/attack hitboxes are live only on the contact frame. Feet sit IN the ground art, not floating.
+- Parallax and HUD colors must not compete with the playfield.
+- Agent eyes: one pass changes things, then judge the smoke screenshots side by side against the previous build, and iterate until it's clearly better.
+- Listen to every SFX; reject harsh or mismatched ones.
+- Before release, a short FTUE that teaches move, jump, stomp and Mask in under 30s. Ship a juicy vertical slice; no feature sprawl.
+
+**Spriterrific (this mission):** Fire Fox generates locally. CI spend stays **disabled**. Do not add `Assets/SPRITERRIFIC_REQUEST` or a credit-spend CI job.

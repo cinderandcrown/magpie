@@ -548,8 +548,10 @@ public final class BanditVisual: SKNode {
         rig.name = "rig"
 
         // Primary silhouette = licensed / project sheets (frame-animated).
+        // Anchor near the feet so soles sit IN the ground art (not floating mid-tile).
         sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 78, height: 78))
         sprite.name = "sprite"
+        sprite.anchorPoint = CGPoint(x: 0.5, y: 0.12)
         sprite.zPosition = 1
         ArtCatalog.applyDespill(sprite)
 
@@ -607,6 +609,7 @@ public final class BanditVisual: SKNode {
         shadow.fillColor = SKColor(white: 0, alpha: 0.4)
         shadow.strokeColor = .clear
         shadow.zPosition = -1
+        shadow.position = CGPoint(x: 0, y: -2)
 
         let glowTex = maskTex ?? idleTex
         maskGlow = SKSpriteNode(texture: glowTex, size: CGSize(width: 110, height: 110))

@@ -8,7 +8,11 @@ public struct Tuning: Equatable, Sendable {
     public var simHz: Double = 60
 
     // Run / air — snappier fall so jumps stop feeling floaty.
+    /// Slight stick deflection → walk; full deflection → run (Chong-U / Vibe v2).
+    public var walkSpeed: Double = 3.6
     public var runSpeed: Double = 7.4
+    /// Stick magnitude at/above this uses runSpeed; below blends toward walkSpeed.
+    public var walkRunStickThreshold: Double = 0.55
     public var accelGround: Double = 95
     public var accelAir: Double = 48
     public var frictionGround: Double = 78
@@ -17,6 +21,8 @@ public struct Tuning: Equatable, Sendable {
     /// Extra gravity while falling (Celeste-style fast drop).
     public var fallGravity: Double = 122
     public var jumpCutGravity: Double = 155
+    /// Stomp hitbox only while falling at least this fast (tiles/s), or while flopping.
+    public var stompMinFallSpeed: Double = 3.5
 
     // Jump
     public var jumpVelocity: Double = 15.6

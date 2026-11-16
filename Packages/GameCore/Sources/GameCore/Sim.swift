@@ -144,11 +144,22 @@ public struct Sim: Equatable, Sendable {
         if abs(move) > 0.05 { bandit.facing = move >= 0 ? 1 : -1 }
 
         let accel = bandit.onGround ? tuning.accelGround : tuning.accelAir
-        let target = move * tuning.runSpeed * tuning.tileSize / 4 // scale to px/s feel via tile
-        // Use tile-scaled speeds: runSpeed tiles/sec
+        // Slight stick = walk, full stick = run (placement-insensitive virtual stick).
+        let mag = abs(move)
+        let walkPx = tuning.walkSpeed * tuning.tileSize
         let runPx = tuning.runSpeed * tuning.tileSize
-        let targetVx = move * runPx
-        if abs(move) > 0.05 {
+        let thresh = max(0.15, min(0.9, tuning.walkRunStickThreshold))
+        let speedPx: Double
+        if mag <= 0.05 {
+            speedPx = 0
+        } else if mag < thresh {
+            speedPx = walkPx * (mag / thresh)
+        } else {
+            let u = (mag - thresh) / max(0.05, 1 - thresh)
+            speedPx = walkPx + (runPx - walkPx) * min(1, u)
+        }
+        let targetVx = (move >= 0 ? 1.0 : -1.0) * speedPx
+        if mag > 0.05 {
             if bandit.velocity.x < targetVx {
                 bandit.velocity.x = min(targetVx, bandit.velocity.x + accel * tuning.tileSize * dt)
             } else if bandit.velocity.x > targetVx {
@@ -232,8 +243,6 @@ public struct Sim: Equatable, Sendable {
         } else if bandit.coyote > 0 {
             bandit.coyote = max(0, bandit.coyote - dt)
         }
-
-        _ = target // silence if unused path
     }
 
     private mutating func collide(bandit: inout BanditState) {
@@ -394,8 +403,14 @@ public struct Sim: Equatable, Sendable {
             state.mops[i].position.y = state.mops[i].home.y
 
             let d = state.mops[i].position.distance(to: bandit.position)
-            // Stomp from above while falling / flopping
-            if d < tuning.stompHitRadius && bandit.velocity.y < 0 && bandit.position.y > state.mops[i].position.y {
+            // Stomp hitbox live only on contact frame: flopping, or committed downward fall.
+            let fallSpeed = -bandit.velocity.y / max(tuning.tileSize, 1)
+            let stompActive = bandit.flopping
+                || (bandit.velocity.y < 0 && fallSpeed >= tuning.stompMinFallSpeed)
+            if stompActive
+                && d < tuning.stompHitRadius
+                && bandit.position.y > state.mops[i].position.y
+            {
                 state.mops[i].alive = false
                 state.mops[i].respawn = 3.5
                 bandit.velocity.y = tuning.stompBounceVelocity * tuning.tileSize / 2.2

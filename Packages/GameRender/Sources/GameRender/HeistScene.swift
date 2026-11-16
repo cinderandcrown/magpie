@@ -472,12 +472,14 @@ public final class HeistScene: SKScene {
 
     private func setupControls() {
         // Neon stick: dark plate + crisp cyan ring (not a stock translucent blob).
+        // Floating stick: dock hint is faint; active stick appears at the finger (left half).
         stickBase = SKShapeNode(circleOfRadius: 54)
         stickBase.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.12, alpha: 0.78)
         stickBase.strokeColor = ArtCatalog.neonCyan
         stickBase.lineWidth = 2.5
         stickBase.glowWidth = 1.5
         stickBase.zPosition = 200
+        stickBase.alpha = 0.2
         playHUD.addChild(stickBase)
         let stickInner = SKShapeNode(circleOfRadius: 40)
         stickInner.fillColor = .clear
@@ -492,6 +494,7 @@ public final class HeistScene: SKScene {
         stickKnob.lineWidth = 1.5
         stickKnob.glowWidth = 1
         stickKnob.zPosition = 201
+        stickKnob.alpha = 0.2
         playHUD.addChild(stickKnob)
 
         jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime)
@@ -910,11 +913,17 @@ public final class HeistScene: SKScene {
         stageBackdrop.color = ArtCatalog.nightSky
         stageBackdrop.colorBlendFactor = 1
 
-        stickBase.position = CGPoint(x: -hw + 72 + leftSafe, y: -hh + 96 + bottomSafe * 0.4)
-        stickKnob.position = stickBase.position
-        // Separated capsule buttons (no overlapping circles).
-        jumpBtn.position = CGPoint(x: hw - 64, y: -hh + 118 + bottomSafe * 0.4)
-        pounceBtn.position = CGPoint(x: hw - 64, y: -hh + 52 + bottomSafe * 0.4)
+        let rightSafe = max(insets.right, 0)
+        // Dock / rest position stays inside safe area (smoke + idle hint).
+        if stickTouch == nil {
+            stickBase.position = CGPoint(x: -hw + 72 + leftSafe, y: -hh + 96 + bottomSafe * 0.4)
+            stickKnob.position = stickBase.position
+            stickBase.alpha = smokeEnabled ? 1 : 0.22
+            stickKnob.alpha = smokeEnabled ? 1 : 0.22
+        }
+        // Separated capsule buttons — right half, inside safe area (no island/home clip).
+        jumpBtn.position = CGPoint(x: hw - 64 - rightSafe, y: -hh + 118 + bottomSafe * 0.4)
+        pounceBtn.position = CGPoint(x: hw - 64 - rightSafe, y: -hh + 52 + bottomSafe * 0.4)
         let hudTop = hh - topSafe - 6
         let hudX = -hw + 16 + leftSafe
         hudCarried.position = CGPoint(x: hudX, y: hudTop)
@@ -1082,9 +1091,14 @@ public final class HeistScene: SKScene {
                 hapticMed.impactOccurred()
                 continue
             }
+            // Left half: stick appears at the finger (placement-insensitive).
             if p.x < 0 {
                 stickTouch = touch
-                stickOrigin = stickBase.position
+                stickOrigin = p
+                stickBase.position = p
+                stickKnob.position = p
+                stickBase.alpha = 1
+                stickKnob.alpha = 1
                 updateStick(p)
             }
         }
@@ -1104,6 +1118,9 @@ public final class HeistScene: SKScene {
                 stickTouch = nil
                 moveX = 0
                 stickKnob.position = stickBase.position
+                stickBase.alpha = 0.22
+                stickKnob.alpha = 0.22
+                layoutUI()
             }
             if touch === jumpTouch {
                 jumpTouch = nil

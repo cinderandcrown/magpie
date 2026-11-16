@@ -43,7 +43,10 @@ public final class DebugTuningMenu: SKNode {
         addChild(title)
 
         let specs: [(String, WritableKeyPath<Tuning, Double>, Double)] = [
+            ("walkSpeed", \.walkSpeed, 0.2),
             ("runSpeed", \.runSpeed, 0.2),
+            ("walkRunStickThreshold", \.walkRunStickThreshold, 0.05),
+            ("stompMinFallSpeed", \.stompMinFallSpeed, 0.2),
             ("jumpVelocity", \.jumpVelocity, 0.3),
             ("gravity", \.gravity, 2),
             ("coyoteSeconds", \.coyoteSeconds, 0.01),
