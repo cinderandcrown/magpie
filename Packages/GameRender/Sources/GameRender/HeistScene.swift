@@ -15,7 +15,10 @@ public final class HeistScene: SKScene {
     private var tuning = Tuning.default
     private let stage = SKNode()
     private let world = SKNode()
-    private let skyFill = SKSpriteNode()
+    /// Must use the color initializer — bare `SKSpriteNode()` keeps a white texture at blendFactor 0.
+    private let skyFill = SKSpriteNode(color: ArtCatalog.nightSky, size: CGSize(width: 4, height: 4))
+    /// Opaque night plate in stage space so camera pans never expose a clear/white gap.
+    private let stageBackdrop = SKSpriteNode(color: ArtCatalog.nightSky, size: CGSize(width: 4, height: 4))
     private let parallaxFar = SKNode()
     private let parallaxMid = SKNode()
     private let parallaxNear = SKNode()
@@ -75,6 +78,11 @@ public final class HeistScene: SKScene {
     private var maskGradePulse: CGFloat = 0
     private var lastAwardedMedals = 0
     private var retentionMode: String? = nil // "map" | "daily"
+    /// Wall-clock play timer for smoke (monotonic across death/retry — review gate).
+    private var smokeWallStart: TimeInterval = 0
+    private var smokeWallElapsed: TimeInterval = 0
+    /// Photosensitivity: timestamps of full-screen flashes in the last second.
+    private var flashHistory: [TimeInterval] = []
     #if DEBUG
     private var tuningMenu: DebugTuningMenu?
     private var debugToggle: SKLabelNode?
@@ -123,17 +131,25 @@ public final class HeistScene: SKScene {
         }
 
         ArtCatalog.warmAtlases()
-        // Screen-space sky fill prevents purple/black edge bands when the camera pans.
+        // Screen-space sky fill — colorBlendFactor 1 so nightSky actually tints (else = white quad).
         skyFill.color = ArtCatalog.nightSky
+        skyFill.colorBlendFactor = 1
         skyFill.zPosition = -100
         addChild(skyFill)
         stage.setScale(Self.worldZoom)
         addChild(stage)
+        stageBackdrop.color = ArtCatalog.nightSky
+        stageBackdrop.colorBlendFactor = 1
+        stageBackdrop.zPosition = -40
+        stageBackdrop.name = "stageBackdrop"
+        stage.addChild(stageBackdrop)
         stage.addChild(parallaxFar)
         stage.addChild(parallaxMid)
         stage.addChild(parallaxNear)
         stage.addChild(world)
         world.addChild(rainLayer)
+        view.allowsTransparency = false
+        backgroundColor = ArtCatalog.nightSky
         buildAtmosphere()
         buildParallax()
         buildTiles()
@@ -202,16 +218,18 @@ public final class HeistScene: SKScene {
 
     // MARK: - Atmosphere / Parallax
 
-    /// Thin translucent wash only — real parallax fills the sky (no opaque plate / black bands).
+    /// Opaque night wash behind tiles so empty map cells never flash white/clear.
     private func buildAtmosphere() {
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
         let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
         let wash = SKSpriteNode(
-            color: ArtCatalog.dockFill.withAlphaComponent(0.22),
-            size: CGSize(width: mapW + 280, height: mapH + 200)
+            color: ArtCatalog.nightSky,
+            size: CGSize(width: mapW + 400, height: mapH + 320)
         )
-        wash.position = CGPoint(x: mapW * 0.5, y: mapH * 0.55)
-        wash.zPosition = -6
+        wash.colorBlendFactor = 1
+        wash.position = CGPoint(x: mapW * 0.5, y: mapH * 0.5)
+        wash.zPosition = -8
+        wash.name = "worldNightWash"
         world.addChild(wash)
     }
 
@@ -263,16 +281,23 @@ public final class HeistScene: SKScene {
         maskVignette.alpha = 0
         maskVignette.isHidden = true
         overlay.addChild(maskVignette)
-        // Full-bleed color-grade wash (strong enough to read in smoke video).
-        let wash = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.22), size: CGSize(width: 40, height: 40))
+        // Tasteful grade: alpha-blend ≤18% cyan/magenta — never additive full-screen blowout.
+        let wash = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.16), size: CGSize(width: 40, height: 40))
         wash.name = "wash"
-        wash.blendMode = .add
+        wash.blendMode = .alpha
         maskVignette.addChild(wash)
-        let magenta = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.1), size: CGSize(width: 40, height: 40))
+        let magenta = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.08), size: CGSize(width: 40, height: 40))
         magenta.name = "washMagenta"
-        magenta.blendMode = .add
+        magenta.blendMode = .alpha
         magenta.zPosition = 1
         maskVignette.addChild(magenta)
+        // Soft edge vignette (darken corners) — keeps center readable.
+        let edge = SKSpriteNode(color: SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 0.35), size: CGSize(width: 40, height: 40))
+        edge.name = "vignetteEdge"
+        edge.blendMode = .alpha
+        edge.zPosition = 2
+        edge.alpha = 0.5
+        maskVignette.addChild(edge)
     }
 
     /// Prefer live view/window insets; fall back to iPhone island/home values so HUD never sits under chrome.
@@ -869,6 +894,9 @@ public final class HeistScene: SKScene {
         skyFill.size = CGSize(width: size.width * 3.2, height: size.height * 3.2)
         skyFill.position = .zero
         skyFill.color = ArtCatalog.nightSky
+        skyFill.colorBlendFactor = 1
+        stageBackdrop.color = ArtCatalog.nightSky
+        stageBackdrop.colorBlendFactor = 1
 
         stickBase.position = CGPoint(x: -hw + 72 + leftSafe, y: -hh + 96 + bottomSafe * 0.4)
         stickKnob.position = stickBase.position
@@ -903,6 +931,11 @@ public final class HeistScene: SKScene {
             magenta.size = size
             magenta.position = .zero
         }
+        if let edge = maskVignette.childNode(withName: "vignetteEdge") as? SKSpriteNode {
+            // Ring vignette via oversized dark plate (center still shows through wash only).
+            edge.size = CGSize(width: size.width * 1.15, height: size.height * 1.15)
+            edge.position = .zero
+        }
         if !titleRoot.isHidden {
             layoutTitleChrome()
         }
@@ -926,7 +959,13 @@ public final class HeistScene: SKScene {
     private func beginPlay() {
         // Start audio here (not in didMove) so smoke video has a soundtrack without launch jetsam.
         // simctl recordVideo has no app-audio track — smoke also writes smoke_audio_events.txt for mux.
-        if smokeEnabled { JuiceSound.shared.beginSmokeAudioLog() }
+        if smokeEnabled {
+            JuiceSound.shared.beginSmokeAudioLog()
+            if smokeWallStart == 0 {
+                smokeWallStart = CACurrentMediaTime()
+                try? FileManager.default.removeItem(at: SmokeStatus.timerLogURL)
+            }
+        }
         JuiceSound.shared.prepare()
         playSFX(.sfxUITap, smokeHero: true)
         JuiceSound.shared.startLevelMusic()
@@ -1222,16 +1261,16 @@ public final class HeistScene: SKScene {
                 if midrunOk { smokeStatus.stomps += 1 }
                 playSFX(.sfxMopHit, smokeHero: true)
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
-                // ~70ms hit-stop + shake + neon spark burst + MOP squash (must read in smoke video).
+                // 70ms hit-stop + shake + sparks + MOP squash + score pop (must read in smoke video).
                 hitStop = 0.07
-                shake(0.85)
+                shake(0.9)
                 squash(1.42, 0.48)
-                // Keep smoke particle budgets tight (FPS gate ≥55); full burst in interactive play.
-                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 5 : 14)
+                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 6 : 14)
                 neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 3 : 8)
                 dust(at: e.position)
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
+                scorePop(at: e.position, text: "+\(max(1, sim.state.bandit.combo))", color: ArtCatalog.neonLime)
             case .shiny:
                 playSFX(.sfxCollectShiny)
                 collectShinyJuice(at: e.position)
@@ -1356,18 +1395,19 @@ public final class HeistScene: SKScene {
             return earned.count
         }()
 
-        // Ease-out card: scale 0.8 → 1, fade, then stagger stars + buttons.
+        // Ease-out card (~250ms): scale 0.8 → 1, fade, dim backdrop, then stagger medals/buttons.
         card.removeAllActions()
         card.setScale(0.8)
         card.alpha = 0
         card.position = CGPoint(x: 0, y: -36)
         let wash = outcomeRoot.childNode(withName: "outcomeWash")
+        wash?.removeAllActions()
         wash?.alpha = 0
-        wash?.run(SKAction.fadeAlpha(to: 1, duration: 0.28))
+        wash?.run(SKAction.fadeAlpha(to: 1, duration: 0.26))
         let appear = SKAction.group([
-            SKAction.fadeIn(withDuration: 0.28),
-            SKAction.scale(to: 1.0, duration: 0.32),
-            SKAction.moveTo(y: 0, duration: 0.32),
+            SKAction.fadeIn(withDuration: 0.24),
+            SKAction.scale(to: 1.0, duration: 0.26),
+            SKAction.moveTo(y: 0, duration: 0.26),
         ])
         appear.timingMode = .easeOut
         card.run(appear)
@@ -1476,23 +1516,29 @@ public final class HeistScene: SKScene {
             hudCombo.text = ""
             hudCombo.isHidden = true
         }
-        hudTime.text = String(format: "⏱ %.0fs", sim.state.elapsed)
+        if smokeEnabled, smokeWallStart > 0 {
+            smokeWallElapsed = CACurrentMediaTime() - smokeWallStart
+            hudTime.text = String(format: "⏱ %.0fs", smokeWallElapsed)
+        } else {
+            hudTime.text = String(format: "⏱ %.0fs", sim.state.elapsed)
+        }
         for label in [hudCarried, hudHearts, hudCombo, hudTime] {
             (label.childNode(withName: "hudOutline") as? SKLabelNode)?.text = label.text
             (label.childNode(withName: "hudGlow") as? SKLabelNode)?.text = label.text
         }
-        // Mask Mode: trail + vignette pulse; parallax grade only on enter/exit (FPS).
+        // Mask Mode: trail + gentle vignette pulse (cap alpha so gameplay stays readable).
         if b.maskMode {
             maskParticleAcc += dt
             maskGradePulse += dt
             if maskParticleAcc >= (smokeEnabled ? 0.14 : 0.07) {
                 maskParticleAcc = 0
                 if !smokeEnabled {
-                    neonBurst(at: b.position, color: ArtCatalog.neonCyan, count: 3)
+                    neonBurst(at: b.position, color: ArtCatalog.neonCyan, count: 2)
                 }
                 bandit.emitMaskTrail()
             }
-            maskVignette.alpha = 0.85 + 0.15 * sin(maskGradePulse * 5)
+            // Pulse 0.75…1.0 of the already-low 16% wash — never blow out the frame.
+            maskVignette.alpha = 0.75 + 0.2 * sin(maskGradePulse * 3.5)
             if !lastMaskMode {
                 applyMaskParallaxGrade(active: true, pulse: 1)
             }
@@ -1522,21 +1568,24 @@ public final class HeistScene: SKScene {
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
+        // Opaque night plate tracks the camera — never a white gap behind the playfield.
+        stageBackdrop.position = cameraFocus
+        stageBackdrop.size = CGSize(width: viewW * 1.6, height: viewH * 1.6)
         // Slow parallax — keep plates covering the view (tiled in buildParallax).
         parallaxFar.position = CGPoint(x: cameraFocus.x * 0.88, y: cameraFocus.y * 0.96)
         parallaxMid.position = CGPoint(x: cameraFocus.x * 0.72, y: cameraFocus.y * 0.92)
         parallaxNear.position = CGPoint(x: cameraFocus.x * 0.55, y: cameraFocus.y * 0.88)
 
-        // Mask Mode vignette (motion trail is pooled inside BanditVisual.show).
+        // Mask Mode vignette fade-in/out.
         if b.maskMode {
             maskVignette.isHidden = false
             if maskVignette.alpha < 0.7 {
-                maskVignette.alpha = min(1, maskVignette.alpha + dt * 5)
+                maskVignette.alpha = min(0.95, maskVignette.alpha + dt * 4)
             }
         } else if lastMaskMode {
             maskVignette.removeAllActions()
             maskVignette.run(SKAction.sequence([
-                SKAction.fadeOut(withDuration: 0.28),
+                SKAction.fadeOut(withDuration: 0.22),
                 SKAction.run { [weak self] in self?.maskVignette.isHidden = true },
             ]))
         }
@@ -1592,17 +1641,15 @@ public final class HeistScene: SKScene {
     }
 
     private func damageFlash() {
-        let flash = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.35), size: size)
-        flash.zPosition = 280
-        overlay.addChild(flash)
-        flash.run(SKAction.sequence([
-            SKAction.fadeOut(withDuration: 0.18),
-            SKAction.removeFromParent(),
-        ]))
-        bandit.sprite.run(SKAction.sequence([
-            SKAction.colorize(with: ArtCatalog.neonPink, colorBlendFactor: 0.7, duration: 0.05),
-            SKAction.colorize(withColorBlendFactor: 0.14, duration: 0.2),
-        ]))
+        _ = tryFullscreenFlash(color: ArtCatalog.neonPink, peakAlpha: 0.2, duration: 0.1)
+        bandit.enumerateChildNodes(withName: "//*") { node, _ in
+            guard let s = node as? SKSpriteNode, s.name != "trail_*" else { return }
+            guard ["torso", "head", "armF", "armB", "legF", "legB", "tail", "sprite"].contains(s.name ?? "") else { return }
+            s.run(SKAction.sequence([
+                SKAction.colorize(with: ArtCatalog.neonPink, colorBlendFactor: 0.75, duration: 0.05),
+                SKAction.colorize(withColorBlendFactor: 0.12, duration: 0.22),
+            ]))
+        }
     }
 
     /// Small styled hit popup near the contact — no giant debug words.
@@ -1627,6 +1674,32 @@ public final class HeistScene: SKScene {
                 SKAction.moveBy(x: 0, y: 14, duration: 0.28),
                 SKAction.fadeOut(withDuration: 0.28),
                 SKAction.scale(to: 0.6, duration: 0.28),
+            ]),
+            SKAction.removeFromParent(),
+        ]))
+    }
+
+    /// Compact score/combo floater at the hit (not a giant debug word).
+    private func scorePop(at pos: Vec2, text: String, color: SKColor) {
+        let l = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        l.text = text
+        l.fontSize = 15
+        l.fontColor = color
+        l.position = cg(pos)
+        l.zPosition = 63
+        l.setScale(0.4)
+        l.alpha = 0
+        l.name = "scorePop"
+        world.addChild(l)
+        l.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.fadeIn(withDuration: 0.05),
+                SKAction.scale(to: 1.25, duration: 0.1),
+                SKAction.moveBy(x: 0, y: 14, duration: 0.1),
+            ]),
+            SKAction.group([
+                SKAction.moveBy(x: 0, y: 22, duration: 0.35),
+                SKAction.fadeOut(withDuration: 0.35),
             ]),
             SKAction.removeFromParent(),
         ]))
@@ -1768,6 +1841,10 @@ public final class HeistScene: SKScene {
         }()
         smokeStatus.phase = phase
         smokeStatus.elapsed = sim.state.elapsed
+        if smokeEnabled, smokeWallStart > 0 {
+            smokeWallElapsed = CACurrentMediaTime() - smokeWallStart
+            smokeStatus.wallElapsed = smokeWallElapsed
+        }
         smokeStatus.fpsSamples = fpsCount
         smokeStatus.fpsAvg = fpsCount > 0 ? fpsSum / Double(fpsCount) : 0
         smokeStatus.maskOn = sim.state.bandit.maskMode
@@ -1808,8 +1885,9 @@ public final class HeistScene: SKScene {
     }
 
     private func applyMaskParallaxGrade(active: Bool, pulse: CGFloat) {
-        let blend: CGFloat = active ? 0.35 * pulse : 0.12
-        let tint = active ? ArtCatalog.neonCyan : SKColor(white: 1.12, alpha: 1)
+        // Mild palette nudge only — never bleach the city into cyan/white.
+        let blend: CGFloat = active ? 0.14 * pulse : 0.08
+        let tint = active ? ArtCatalog.neonCyan : SKColor(white: 1.05, alpha: 1)
         for layer in [parallaxFar, parallaxMid, parallaxNear] {
             layer.enumerateChildNodes(withName: "//*") { node, _ in
                 guard let sprite = node as? SKSpriteNode, sprite.name != "gridHorizon" else { return }
@@ -1818,9 +1896,9 @@ public final class HeistScene: SKScene {
             }
         }
         if let grid = parallaxFar.childNode(withName: "//gridHorizon") as? SKSpriteNode {
-            grid.alpha = active ? 0.7 : 0.42
+            grid.alpha = active ? 0.55 : 0.42
             grid.color = active ? ArtCatalog.neonPink : .white
-            grid.colorBlendFactor = active ? 0.4 : 0
+            grid.colorBlendFactor = active ? 0.22 : 0
         }
     }
 
@@ -1833,50 +1911,56 @@ public final class HeistScene: SKScene {
         maskGradePulse = 0
     }
 
+    /// Photosensitivity safety: ≤3 full-screen flashes per second; skips if over cap.
+    @discardableResult
+    private func tryFullscreenFlash(color: SKColor, peakAlpha: CGFloat, duration: TimeInterval) -> Bool {
+        let now = CACurrentMediaTime()
+        flashHistory = flashHistory.filter { now - $0 < 1.0 }
+        guard flashHistory.count < 3 else { return false }
+        // Cap luminance — never a near-opaque white/cyan blast.
+        let alpha = min(peakAlpha, 0.22)
+        let life = min(duration, 0.12)
+        flashHistory.append(now)
+        let flash = SKSpriteNode(color: color.withAlphaComponent(alpha), size: size)
+        flash.blendMode = .alpha
+        flash.zPosition = 274
+        flash.name = "safeFlash"
+        overlay.addChild(flash)
+        flash.run(SKAction.sequence([
+            SKAction.fadeOut(withDuration: life),
+            SKAction.removeFromParent(),
+        ]))
+        return true
+    }
+
     private func flashMask() {
-        // Activation color-grade + rings — no giant "MASK MODE" text.
+        // Brief ≤120ms low-alpha flash, then subtle sustained grade. Gameplay stays readable.
         maskVignette.isHidden = false
         maskVignette.alpha = 0
-        maskVignette.run(SKAction.fadeAlpha(to: 1, duration: 0.18))
+        maskVignette.run(SKAction.fadeAlpha(to: 0.9, duration: 0.16))
         applyMaskParallaxGrade(active: true, pulse: 1)
-        let grade = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.42), size: size)
-        grade.blendMode = .add
-        grade.zPosition = 275
-        overlay.addChild(grade)
-        grade.run(SKAction.sequence([
-            SKAction.fadeOut(withDuration: 0.45),
-            SKAction.removeFromParent(),
-        ]))
-        let flashPink = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.22), size: size)
-        flashPink.blendMode = .add
-        flashPink.zPosition = 276
-        overlay.addChild(flashPink)
-        flashPink.run(SKAction.sequence([
-            SKAction.fadeOut(withDuration: 0.3),
-            SKAction.removeFromParent(),
-        ]))
-        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 6 : 16)
-        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 3 : 8)
-        let rings = smokeEnabled ? 2 : 4
+        _ = tryFullscreenFlash(color: ArtCatalog.neonCyan, peakAlpha: 0.18, duration: 0.11)
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 5 : 12)
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 2 : 6)
+        let rings = smokeEnabled ? 2 : 3
         for i in 0..<rings {
             let ring = SKShapeNode(circleOfRadius: 16 + CGFloat(i) * 12)
-            ring.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.9 - CGFloat(i) * 0.12)
+            ring.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.75 - CGFloat(i) * 0.15)
             ring.fillColor = .clear
-            ring.lineWidth = 2.5
-            if !smokeEnabled { ring.glowWidth = 1 }
+            ring.lineWidth = 2
             ring.position = bandit.position
             ring.zPosition = 46
             world.addChild(ring)
             ring.run(SKAction.sequence([
                 SKAction.wait(forDuration: 0.04 * Double(i)),
                 SKAction.group([
-                    SKAction.scale(to: 3.6, duration: 0.4),
-                    SKAction.fadeOut(withDuration: 0.4),
+                    SKAction.scale(to: 2.8, duration: 0.32),
+                    SKAction.fadeOut(withDuration: 0.32),
                 ]),
                 SKAction.removeFromParent(),
             ]))
         }
-        for _ in 0..<(smokeEnabled ? 3 : 6) { bandit.emitMaskTrail() }
+        for _ in 0..<(smokeEnabled ? 3 : 5) { bandit.emitMaskTrail() }
         hitSpark(at: sim.state.bandit.position, color: ArtCatalog.neonCyan)
     }
 }

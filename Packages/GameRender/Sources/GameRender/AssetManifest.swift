@@ -20,6 +20,11 @@ public enum AssetKey: String, CaseIterable, Sendable {
     case raccoonBellyFlop = "raccoon/belly_flop"
     case raccoonTailSwing = "raccoon/tail_swing"
     case raccoonMaskMode = "raccoon/mask_mode"
+    case raccoonRigHead = "raccoon/rig/head"
+    case raccoonRigTorso = "raccoon/rig/torso"
+    case raccoonRigArm = "raccoon/rig/arm"
+    case raccoonRigLeg = "raccoon/rig/leg"
+    case raccoonRigTail = "raccoon/rig/tail"
 
     case mopIdle = "mop/idle"
     case mopPatrol = "mop/patrol"
@@ -66,6 +71,7 @@ public enum AssetManifest {
         switch key {
         case .raccoonIdle, .raccoonRun1, .raccoonRun2, .raccoonRun3, .raccoonRun4, .raccoonRun5, .raccoonRun6,
              .raccoonJump, .raccoonFall, .raccoonPounce, .raccoonBellyFlop, .raccoonTailSwing, .raccoonMaskMode,
+             .raccoonRigHead, .raccoonRigTorso, .raccoonRigArm, .raccoonRigLeg, .raccoonRigTail,
              .mopIdle, .mopPatrol, .mopAlert, .shiny1, .shiny2, .shiny3, .shiny4:
             return "sprites/\(key.rawValue)"
         case .farSkyline, .midBuildings, .nearRooftops, .rainOverlay:

@@ -18,6 +18,8 @@ public struct SmokeStatus: Equatable, Sendable {
     public var died: Bool
     public var won: Bool
     public var elapsed: Double
+    /// Monotonic wall-clock seconds since first `beginPlay` (survives death/retry).
+    public var wallElapsed: Double
     /// Count of banned debug/placeholder SKLabel texts currently in the scene tree.
     /// CI fails if this is ever > 0 during smoke.
     public var debugLabels: Int
@@ -38,6 +40,7 @@ public struct SmokeStatus: Equatable, Sendable {
         died: Bool = false,
         won: Bool = false,
         elapsed: Double = 0,
+        wallElapsed: Double = 0,
         debugLabels: Int = 0,
         combo: Int = 0,
         medals: Int = 0,
@@ -55,6 +58,7 @@ public struct SmokeStatus: Equatable, Sendable {
         self.died = died
         self.won = won
         self.elapsed = elapsed
+        self.wallElapsed = wallElapsed
         self.debugLabels = debugLabels
         self.combo = combo
         self.medals = medals
@@ -64,9 +68,9 @@ public struct SmokeStatus: Equatable, Sendable {
 
     public var line: String {
         String(
-            format: "phase=%@ boot=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d",
+            format: "phase=%@ boot=%@ fps=%.1f samples=%d stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d",
             phase, boot, fpsAvg, fpsSamples, stomps, shinies,
-            mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed, debugLabels,
+            mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed, wallElapsed, debugLabels,
             combo, medals, map ? 1 : 0, daily ? 1 : 0
         )
     }
@@ -77,8 +81,28 @@ public struct SmokeStatus: Equatable, Sendable {
         return docs.appendingPathComponent("smoke_status.txt")
     }
 
+    /// Append-only timer samples for CI monotonicity check.
+    public static var timerLogURL: URL {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return docs.appendingPathComponent("smoke_timer_log.txt")
+    }
+
     public func write() {
         try? line.write(to: Self.fileURL, atomically: true, encoding: .utf8)
+        if wallElapsed > 0 {
+            let sample = String(format: "%.2f\n", wallElapsed)
+            if let data = sample.data(using: .utf8) {
+                if FileManager.default.fileExists(atPath: Self.timerLogURL.path),
+                   let handle = try? FileHandle(forWritingTo: Self.timerLogURL) {
+                    defer { try? handle.close() }
+                    try? handle.seekToEnd()
+                    try? handle.write(contentsOf: data)
+                } else {
+                    try? sample.write(to: Self.timerLogURL, atomically: true, encoding: .utf8)
+                }
+            }
+        }
     }
 
     /// Exact-match ban list for on-screen SKLabel text (case-insensitive).

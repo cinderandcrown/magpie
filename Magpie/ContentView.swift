@@ -16,14 +16,17 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { geo in
+            // Dark plate behind SpriteKit so any clear pixel stays night-sky, never system white.
             SpriteView(scene: sized(scene, to: geo.size))
                 .frame(width: geo.size.width, height: geo.size.height)
                 .clipped()
+                .background(Color(red: 0.06, green: 0.04, blue: 0.16))
                 .ignoresSafeArea()
         }
         .background(Color(red: 0.06, green: 0.04, blue: 0.16))
         .ignoresSafeArea()
         .statusBarHidden()
+        .preferredColorScheme(.dark)
     }
 
     private func sized(_ scene: HeistScene, to size: CGSize) -> HeistScene {

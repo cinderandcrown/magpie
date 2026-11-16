@@ -265,16 +265,25 @@ write_flag "smoke_show_map.txt"
 wait_status "district-map" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "map=1" in s else 1)' 60
 sleep 0.35
 shot "$OUT_DIR/07-district-map.png"
+# Hold map on-screen so the continuous video captures the neon district board.
+sleep 3
 write_flag "smoke_map_ok.txt"
 
-# 08 — Daily Heist screen
+# 08 — Daily Heist screen (must appear in the continuous video, not only as a still)
 write_flag "smoke_show_daily.txt"
 wait_status "daily-heist" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "daily=1" in s else 1)' 60
 sleep 0.35
 shot "$OUT_DIR/08-daily-heist.png"
+# Hold Daily Heist long enough to read in the continuous take.
+sleep 5
 write_flag "smoke_daily_ok.txt"
 
-# One continuous take must be ≥60s wall-clock (review gate). Hold on RESULTS if needed.
+# One continuous take must be ≥60s wall-clock (review gate). Hold if needed.
+# Assert we never restarted the recorder mid-run (stitched takes are rejected).
+if [[ -z "${REC_PID:-}" ]] || ! kill -0 "$REC_PID" 2>/dev/null; then
+  echo "FAIL: gameplay recorder died or restarted mid-run (stitched video)" >&2
+  exit 1
+fi
 while true; do
   now="$(date +%s)"
   elapsed=$((now - REC_STARTED_AT))
@@ -522,12 +531,14 @@ else
     PALETTE_PY="$(command -v python3)"
   fi
 fi
-"$PALETTE_PY" - "$OUT_DIR/02-midrun.png" "Assets/Generated/backgrounds/mid_buildings.png" "$OUT_DIR/palette-side-by-side.png" <<'PY'
+"$PALETTE_PY" - "$OUT_DIR/02-midrun.png" "Assets/Generated/backgrounds/mid_buildings.png" "$OUT_DIR/palette-side-by-side.png" "$OUT_DIR/03-mop-stomp.png" "$OUT_DIR/04-mask-mode.png" <<'PY'
 import sys
 from PIL import Image
 
 midrun = Image.open(sys.argv[1]).convert("RGB")
 ref = Image.open(sys.argv[2]).convert("RGB")
+stomp = Image.open(sys.argv[4]).convert("RGB")
+mask = Image.open(sys.argv[5]).convert("RGB")
 # Sample center crop of gameplay (skip HUD/controls)
 w, h = midrun.size
 crop = midrun.crop((int(w*0.1), int(h*0.18), int(w*0.9), int(h*0.62)))
@@ -543,6 +554,31 @@ if mag / n < 0.004 and teal / n < 0.004:
 if bright / n < 0.08:
     raise SystemExit("FAIL: midrun too dim vs Game Plan bright-neon-on-dark")
 
+def near_white_frac(im, box):
+    c = im.crop(box)
+    px = list(c.getdata())
+    return sum(1 for r, g, b in px if r > 230 and g > 230 and b > 230) / max(1, len(px))
+
+# Playfield backdrop must stay dark neon — reject the white clear-color plate bug.
+for label, im in (("midrun", midrun), ("stomp", stomp)):
+    ww, hh = im.size
+    # Upper-mid band behind platforms (where the white plate showed up).
+    box = (int(ww * 0.12), int(hh * 0.28), int(ww * 0.88), int(hh * 0.55))
+    frac = near_white_frac(im, box)
+    print(f"backdrop {label} nearWhite={frac:.3%}")
+    if frac > 0.12:
+        raise SystemExit(f"FAIL: {label} playfield backdrop is near-white ({frac:.1%}) — night sky missing")
+
+# Mask Mode must stay readable — reject full-screen cyan/white blowout.
+mw, mh = mask.size
+mbox = (int(mw * 0.15), int(mh * 0.25), int(mw * 0.85), int(mh * 0.7))
+mpx = list(mask.crop(mbox).getdata())
+avg = tuple(sum(c[i] for c in mpx) // len(mpx) for i in range(3))
+blow = sum(1 for r, g, b in mpx if (r + g + b) / 3 > 220) / len(mpx)
+print(f"mask center avg={avg} blowout={blow:.3%}")
+if blow > 0.45 or (avg[1] > 230 and avg[2] > 230 and avg[0] > 140):
+    raise SystemExit(f"FAIL: Mask Mode full-screen wash hides gameplay (avg={avg}, blowout={blow:.1%})")
+
 # Side-by-side vs mid_buildings reference strip
 rw, rh = 480, 270
 left = crop.resize((rw, rh))
@@ -552,6 +588,35 @@ board.paste(left, (0, 32))
 board.paste(right, (rw + 16, 32))
 board.save(sys.argv[3])
 print(f"OK wrote {sys.argv[3]}")
+PY
+
+# Monotonic wall-clock HUD timer (single continuous session — no stitched timer resets).
+TIMER_LOG="$(data_container)/Documents/smoke_timer_log.txt"
+if [[ ! -s "$TIMER_LOG" ]]; then
+  echo "FAIL: missing smoke_timer_log.txt (wallElapsed samples)" >&2
+  exit 1
+fi
+cp -f "$TIMER_LOG" "$OUT_DIR/smoke_timer_log.txt"
+python3 - "$TIMER_LOG" "$MIN_VIDEO_SECS" <<'PY'
+import sys
+path, need_s = sys.argv[1], float(sys.argv[2])
+vals = []
+with open(path) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        vals.append(float(line))
+if len(vals) < 8:
+    raise SystemExit(f"FAIL: timer log too short ({len(vals)} samples)")
+# Allow tiny float jitter only — never a large backward jump (death/retry used to reset HUD).
+for i in range(1, len(vals)):
+    if vals[i] + 0.05 < vals[i - 1]:
+        raise SystemExit(f"FAIL: HUD wall timer went backwards {vals[i-1]:.2f} → {vals[i]:.2f} (stitched/reset session)")
+if vals[-1] + 0.5 < need_s * 0.5:
+    # Soft floor: wall clock should advance meaningfully across the continuous take.
+    print(f"WARN: wallElapsed end={vals[-1]:.1f}s (expected growth during smoke)")
+print(f"OK monotonic wallElapsed samples={len(vals)} last={vals[-1]:.1f}s")
 PY
 
 rm -f "$OUT_DIR/smoke-30s.mp4"

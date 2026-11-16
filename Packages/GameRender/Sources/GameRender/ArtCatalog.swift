@@ -33,6 +33,7 @@ public enum ArtCatalog {
         var spriteDict: [String: UIImage] = [:]
         for key in AssetManifest.runCycle + AssetManifest.shinyFrames + [
             .raccoonIdle, .raccoonJump, .raccoonFall, .raccoonPounce, .raccoonBellyFlop, .raccoonMaskMode,
+            .raccoonRigHead, .raccoonRigTorso, .raccoonRigArm, .raccoonRigLeg, .raccoonRigTail,
             .mopIdle, .mopPatrol, .mopAlert, .logo,
         ] {
             if let img = AssetManifest.image(for: key, preferScale: 2) {
@@ -87,6 +88,23 @@ public enum ArtCatalog {
 
     public static func makeBanditVisual() -> BanditVisual {
         BanditVisual()
+    }
+
+    /// Rig parts cropped from the project idle sheet (see `Assets/LICENSES.md`). No third-party art.
+    public static func raccoonRigParts() -> (
+        head: SKTexture, torso: SKTexture, arm: SKTexture, leg: SKTexture, tail: SKTexture
+    ) {
+        let fallback = texture(.raccoonIdle) ?? SKTexture()
+        func load(_ key: AssetKey) -> SKTexture {
+            texture(key) ?? fallback
+        }
+        return (
+            head: load(.raccoonRigHead),
+            torso: load(.raccoonRigTorso),
+            arm: load(.raccoonRigArm),
+            leg: load(.raccoonRigLeg),
+            tail: load(.raccoonRigTail)
+        )
     }
 
     public static func makeMopNode() -> SKSpriteNode {
@@ -449,12 +467,20 @@ public enum TitleArt {
     public static let workingSubtitle = "Free the crew · Stomp MOPs"
 }
 
-/// Animated raccoon using Fire Fox frames + procedural bob for a readable run.
+/// Bandit raccoon: existing Mission-1 sprites + procedural limb/tail/head rig (zero new art).
+/// Limbs are cropped from the idle sheet and driven with SKActions so the character reads as alive.
 @MainActor
 public final class BanditVisual: SKNode {
     public let sprite: SKSpriteNode
-    /// Squash/stretch lives on this wrapper so pose updates never clobber takeoff/land juice.
     private let body: SKNode
+    private let rig: SKNode
+    private let head: SKSpriteNode
+    private let torso: SKSpriteNode
+    private let armF: SKSpriteNode
+    private let armB: SKSpriteNode
+    private let legF: SKSpriteNode
+    private let legB: SKSpriteNode
+    private let tail: SKSpriteNode
     private let shadow: SKShapeNode
     private let maskGlow: SKSpriteNode
     private var runTextures: [SKTexture] = []
@@ -465,10 +491,8 @@ public final class BanditVisual: SKNode {
     private var flopTex: SKTexture?
     private var maskTex: SKTexture?
     private var bobPhase: CGFloat = 0
-    private var runIndex: Int = 0
-    private var runAcc: CGFloat = 0
     private var facingSign: CGFloat = 1
-    /// Fixed pool — recycle trail sprites (jetsam lesson: no per-frame alloc storms).
+    private var currentAnim: BanditAnim = .idle
     private var trailPool: [SKSpriteNode] = []
     private var trailCursor: Int = 0
     private var trailAcc: CGFloat = 0
@@ -484,19 +508,68 @@ public final class BanditVisual: SKNode {
         flopTex = ArtCatalog.texture(.raccoonBellyFlop)
         maskTex = ArtCatalog.texture(.raccoonMaskMode)
 
+        let parts = ArtCatalog.raccoonRigParts()
+
         body = SKNode()
         body.name = "body"
+        rig = SKNode()
+        rig.name = "rig"
 
+        // Full-body sprite remains as silhouette fallback / mask tint target.
         sprite = SKSpriteNode(texture: idleTex, size: CGSize(width: 72, height: 72))
         sprite.name = "sprite"
+        sprite.alpha = 0.001 // hidden — rig carries the silhouette; kept for squash/colorize hooks
         ArtCatalog.applyDespill(sprite)
+
+        torso = SKSpriteNode(texture: parts.torso, size: CGSize(width: 34, height: 28))
+        torso.name = "torso"
+        torso.position = CGPoint(x: 0, y: -2)
+        ArtCatalog.applyDespill(torso)
+
+        head = SKSpriteNode(texture: parts.head, size: CGSize(width: 36, height: 32))
+        head.name = "head"
+        head.position = CGPoint(x: 2, y: 18)
+        ArtCatalog.applyDespill(head)
+
+        armB = SKSpriteNode(texture: parts.arm, size: CGSize(width: 14, height: 18))
+        armB.name = "armB"
+        armB.anchorPoint = CGPoint(x: 0.5, y: 1.0)
+        armB.position = CGPoint(x: -10, y: 6)
+        armB.zPosition = -0.2
+        ArtCatalog.applyDespill(armB)
+
+        armF = SKSpriteNode(texture: parts.arm, size: CGSize(width: 14, height: 18))
+        armF.name = "armF"
+        armF.anchorPoint = CGPoint(x: 0.5, y: 1.0)
+        armF.position = CGPoint(x: 10, y: 6)
+        armF.xScale = -1
+        ArtCatalog.applyDespill(armF)
+
+        legB = SKSpriteNode(texture: parts.leg, size: CGSize(width: 16, height: 20))
+        legB.name = "legB"
+        legB.anchorPoint = CGPoint(x: 0.5, y: 1.0)
+        legB.position = CGPoint(x: -6, y: -12)
+        legB.zPosition = -0.2
+        ArtCatalog.applyDespill(legB)
+
+        legF = SKSpriteNode(texture: parts.leg, size: CGSize(width: 16, height: 20))
+        legF.name = "legF"
+        legF.anchorPoint = CGPoint(x: 0.5, y: 1.0)
+        legF.position = CGPoint(x: 6, y: -12)
+        ArtCatalog.applyDespill(legF)
+
+        tail = SKSpriteNode(texture: parts.tail, size: CGSize(width: 20, height: 24))
+        tail.name = "tail"
+        tail.anchorPoint = CGPoint(x: 0.2, y: 0.5)
+        tail.position = CGPoint(x: -14, y: 0)
+        tail.zPosition = -0.3
+        ArtCatalog.applyDespill(tail)
 
         shadow = SKShapeNode(ellipseOf: CGSize(width: 40, height: 10))
         shadow.fillColor = SKColor(white: 0, alpha: 0.4)
         shadow.strokeColor = .clear
         shadow.zPosition = -1
 
-        // Soft radial bloom behind the raccoon during Mask Mode (baked sprite tint, no SKEffectNode).
         let glowTex = maskTex ?? idleTex
         maskGlow = SKSpriteNode(texture: glowTex, size: CGSize(width: 110, height: 110))
         maskGlow.color = ArtCatalog.neonCyan
@@ -511,6 +584,10 @@ public final class BanditVisual: SKNode {
         addChild(maskGlow)
         addChild(body)
         body.addChild(sprite)
+        body.addChild(rig)
+        for n in [tail, armB, legB, torso, legF, armF, head] as [SKNode] {
+            rig.addChild(n)
+        }
         name = "bandit"
 
         let trailTex = ArtCatalog.motionTrailTexture()
@@ -524,6 +601,7 @@ public final class BanditVisual: SKNode {
             trailPool.append(speck)
             addChild(speck)
         }
+        startIdleMotion()
     }
 
     @available(*, unavailable)
@@ -531,10 +609,10 @@ public final class BanditVisual: SKNode {
 
     public func setFacing(_ facing: Double) {
         facingSign = facing >= 0 ? 1 : -1
+        rig.xScale = facingSign
         sprite.xScale = abs(sprite.xScale) * facingSign
     }
 
-    /// Takeoff / land / stomp squash on the body wrapper (survives per-frame pose updates).
     public func squash(x: CGFloat, y: CGFloat) {
         body.removeAction(forKey: "sq")
         body.setScale(1)
@@ -545,88 +623,183 @@ public final class BanditVisual: SKNode {
     }
 
     public func show(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool = false) {
-        sprite.removeAction(forKey: "run")
-        let face = facingSign
-        switch anim {
-        case .run:
-            sprite.zRotation = 0
-            if runTextures.count >= 2 {
-                runAcc += dt
-                // Faster cycle so the run reads in short smoke clips.
-                if runAcc >= 0.07 {
-                    runAcc = 0
-                    runIndex = (runIndex + 1) % runTextures.count
-                    sprite.texture = runTextures[runIndex]
-                }
-            } else if let idleTex {
-                sprite.texture = idleTex
-            }
-            bobPhase += dt * 16
-            sprite.position.y = sin(bobPhase) * 3.2
-            let squash = 1.0 + sin(bobPhase * 2) * 0.06
-            sprite.yScale = squash
-            sprite.xScale = face * (2 - squash)
-        case .jump:
-            sprite.zRotation = 0
-            sprite.texture = jumpTex ?? idleTex
-            sprite.position.y = 3
-            sprite.yScale = 1.14
-            sprite.xScale = face * 0.86
-        case .apex:
-            sprite.zRotation = 0
-            sprite.texture = jumpTex ?? idleTex
-            sprite.position.y = 1
-            bobPhase += dt * 8
-            sprite.yScale = 0.92 + sin(bobPhase) * 0.02
-            sprite.xScale = face * 1.08
-        case .fall:
-            sprite.texture = fallTex ?? idleTex
-            sprite.position.y = 0
-            bobPhase += dt * 10
-            sprite.yScale = 1.18 + sin(bobPhase) * 0.04
-            sprite.xScale = face * 0.82
-            sprite.zRotation = face * -0.16
-        case .pounce:
-            sprite.zRotation = 0
-            sprite.texture = (flopTex ?? pounceTex) ?? idleTex
-            sprite.position.y = 0
-            sprite.yScale = 0.86
-            sprite.xScale = face * 1.16
-        case .wallSlide:
-            sprite.texture = fallTex ?? idleTex
-            sprite.position.y = 0
-            sprite.yScale = 1.05
-            sprite.xScale = face * 0.9
-            sprite.zRotation = face * 0.1
-        case .idle:
-            sprite.zRotation = 0
-            sprite.texture = (maskMode ? maskTex : nil) ?? idleTex
-            bobPhase += dt * 3
-            sprite.position.y = sin(bobPhase) * 1.2
-            sprite.yScale = 1
-            sprite.xScale = face
+        if anim != currentAnim {
+            currentAnim = anim
+            applyPose(anim)
+        }
+        bobPhase += dt
+        // Secondary head bob while idle/run so the rig never freezes.
+        if anim == .idle || anim == .run {
+            head.position.y = 18 + sin(bobPhase * (anim == .run ? 14 : 3)) * (anim == .run ? 2.2 : 1.2)
         }
         if maskMode {
-            if let maskTex { sprite.texture = maskTex }
-            sprite.color = ArtCatalog.neonCyan
-            sprite.colorBlendFactor = 0.28
+            for n in [torso, head, armF, armB, legF, legB, tail] {
+                n.color = ArtCatalog.neonCyan
+                n.colorBlendFactor = 0.28
+            }
             maskGlow.isHidden = false
-            bobPhase += dt * 2
-            // Stronger pulsing glow — readable next to the cyan trail.
             maskGlow.alpha = 0.55 + 0.35 * sin(bobPhase * 5)
             maskGlow.setScale(1.15 + 0.18 * sin(bobPhase * 6))
-            maskGlow.color = ArtCatalog.neonCyan
         } else {
-            sprite.color = ArtCatalog.neonPink
-            sprite.colorBlendFactor = 0.14
+            for n in [torso, head, armF, armB, legF, legB, tail] {
+                n.color = ArtCatalog.neonPink
+                n.colorBlendFactor = 0.12
+            }
             maskGlow.isHidden = true
             maskGlow.alpha = 0
             maskGlow.setScale(1)
         }
+        // Keep sprite texture in sync for any code that colorizes `sprite` (hurt flash).
+        switch anim {
+        case .jump, .apex: sprite.texture = jumpTex ?? idleTex
+        case .fall, .wallSlide: sprite.texture = fallTex ?? idleTex
+        case .pounce: sprite.texture = (flopTex ?? pounceTex) ?? idleTex
+        case .run where runTextures.count > 1:
+            let idx = Int(bobPhase * 12) % runTextures.count
+            sprite.texture = runTextures[idx]
+        default:
+            sprite.texture = (maskMode ? maskTex : nil) ?? idleTex
+        }
         tickMotionTrail(anim: anim, maskMode: maskMode, dt: dt, smokeLite: smokeLite)
     }
 
-    /// Short light trail on run/dash; denser + brighter in Mask Mode. Pooled sprites only.
+    private func applyPose(_ anim: BanditAnim) {
+        stopLimbActions()
+        switch anim {
+        case .run:
+            startRunCycle()
+        case .jump:
+            poseJump()
+        case .apex:
+            poseApex()
+        case .fall, .wallSlide:
+            poseFall()
+        case .pounce:
+            posePounce()
+        case .idle:
+            startIdleMotion()
+        }
+    }
+
+    private func stopLimbActions() {
+        for n in [armF, armB, legF, legB, tail, head, torso, rig] as [SKNode] {
+            n.removeAction(forKey: "limb")
+        }
+    }
+
+    private func startIdleMotion() {
+        resetLimbBases()
+        head.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.moveBy(x: 0, y: 1.5, duration: 0.55),
+            SKAction.moveBy(x: 0, y: -1.5, duration: 0.55),
+        ])), withKey: "limb")
+        tail.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.rotate(toAngle: 0.35, duration: 0.4),
+            SKAction.rotate(toAngle: -0.25, duration: 0.4),
+        ])), withKey: "limb")
+        armF.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.rotate(toAngle: 0.15, duration: 0.7),
+            SKAction.rotate(toAngle: -0.1, duration: 0.7),
+        ])), withKey: "limb")
+        armB.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.rotate(toAngle: -0.12, duration: 0.7),
+            SKAction.rotate(toAngle: 0.12, duration: 0.7),
+        ])), withKey: "limb")
+    }
+
+    private func startRunCycle() {
+        resetLimbBases()
+        // Opposite-phase limbs — classic 2-beat run (~8 visual “frames” via continuous swing).
+        let swing: CGFloat = 0.85
+        let step: TimeInterval = 0.09
+        func cycle(_ node: SKNode, a: CGFloat, b: CGFloat, delay: TimeInterval) {
+            node.run(SKAction.sequence([
+                SKAction.wait(forDuration: delay),
+                SKAction.repeatForever(SKAction.sequence([
+                    SKAction.rotate(toAngle: a, duration: step),
+                    SKAction.rotate(toAngle: b, duration: step),
+                ])),
+            ]), withKey: "limb")
+        }
+        cycle(legF, a: swing, b: -swing, delay: 0)
+        cycle(legB, a: -swing, b: swing, delay: 0)
+        cycle(armF, a: -swing * 0.75, b: swing * 0.75, delay: 0)
+        cycle(armB, a: swing * 0.75, b: -swing * 0.75, delay: 0)
+        tail.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.rotate(toAngle: 0.55, duration: step),
+            SKAction.rotate(toAngle: -0.35, duration: step),
+        ])), withKey: "limb")
+        torso.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.moveBy(x: 0, y: 2.5, duration: step),
+            SKAction.moveBy(x: 0, y: -2.5, duration: step),
+        ])), withKey: "limb")
+        head.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.moveBy(x: 1.2, y: 1.5, duration: step),
+            SKAction.moveBy(x: -1.2, y: -1.5, duration: step),
+        ])), withKey: "limb")
+    }
+
+    private func poseJump() {
+        resetLimbBases()
+        legF.zRotation = -0.55
+        legB.zRotation = -0.35
+        armF.zRotation = -0.9
+        armB.zRotation = 0.7
+        tail.zRotation = -0.5
+        head.position = CGPoint(x: 2, y: 20)
+        torso.yScale = 1.08
+        torso.xScale = 0.92
+    }
+
+    private func poseApex() {
+        resetLimbBases()
+        legF.zRotation = -0.2
+        legB.zRotation = 0.15
+        armF.zRotation = -0.4
+        armB.zRotation = 0.35
+        tail.zRotation = 0.2
+        torso.yScale = 0.94
+        torso.xScale = 1.06
+    }
+
+    private func poseFall() {
+        resetLimbBases()
+        legF.zRotation = 0.45
+        legB.zRotation = 0.25
+        armF.zRotation = 0.7
+        armB.zRotation = -0.5
+        tail.zRotation = 0.6
+        torso.yScale = 1.12
+        torso.xScale = 0.88
+        head.zRotation = -0.08
+    }
+
+    private func posePounce() {
+        resetLimbBases()
+        legF.zRotation = 0.9
+        legB.zRotation = 0.7
+        armF.zRotation = 1.0
+        armB.zRotation = 0.8
+        tail.zRotation = 0.9
+        torso.yScale = 0.82
+        torso.xScale = 1.18
+        head.position = CGPoint(x: 4, y: 14)
+    }
+
+    private func resetLimbBases() {
+        armF.zRotation = 0; armB.zRotation = 0
+        legF.zRotation = 0; legB.zRotation = 0
+        tail.zRotation = 0; head.zRotation = 0
+        torso.xScale = 1; torso.yScale = 1
+        torso.position = CGPoint(x: 0, y: -2)
+        head.position = CGPoint(x: 2, y: 18)
+        armB.position = CGPoint(x: -10, y: 6)
+        armF.position = CGPoint(x: 10, y: 6)
+        legB.position = CGPoint(x: -6, y: -12)
+        legF.position = CGPoint(x: 6, y: -12)
+        tail.position = CGPoint(x: -14, y: 0)
+    }
+
     private func tickMotionTrail(anim: BanditAnim, maskMode: Bool, dt: CGFloat, smokeLite: Bool) {
         let moving = maskMode || anim == .run || anim == .pounce || anim == .jump || anim == .apex
         guard moving else { return }
@@ -640,7 +813,6 @@ public final class BanditVisual: SKNode {
         emitPooledTrail(maskMode: maskMode, dash: anim == .pounce)
     }
 
-    /// Public hook for Mask Mode burst cadence from the scene (still uses the pool).
     public func emitMaskTrail() {
         emitPooledTrail(maskMode: true, dash: false)
     }
