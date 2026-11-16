@@ -107,20 +107,27 @@ public enum ArtCatalog {
         )
     }
 
-    /// Prefer CC-BY licensed cycle folders under `sprites/raccoon/licensed_ccby/<name>/01.png`…
-    /// Falls back to empty if missing (BanditVisual then uses AssetManifest keys).
-    public static func licensedCycleTextures(_ name: String, maxFrames: Int = 16) -> [SKTexture] {
-        var out: [SKTexture] = []
-        for i in 1...maxFrames {
-            let rel = String(format: "sprites/raccoon/licensed_ccby/%@/%02d", name, i)
-            guard let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["png"]),
-                  let data = try? Data(contentsOf: url),
-                  let img = UIImage(data: data) else { break }
-            let tex = SKTexture(image: img)
-            tex.filteringMode = .nearest
-            out.append(tex)
+    /// Prefer Spriterrific cycles, then CC-BY folders:
+    /// `sprites/raccoon/spriterrific/<name>/01.png` then `licensed_ccby/<name>/`.
+    public static func licensedCycleTextures(_ name: String, maxFrames: Int = 24) -> [SKTexture] {
+        let roots = [
+            "sprites/raccoon/spriterrific/\(name)",
+            "sprites/raccoon/licensed_ccby/\(name)",
+        ]
+        for root in roots {
+            var out: [SKTexture] = []
+            for i in 1...maxFrames {
+                let rel = String(format: "%@/%02d", root, i)
+                guard let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["png"]),
+                      let data = try? Data(contentsOf: url),
+                      let img = UIImage(data: data) else { break }
+                let tex = SKTexture(image: img)
+                tex.filteringMode = .linear
+                out.append(tex)
+            }
+            if out.count >= 2 { return out }
         }
-        return out
+        return []
     }
 
     public static func makeMopNode() -> SKSpriteNode {
@@ -481,8 +488,8 @@ public enum TitleArt {
     public static let displayTitle = "The Neon City Bandit"
     public static let fallbackWordmark = "THE NEON CITY\nBANDIT"
     public static let workingSubtitle = "Free the crew · Stomp MOPs"
-    /// In-game CC-BY credit line (required when licensed_ccby raccoon pack is shipped).
-    public static let assetCredits = "Raccoon art: null-painter-error (CC-BY 4.0)"
+    /// In-game credits. Spriterrific outputs are owned by Cinder & Crown; CC-BY line kept while OGA frames remain.
+    public static let assetCredits = "Raccoon: Spriterrific · null-painter-error (CC-BY 4.0)"
 }
 
 /// Bandit raccoon — living motion (see `Assets/LICENSES.md`).

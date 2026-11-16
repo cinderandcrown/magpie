@@ -281,25 +281,25 @@ public final class HeistScene: SKScene {
         maskVignette.alpha = 0
         maskVignette.isHidden = true
         overlay.addChild(maskVignette)
-        // Tasteful grade — SKSpriteNode(color:) ignores UIColor alpha; set node.alpha instead.
-        // Cap ≤15% cyan / ≤8% magenta so Mask Mode never reads as a cyan whiteout.
+        // Grade via low node.alpha only — SKSpriteNode(color:) ignores UIColor alpha.
+        // Keep wash ≤10% so Mask Mode never cyan-washes the playfield (CI cyanWash gate).
         let wash = SKSpriteNode(color: ArtCatalog.neonCyan, size: CGSize(width: 40, height: 40))
         wash.name = "wash"
         wash.blendMode = .alpha
-        wash.alpha = 0.14
+        wash.alpha = 0.08
         maskVignette.addChild(wash)
         let magenta = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: 40, height: 40))
         magenta.name = "washMagenta"
         magenta.blendMode = .alpha
-        magenta.alpha = 0.07
+        magenta.alpha = 0.04
         magenta.zPosition = 1
         maskVignette.addChild(magenta)
-        // Soft edge vignette (darken corners) — keeps center readable.
+        // Soft edge vignette (darken corners only — not a center plate).
         let edge = SKSpriteNode(color: SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 1), size: CGSize(width: 40, height: 40))
         edge.name = "vignetteEdge"
         edge.blendMode = .alpha
         edge.zPosition = 2
-        edge.alpha = 0.28
+        edge.alpha = 0.2
         maskVignette.addChild(edge)
     }
 
@@ -1549,10 +1549,10 @@ public final class HeistScene: SKScene {
                 }
                 bandit.emitMaskTrail()
             }
-            // Parent stays fully on; child alphas carry the ≤15% grade (pulse gently).
+            // Parent on; child alphas carry the grade (never ramp parent toward opaque cyan).
             maskVignette.alpha = 1
             if let wash = maskVignette.childNode(withName: "wash") as? SKSpriteNode {
-                wash.alpha = 0.11 + 0.04 * sin(maskGradePulse * 3.5)
+                wash.alpha = 0.06 + 0.03 * sin(maskGradePulse * 3.5)
             }
             if !lastMaskMode {
                 applyMaskParallaxGrade(active: true, pulse: 1)
@@ -1591,16 +1591,15 @@ public final class HeistScene: SKScene {
         parallaxMid.position = CGPoint(x: cameraFocus.x * 0.72, y: cameraFocus.y * 0.92)
         parallaxNear.position = CGPoint(x: cameraFocus.x * 0.55, y: cameraFocus.y * 0.88)
 
-        // Mask Mode vignette fade-in/out.
+        // Mask Mode: keep vignette visible while active; fade out on exit.
+        // Do NOT ramp parent alpha toward 1 over an opaque wash — that cyan-bleaches CI shots.
         if b.maskMode {
             maskVignette.isHidden = false
-            if maskVignette.alpha < 0.7 {
-                maskVignette.alpha = min(0.95, maskVignette.alpha + dt * 4)
-            }
+            maskVignette.alpha = 1
         } else if lastMaskMode {
             maskVignette.removeAllActions()
             maskVignette.run(SKAction.sequence([
-                SKAction.fadeOut(withDuration: 0.22),
+                SKAction.fadeOut(withDuration: 0.18),
                 SKAction.run { [weak self] in self?.maskVignette.isHidden = true },
             ]))
         }
@@ -1901,7 +1900,7 @@ public final class HeistScene: SKScene {
 
     private func applyMaskParallaxGrade(active: Bool, pulse: CGFloat) {
         // Mild palette nudge only — never bleach the city into cyan/white.
-        let blend: CGFloat = active ? 0.14 * pulse : 0.08
+        let blend: CGFloat = active ? 0.06 * pulse : 0.04
         let tint = active ? ArtCatalog.neonCyan : SKColor(white: 1.05, alpha: 1)
         for layer in [parallaxFar, parallaxMid, parallaxNear] {
             layer.enumerateChildNodes(withName: "//*") { node, _ in
@@ -1911,9 +1910,9 @@ public final class HeistScene: SKScene {
             }
         }
         if let grid = parallaxFar.childNode(withName: "//gridHorizon") as? SKSpriteNode {
-            grid.alpha = active ? 0.55 : 0.42
+            grid.alpha = active ? 0.5 : 0.42
             grid.color = active ? ArtCatalog.neonPink : .white
-            grid.colorBlendFactor = active ? 0.22 : 0
+            grid.colorBlendFactor = active ? 0.12 : 0
         }
     }
 
@@ -1932,11 +1931,12 @@ public final class HeistScene: SKScene {
         let now = CACurrentMediaTime()
         flashHistory = flashHistory.filter { now - $0 < 1.0 }
         guard flashHistory.count < 3 else { return false }
-        // Cap luminance — never a near-opaque white/cyan blast.
-        let alpha = min(peakAlpha, 0.22)
-        let life = min(duration, 0.12)
+        // SKSpriteNode(color:) ignores UIColor alpha — set node.alpha explicitly.
+        let alpha = min(peakAlpha, 0.14)
+        let life = min(duration, 0.1)
         flashHistory.append(now)
-        let flash = SKSpriteNode(color: color.withAlphaComponent(alpha), size: size)
+        let flash = SKSpriteNode(color: color, size: size)
+        flash.alpha = alpha
         flash.blendMode = .alpha
         flash.zPosition = 274
         flash.name = "safeFlash"
@@ -1949,16 +1949,16 @@ public final class HeistScene: SKScene {
     }
 
     private func flashMask() {
-        // Brief ≤120ms low-alpha flash, then subtle sustained grade. Gameplay stays readable.
+        // Brief ≤100ms low-alpha flash, then subtle sustained grade. Gameplay stays readable.
         maskVignette.isHidden = false
         maskVignette.alpha = 1
         if let wash = maskVignette.childNode(withName: "wash") as? SKSpriteNode {
-            wash.alpha = 0.14
+            wash.alpha = 0.08
         }
         applyMaskParallaxGrade(active: true, pulse: 1)
-        _ = tryFullscreenFlash(color: ArtCatalog.neonCyan, peakAlpha: 0.16, duration: 0.1)
-        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 5 : 12)
-        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 2 : 6)
+        _ = tryFullscreenFlash(color: ArtCatalog.neonCyan, peakAlpha: 0.12, duration: 0.09)
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 3 : 12)
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 1 : 6)
         let rings = smokeEnabled ? 2 : 3
         for i in 0..<rings {
             let ring = SKShapeNode(circleOfRadius: 16 + CGFloat(i) * 12)
