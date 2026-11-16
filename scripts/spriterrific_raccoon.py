@@ -39,10 +39,27 @@ ANCHOR_BRIEF = (
 )
 
 
-def api(method: str, path: str, data: bytes | None = None, content_type: str | None = None) -> dict:
-    key = os.environ.get("SPRITERRIFIC_API_KEY", "")
+def api_key() -> str:
+    """Normalize the secret: strip whitespace / surrounding quotes / accidental Bearer prefix.
+    Never logs or returns a partial key.
+    """
+    key = (os.environ.get("SPRITERRIFIC_API_KEY") or "").strip()
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in ("'", '"'):
+        key = key[1:-1].strip()
+    if key.lower().startswith("bearer "):
+        key = key[7:].strip()
     if not key:
         raise SystemExit("SPRITERRIFIC_API_KEY is not set")
+    if not key.startswith("sk_"):
+        raise SystemExit(
+            "SPRITERRIFIC_API_KEY does not look like a Spriterrific key (expected sk_…). "
+            "Update the GitHub Actions secret; refusing to call the API."
+        )
+    return key
+
+
+def api(method: str, path: str, data: bytes | None = None, content_type: str | None = None) -> dict:
+    key = api_key()
     headers = {
         "Authorization": f"Bearer {key}",
         "X-Spriterrific-Skill-Version": SKILL_VER,
@@ -61,6 +78,12 @@ def api(method: str, path: str, data: bytes | None = None, content_type: str | N
     except urllib.error.HTTPError as e:
         err = e.read().decode(errors="replace")
         # Never include auth header material; body is safe.
+        if e.code == 401:
+            raise SystemExit(
+                f"HTTP 401 {path}: unauthorized — SPRITERRIFIC_API_KEY secret is present "
+                f"but rejected by Spriterrific. Rotate/replace the repo secret with a valid "
+                f"sk_ key (no spend occurred). Body: {err[:400]}"
+            ) from None
         raise SystemExit(f"HTTP {e.code} {path}: {err[:800]}") from None
 
 
