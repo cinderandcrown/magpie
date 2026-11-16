@@ -123,6 +123,14 @@ public final class JuiceSound: @unchecked Sendable {
         SFXManager.shared.playUIBack()
     }
 
+    public func playStar(_ index: Int) {
+        prepare()
+        let names = ["star_1", "star_2", "star_3"]
+        guard names.indices.contains(index) else { return }
+        logSmoke("sfx \(names[index])")
+        SFXManager.shared.playStar(index)
+    }
+
     public func playJump() {
         prepare()
         logSmoke("sfx jump")

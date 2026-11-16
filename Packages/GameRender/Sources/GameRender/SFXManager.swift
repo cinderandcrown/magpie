@@ -13,11 +13,11 @@ public final class SFXManager: @unchecked Sendable {
         var name: String
         var file: String
         var loop: Bool
+        var url: URL
     }
 
     private var metas: [String: ClipMeta] = [:]
-    /// Prepared template players (one per clip) used for duration/rate; oneshots are cloned via Data.
-    private var templates: [String: AVAudioPlayer] = [:]
+    /// Decoded PCM kept once per clip (no second AVAudioPlayer template copy).
     private var clipData: [String: Data] = [:]
     private var loops: [String: AVAudioPlayer] = [:]
     private var oneshots: [AVAudioPlayer] = []
@@ -52,15 +52,8 @@ public final class SFXManager: @unchecked Sendable {
             roots.append(res.appendingPathComponent("Audio/sfx", isDirectory: true))
             roots.append(res.appendingPathComponent("Assets/Audio/sfx", isDirectory: true))
         }
-        // Repo-relative fallback for unit tests / host tools.
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         roots.append(cwd.appendingPathComponent("Assets/Audio/sfx", isDirectory: true))
-        if let src = Bundle.main.resourceURL?
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Assets/Audio/sfx", isDirectory: true) {
-            roots.append(src)
-        }
         return roots
     }
 
@@ -76,12 +69,12 @@ public final class SFXManager: @unchecked Sendable {
 
     // MARK: - Preload
 
-    /// Load manifest + decode every WAV into memory so gameplay play() is allocation-light.
+    /// Load manifest + buffer every WAV once so gameplay play() does not hit the bundle repeatedly.
     @discardableResult
     public func preload(bundle: Bundle = .main) -> Int {
         lock.lock()
         defer { lock.unlock() }
-        if preloaded { return templates.count }
+        if preloaded { return clipData.count }
         guard let root = resolveRoot(bundle: bundle) else { return 0 }
         let manURL = root.appendingPathComponent("sfx_manifest.json")
         guard let data = try? Data(contentsOf: manURL),
@@ -92,22 +85,18 @@ public final class SFXManager: @unchecked Sendable {
             guard let name = entry["name"] as? String,
                   let file = entry["file"] as? String else { continue }
             let loop = (entry["loop"] as? Bool) ?? false
-            metas[name] = ClipMeta(name: name, file: file, loop: loop)
             let url = root.appendingPathComponent(file)
-            guard let bytes = try? Data(contentsOf: url) else { continue }
+            guard let bytes = try? Data(contentsOf: url), !bytes.isEmpty else { continue }
+            metas[name] = ClipMeta(name: name, file: file, loop: loop, url: url)
             clipData[name] = bytes
-            if let player = try? AVAudioPlayer(data: bytes) {
-                player.prepareToPlay()
-                templates[name] = player
-            }
         }
         preloaded = true
-        return templates.count
+        return clipData.count
     }
 
     public var loadedCount: Int {
         lock.lock(); defer { lock.unlock() }
-        return templates.count
+        return clipData.count
     }
 
     public func isLoop(_ name: String) -> Bool {
@@ -117,7 +106,6 @@ public final class SFXManager: @unchecked Sendable {
 
     // MARK: - Play
 
-    /// Play a one-shot (or restart a named loop via `startLoop`).
     public func play(_ name: String, rate: Float = 1.0, gain: Float = 1.0) {
         _ = preload()
         lock.lock()
@@ -136,8 +124,8 @@ public final class SFXManager: @unchecked Sendable {
             lock.lock()
             oneshots.append(player)
             oneshots.removeAll { !$0.isPlaying && $0 !== player }
-            if oneshots.count > 8 {
-                let drop = oneshots.count - 8
+            if oneshots.count > 6 {
+                let drop = oneshots.count - 6
                 for p in oneshots.prefix(drop) { p.stop() }
                 oneshots.removeFirst(drop)
             }
@@ -238,6 +226,11 @@ public final class SFXManager: @unchecked Sendable {
     public func playUITap() { play("ui_tap") }
     public func playUIBack() { play("ui_back") }
     public func playStartupJingle() { play("startup_jingle") }
+    public func playStar(_ index: Int) {
+        let names = ["star_1", "star_2", "star_3"]
+        guard names.indices.contains(index) else { return }
+        play(names[index])
+    }
 
     public func setBossTreadMoving(_ moving: Bool) {
         if moving {

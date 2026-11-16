@@ -283,25 +283,14 @@ public final class HeistScene: SKScene {
         maskVignette.alpha = 0
         maskVignette.isHidden = true
         overlay.addChild(maskVignette)
-        // Grade via low node.alpha only — SKSpriteNode(color:) ignores UIColor alpha.
-        // Keep wash ≤10% so Mask Mode never cyan-washes the playfield (CI cyanWash gate).
-        let wash = SKSpriteNode(color: ArtCatalog.neonCyan, size: CGSize(width: 40, height: 40))
-        wash.name = "wash"
-        wash.blendMode = .alpha
-        wash.alpha = 0.08
-        maskVignette.addChild(wash)
-        let magenta = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: 40, height: 40))
-        magenta.name = "washMagenta"
-        magenta.blendMode = .alpha
-        magenta.alpha = 0.04
-        magenta.zPosition = 1
-        maskVignette.addChild(magenta)
-        // Soft edge vignette (darken corners only — not a center plate).
+        // No full-screen cyan/magenta color plates — SKSpriteNode(color:) + purge can
+        // read as an opaque neon wash and trip the CI cyanWash gate. Mask Mode grade is
+        // character glow + a soft dark edge only.
         let edge = SKSpriteNode(color: SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 1), size: CGSize(width: 40, height: 40))
         edge.name = "vignetteEdge"
         edge.blendMode = .alpha
         edge.zPosition = 2
-        edge.alpha = 0.2
+        edge.alpha = 0.22
         maskVignette.addChild(edge)
     }
 
@@ -971,18 +960,11 @@ public final class HeistScene: SKScene {
         tuningMenu?.position = .zero
         #endif
 
-        if let wash = maskVignette.childNode(withName: "wash") as? SKSpriteNode {
-            wash.size = size
-            wash.position = .zero
-        }
-        if let magenta = maskVignette.childNode(withName: "washMagenta") as? SKSpriteNode {
-            magenta.size = size
-            magenta.position = .zero
-        }
         if let edge = maskVignette.childNode(withName: "vignetteEdge") as? SKSpriteNode {
-            // Ring vignette via oversized dark plate (center still shows through wash only).
-            edge.size = CGSize(width: size.width * 1.15, height: size.height * 1.15)
+            // Oversized dark plate — corners read heavier; center stays the night playfield.
+            edge.size = CGSize(width: size.width * 1.2, height: size.height * 1.2)
             edge.position = .zero
+            edge.alpha = 0.22
         }
         if !titleRoot.isHidden {
             layoutTitleChrome()
@@ -1502,10 +1484,7 @@ public final class HeistScene: SKScene {
                 star.run(SKAction.sequence([
                     SKAction.wait(forDuration: 0.28 + 0.14 * Double(i)),
                     SKAction.group([
-                        SKAction.run {
-                            let name = ["star_1", "star_2", "star_3"][i]
-                            SFXManager.shared.play(name)
-                        },
+                        SKAction.run { JuiceSound.shared.playStar(i) },
                         SKAction.fadeAlpha(to: 1, duration: 0.14),
                         SKAction.scale(to: 1.25, duration: 0.14),
                     ]),
@@ -1616,7 +1595,7 @@ public final class HeistScene: SKScene {
             (label.childNode(withName: "hudOutline") as? SKLabelNode)?.text = label.text
             (label.childNode(withName: "hudGlow") as? SKLabelNode)?.text = label.text
         }
-        // Mask Mode: trail + gentle vignette pulse (cap alpha so gameplay stays readable).
+        // Mask Mode: trail + soft edge pulse (no full-screen cyan plate).
         if b.maskMode {
             maskParticleAcc += dt
             maskGradePulse += dt
@@ -1627,10 +1606,18 @@ public final class HeistScene: SKScene {
                 }
                 bandit.emitMaskTrail()
             }
-            // Parent on; child alphas carry the grade (never ramp parent toward opaque cyan).
             maskVignette.alpha = 1
-            if let wash = maskVignette.childNode(withName: "wash") as? SKSpriteNode {
-                wash.alpha = 0.06 + 0.03 * sin(maskGradePulse * 3.5)
+            if let edge = maskVignette.childNode(withName: "vignetteEdge") as? SKSpriteNode {
+                edge.alpha = 0.18 + 0.06 * sin(maskGradePulse * 3.5)
+            }
+            // Keep night plates pinned — never let a tint/purge path bleach them cyan.
+            skyFill.color = ArtCatalog.nightSky
+            skyFill.colorBlendFactor = 1
+            stageBackdrop.color = ArtCatalog.nightSky
+            stageBackdrop.colorBlendFactor = 1
+            if let night = world.childNode(withName: "worldNightWash") as? SKSpriteNode {
+                night.color = ArtCatalog.nightSky
+                night.colorBlendFactor = 1
             }
             if !lastMaskMode {
                 applyMaskParallaxGrade(active: true, pulse: 1)
@@ -1977,20 +1964,24 @@ public final class HeistScene: SKScene {
     }
 
     private func applyMaskParallaxGrade(active: Bool, pulse: CGFloat) {
-        // Mild palette nudge only — never bleach the city into cyan/white.
-        let blend: CGFloat = active ? 0.06 * pulse : 0.04
-        let tint = active ? ArtCatalog.neonCyan : SKColor(white: 1.05, alpha: 1)
+        // Restore plate brighten only — never assign neonCyan to city plates (texture purge
+        // + cyan color reads as a solid wash and fails CI).
         for layer in [parallaxFar, parallaxMid, parallaxNear] {
             layer.enumerateChildNodes(withName: "//*") { node, _ in
                 guard let sprite = node as? SKSpriteNode, sprite.name != "gridHorizon" else { return }
-                sprite.color = tint
-                sprite.colorBlendFactor = blend
+                if active {
+                    sprite.color = SKColor(white: 1.08, alpha: 1)
+                    sprite.colorBlendFactor = 0.1 * pulse
+                } else {
+                    sprite.color = SKColor(white: 1.12, alpha: 1)
+                    sprite.colorBlendFactor = 0.12
+                }
             }
         }
         if let grid = parallaxFar.childNode(withName: "//gridHorizon") as? SKSpriteNode {
-            grid.alpha = active ? 0.5 : 0.42
+            grid.alpha = active ? 0.55 : 0.42
             grid.color = active ? ArtCatalog.neonPink : .white
-            grid.colorBlendFactor = active ? 0.12 : 0
+            grid.colorBlendFactor = active ? 0.1 : 0
         }
     }
 
@@ -2027,14 +2018,14 @@ public final class HeistScene: SKScene {
     }
 
     private func flashMask() {
-        // Brief ≤100ms low-alpha flash, then subtle sustained grade. Gameplay stays readable.
+        // Brief ≤100ms low-alpha flash, then edge grade only. Gameplay stays readable.
         maskVignette.isHidden = false
         maskVignette.alpha = 1
-        if let wash = maskVignette.childNode(withName: "wash") as? SKSpriteNode {
-            wash.alpha = 0.08
+        if let edge = maskVignette.childNode(withName: "vignetteEdge") as? SKSpriteNode {
+            edge.alpha = 0.24
         }
         applyMaskParallaxGrade(active: true, pulse: 1)
-        _ = tryFullscreenFlash(color: ArtCatalog.neonCyan, peakAlpha: 0.12, duration: 0.09)
+        _ = tryFullscreenFlash(color: ArtCatalog.neonCyan, peakAlpha: 0.08, duration: 0.08)
         neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: smokeEnabled ? 3 : 12)
         neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: smokeEnabled ? 1 : 6)
         let rings = smokeEnabled ? 2 : 3
