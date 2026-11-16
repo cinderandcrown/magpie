@@ -372,11 +372,34 @@ shot "$OUT_DIR/02c-background.png"
 write_flag "smoke_foreground.txt"
 wait_status "foreground" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s else 1)' 90
 
-# 05 — death / retry overlay (app holds failed until smoke_death_ok.txt)
-wait_status "death" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("died=1" in s and "phase=failed" in s) else 1)' 120
+# 05 — death / retry overlay (app holds failed until smoke_death_ok.txt).
+# Soft path: if seekDeath can't reach the canal from a mid ledge, force-fail into water.
+DEATH_WAIT_START="$(date +%s)"
+DEATH_FORCED=0
+while true; do
+  require_app "death"
+  status="$(read_status)"
+  if [[ "$status" == *"died=1"* && "$status" == *"phase=failed"* ]]; then
+    echo "ready@death: $status"
+    break
+  fi
+  now="$(date +%s)"
+  if (( now - DEATH_WAIT_START >= 35 )) && [[ "$DEATH_FORCED" -eq 0 ]]; then
+    echo "WARN: death soft-timeout — arming smoke_force_fail.txt (status=$status)" >&2
+    write_flag "smoke_force_fail.txt"
+    DEATH_FORCED=1
+  fi
+  if (( now - DEATH_WAIT_START >= 90 )); then
+    echo "FAIL: timeout waiting for death (status=$status)" >&2
+    shot "$OUT_DIR/fail-death-timeout.png" || true
+    exit 1
+  fi
+  sleep 0.35
+done
 sleep 0.35
 shot "$OUT_DIR/05-death-retry.png"
 write_flag "smoke_death_ok.txt"
+rm -f "$(data_container)/Documents/smoke_force_fail.txt" 2>/dev/null || true
 
 # 06 — RESULTS (win after retry)
 wait_status "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("won=1" in s or "phase=won" in s) else 1)' 120

@@ -2339,6 +2339,23 @@ public final class HeistScene: SKScene {
                         smoke.sawMask = true
                         smoke.sawStomp = true
                     }
+                    // Harness: dump Bandit into canal water for the death beat if seekDeath stalls.
+                    if SmokeBrain.smokeFlagExists("smoke_force_fail.txt"),
+                       case .playing = sim.state.phase
+                    {
+                        let tile = tuning.tileSize
+                        if let water = sim.map.findFirst(.water) {
+                            sim.state.bandit.position = Vec2(
+                                (Double(water.0) + 0.5) * tile,
+                                (Double(water.1) + 0.5) * tile
+                            )
+                        }
+                        sim.state.bandit.velocity = .zero
+                        sim.state.bandit.invuln = 0
+                        sim.state.bandit.maskMode = false
+                        sim.state.bandit.maskTimer = 0
+                        smoke.act = .seekDeath
+                    }
                     if sim.state.bandit.maskMode {
                         // Don't pin Mask open before midrun still — street neon palette needs a clean alley.
                         let holdFirst = midrunOk && mask1Pending

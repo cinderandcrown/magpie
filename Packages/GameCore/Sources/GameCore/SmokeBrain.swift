@@ -56,7 +56,7 @@ public struct SmokeBrain: Equatable, Sendable {
             "smoke_show_pause.txt", "smoke_pause_ok.txt",
             "smoke_background.txt", "smoke_foreground.txt",
             "smoke_show_map.txt", "smoke_map_ok.txt", "smoke_show_daily.txt", "smoke_daily_ok.txt",
-            "smoke_prefer_roof.txt", "smoke_force_mask.txt",
+            "smoke_prefer_roof.txt", "smoke_force_mask.txt", "smoke_force_fail.txt",
         ] {
             setSmokeFlag(name, present: false)
         }
@@ -491,40 +491,50 @@ public struct SmokeBrain: Equatable, Sendable {
     private func seekDeathInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
+        let halfH = 14.0
         let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? b.position.y
-        // Get down to the street first — walk off ledges / drop one-ways.
-        if b.position.y > streetY + tile * 0.45 {
+        let feetY = b.position.y - halfH
+        let elevated = feetY > streetY + tile * 0.35 || standingOnOneWay(sim: sim, halfH: halfH)
+        // Get down to the street first — drop one-ways / walk off solid mid ledges.
+        if elevated {
+            var moveX: Double = 1.0
+            if b.onWallRight { moveX = -1.0 }
+            else if b.onWallLeft { moveX = 1.0 }
+            else if !floorSupport(sim: sim, tx: tx + 1, ty: ty) {
+                moveX = 1.0
+            } else if !floorSupport(sim: sim, tx: tx - 1, ty: ty) {
+                moveX = -1.0
+            }
+            if standingOnOneWay(sim: sim, halfH: halfH), b.onGround {
+                return InputFrame(moveX: moveX, moveY: -1, jumpPressed: false, jumpHeld: false)
+            }
             if !b.onGround {
-                // Belly-flop down if we're floating above the street.
-                return InputFrame(moveX: 1, moveY: -1, pouncePressed: !b.flopping)
+                return InputFrame(moveX: moveX, moveY: -1, pouncePressed: !b.flopping)
             }
-            let edgeR = !sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty - 1))
-            let edgeL = !sim.map.isSolid(sim.map.tile(atX: tx - 1, y: ty - 1))
-            if edgeR { return InputFrame(moveX: 1, moveY: -1) }
-            if edgeL { return InputFrame(moveX: -1, moveY: -1) }
             if b.onWallLeft || b.onWallRight {
-                return InputFrame(moveX: b.onWallRight ? -1 : 1, jumpPressed: true, jumpHeld: true)
+                return InputFrame(moveX: moveX, moveY: -1, jumpPressed: true, jumpHeld: true)
             }
-            // After ~3s still perched, keep marching; after ~8s prefer left ledges too.
-            let dir: Double = (seekDeathFrames % 240) < 180 ? 1 : -1
-            return InputFrame(moveX: dir, moveY: -1)
+            return InputFrame(moveX: moveX, moveY: -1, jumpPressed: false, jumpHeld: false)
         }
-        // Street: run into the canal spike/water. Never jump a water/spike lip.
-        let underR = sim.map.tile(atX: tx + 1, y: ty - 1)
-        let ahead = sim.map.tile(atX: tx + 1, y: ty)
-        let lipIsHazard = underR == .water || underR == .spike || underR == .empty
+        // Street: bee-line toward the canal water tile; never jump the lip.
+        let waterX = sim.map.findFirst(.water).map { Double($0.0) * tile } ?? (Double(tx + 20) * tile)
+        let toward = waterX >= b.position.x ? 1.0 : -1.0
+        let under = sim.map.tile(atX: tx + (toward > 0 ? 1 : -1), y: ty - 1)
+        let ahead = sim.map.tile(atX: tx + (toward > 0 ? 1 : -1), y: ty)
+        let lipIsHazard = under == .water || under == .spike || under == .empty
             || ahead == .water || ahead == .spike
-            || sim.map.tile(atX: tx + 1, y: ty - 2) == .water
-        if lipIsHazard || seekDeathFrames > 600 {
-            return InputFrame(moveX: 1) // walk off / commit
+            || sim.map.tile(atX: tx + (toward > 0 ? 1 : -1), y: ty - 2) == .water
+        if lipIsHazard || seekDeathFrames > 180 {
+            return InputFrame(moveX: toward) // walk off / commit
         }
-        if b.onWallRight || sim.map.isSolid(ahead) {
-            return InputFrame(moveX: 1, jumpPressed: b.onGround || b.coyote > 0, jumpHeld: false)
+        if b.onWallRight || b.onWallLeft || sim.map.isSolid(ahead) {
+            return InputFrame(
+                moveX: toward,
+                jumpPressed: b.onGround || b.coyote > 0,
+                jumpHeld: true
+            )
         }
-        if b.onWallLeft || b.onWallRight, !b.onGround {
-            return InputFrame(moveX: b.onWallRight ? -1 : 1, jumpPressed: true, jumpHeld: true)
-        }
-        return InputFrame(moveX: 1)
+        return InputFrame(moveX: toward)
     }
 
     private func nearestMop(sim: Sim) -> MopEnemy? {
