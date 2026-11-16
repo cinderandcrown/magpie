@@ -9,10 +9,58 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# contents:write so the one-shot Spriterrific job can push imported sheets.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  # One-shot Spriterrific spend: present Assets/SPRITERRIFIC_REQUEST, job runs once,
+  # imports sheets, removes the flag, and pushes. Secret: SPRITERRIFIC_API_KEY (never logged).
+  spriterrific:
+    name: Spriterrific raccoon (credit spend)
+    if: hashFiles('Assets/SPRITERRIFIC_REQUEST') != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+      - name: Generate + import (≤460 credits)
+        env:
+          SPRITERRIFIC_API_KEY: ${{ secrets.SPRITERRIFIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SPRITERRIFIC_API_KEY:-}" || { echo "SPRITERRIFIC_API_KEY missing"; exit 1; }
+          python3 scripts/spriterrific_raccoon.py \
+            --ref Assets/Generated/sprites/raccoon/idle.png \
+            --out spriterrific-runs \
+            --dry-run=false
+          python3 scripts/import_spriterrific_raccoon.py \
+            --runs spriterrific-runs \
+            --dest Assets/Generated/sprites/raccoon
+          rm -f Assets/SPRITERRIFIC_REQUEST
+      - name: Upload spriterrific-runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spriterrific-raccoon
+          path: spriterrific-runs/
+          if-no-files-found: warn
+      - name: Commit imported sprites
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Assets/Generated/sprites/raccoon Assets/LICENSES.md ASSETS_LICENSES.md spriterrific-runs || true
+          git add -u Assets/SPRITERRIFIC_REQUEST || true
+          if git diff --cached --quiet; then
+            echo "No asset changes to commit"
+          else
+            git commit -m "Import Spriterrific raccoon sheets (idle/run/jump/attack)"
+            git push
+          fi
+
   scripts:
     name: Scripts
     runs-on: ubuntu-latest
