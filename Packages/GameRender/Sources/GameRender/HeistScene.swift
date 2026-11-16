@@ -89,6 +89,8 @@ public final class HeistScene: SKScene {
     private var pauseFromSystem = false
     private var resumeCountdown: TimeInterval = 0
     private var failOutcomeHold: TimeInterval = 0
+    /// Reusable land dust burst (replaces 8 SKShapeNodes per land).
+    private var landDustEmitter: SKEmitterNode?
     private let pauseRoot = SKNode()
     private var pauseBtn: SKShapeNode!
     private var pauseCountLabel: SKLabelNode?
@@ -291,7 +293,7 @@ public final class HeistScene: SKScene {
         rainLayer.addChild(rain)
     }
 
-    /// Wet-floor neon reflections under walkable tops (cyan/magenta strips).
+    /// Wet-floor neon reflections under walkable tops (cyan/magenta strips + puddles).
     private func addWetFloorReflection(at pos: CGPoint, tile: CGFloat) {
         let cyan = SKSpriteNode(color: ArtCatalog.neonCyan, size: CGSize(width: tile * 0.92, height: 3.5))
         cyan.position = CGPoint(x: pos.x, y: pos.y + tile * 0.48)
@@ -299,12 +301,21 @@ public final class HeistScene: SKScene {
         cyan.zPosition = 3.05
         cyan.blendMode = .add
         world.addChild(cyan)
-        let pink = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.55, height: 2.2))
-        pink.position = CGPoint(x: pos.x + tile * 0.12, y: pos.y + tile * 0.42)
-        pink.alpha = 0.4
+        let pink = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.7, height: 2.8))
+        pink.position = CGPoint(x: pos.x + tile * 0.08, y: pos.y + tile * 0.4)
+        pink.alpha = 0.62
         pink.zPosition = 3.06
         pink.blendMode = .add
         world.addChild(pink)
+        // Soft puddle blob so magenta shows up in the play-band crop.
+        let puddle = SKShapeNode(ellipseOf: CGSize(width: tile * 0.85, height: tile * 0.22))
+        puddle.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.35)
+        puddle.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.25)
+        puddle.lineWidth = 0.6
+        puddle.glowWidth = 1.2
+        puddle.position = CGPoint(x: pos.x - tile * 0.1, y: pos.y + tile * 0.32)
+        puddle.zPosition = 3.04
+        world.addChild(puddle)
     }
 
     private func buildMaskVignette() {
@@ -398,9 +409,25 @@ public final class HeistScene: SKScene {
                     world.addChild(n)
                 }
 
-                // Wet-floor reflections on solid tops (sparse — FPS headroom).
-                if !openBelow, (x + y * 3) % 5 == 0 {
+                // Wet-floor reflections on solid tops (every other tile for magenta coverage).
+                if !openBelow, (x + y) % 2 == 0 {
                     addWetFloorReflection(at: pos, tile: tile)
+                }
+
+                // Magenta strip light under every other floating ledge.
+                if openBelow, x % 2 == 1 {
+                    let strip = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 0.95, height: 3.5))
+                    strip.position = CGPoint(x: pos.x, y: pos.y - tile * 0.42)
+                    strip.alpha = 0.85
+                    strip.blendMode = .add
+                    strip.zPosition = 3.1
+                    world.addChild(strip)
+                    let stripGlow = SKSpriteNode(color: ArtCatalog.neonPink, size: CGSize(width: tile * 1.2, height: 8))
+                    stripGlow.position = strip.position
+                    stripGlow.alpha = 0.35
+                    stripGlow.blendMode = .add
+                    stripGlow.zPosition = 3.05
+                    world.addChild(stripGlow)
                 }
 
                 // Supports under every floating ledge (scaffold / pipe), denser than before.
@@ -487,18 +514,15 @@ public final class HeistScene: SKScene {
                     n.zPosition = 5
                     world.addChild(n)
                 case .checkpoint:
-                    let pole = SKShapeNode(rectOf: CGSize(width: 5, height: tile * 1.5), cornerRadius: 1)
-                    pole.fillColor = SKColor(red: 0.55, green: 0.55, blue: 0.62, alpha: 1)
-                    pole.strokeColor = ArtCatalog.neonLime.withAlphaComponent(0.8)
-                    pole.lineWidth = 1
-                    pole.position = pos
-                    pole.zPosition = 6
-                    world.addChild(pole)
-                    let flag = SKShapeNode(rectOf: CGSize(width: tile * 0.55, height: tile * 0.32), cornerRadius: 2)
-                    flag.fillColor = ArtCatalog.neonLime.withAlphaComponent(0.9)
-                    flag.strokeColor = .clear
-                    flag.position = CGPoint(x: tile * 0.28, y: tile * 0.45)
-                    pole.addChild(flag)
+                    // Compact cyan gem — no tall lime pole (that read as a stray green line).
+                    let gem = SKShapeNode(circleOfRadius: tile * 0.22)
+                    gem.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.85)
+                    gem.strokeColor = .white
+                    gem.lineWidth = 0.8
+                    gem.glowWidth = 1.5
+                    gem.position = CGPoint(x: pos.x, y: pos.y + tile * 0.15)
+                    gem.zPosition = 6
+                    world.addChild(gem)
                 case .stash, .exit:
                     let door = SKShapeNode(rectOf: CGSize(width: tile * 1.2, height: tile * 1.6), cornerRadius: 4)
                     door.fillColor = SKColor(red: 0.12, green: 0.4, blue: 0.28, alpha: 0.95)
@@ -749,6 +773,7 @@ public final class HeistScene: SKScene {
     }
 
     private func showDistrictMap() {
+        if retentionMode == "map" { return }
         retentionRoot.removeAllChildren()
         retentionRoot.setScale(1)
         retentionRoot.alpha = 1
@@ -763,6 +788,9 @@ public final class HeistScene: SKScene {
     }
 
     private func showDailyHeist() {
+        if retentionMode == "daily" { return }
+        // Leaving map → daily: drop the map flag so we don't flip every frame.
+        SmokeBrain.setSmokeFlag("smoke_show_map.txt", present: false)
         retentionRoot.removeAllChildren()
         retentionRoot.setScale(1)
         retentionRoot.alpha = 1
@@ -1445,8 +1473,10 @@ public final class HeistScene: SKScene {
             card.position = .zero
         }
         outcomeRoot.isHidden = true
-        maskMusicOn = false
-        JuiceSound.shared.setMaskModeMusic(false)
+        if maskMusicOn {
+            maskMusicOn = false
+            JuiceSound.shared.setMaskModeMusic(false)
+        }
         maskVignette.removeAllActions()
         maskVignette.alpha = 0
         maskVignette.isHidden = true
@@ -1524,13 +1554,18 @@ public final class HeistScene: SKScene {
                 }
             }
             // Retention screens after RESULTS (harness-driven).
+            // Prefer Daily when both flags exist — never flip map↔daily every frame.
             if case .won = sim.state.phase {
-                if SmokeBrain.smokeFlagExists("smoke_show_map.txt"), retentionMode != "map" {
+                if SmokeBrain.smokeFlagExists("smoke_show_daily.txt") {
+                    if retentionMode != "daily" {
+                        hideOutcome()
+                        titleRoot.isHidden = true
+                        showDailyHeist()
+                    }
+                } else if SmokeBrain.smokeFlagExists("smoke_show_map.txt"), retentionMode != "map" {
                     hideOutcome()
                     titleRoot.isHidden = true
                     showDistrictMap()
-                } else if SmokeBrain.smokeFlagExists("smoke_show_daily.txt"), retentionMode != "daily" {
-                    showDailyHeist()
                 }
             }
         }
@@ -1707,6 +1742,11 @@ public final class HeistScene: SKScene {
                 JuiceSound.shared.playKO()
                 JuiceSound.shared.setMaskModeMusic(false)
                 clearMaskGrade()
+                // Full-opacity KO in front of the MOP — cancel i-frame blink / ghosting.
+                sim.state.bandit.invuln = 0
+                bandit.alpha = 1
+                bandit.zPosition = 55
+                hitStop = max(hitStop, 0.28)
                 // Hold so the bandit death sheet plays before SPLASHED.
                 // Smoke still defers the card until the Mask screenshot flag lands.
                 let maskOk = SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
@@ -1859,19 +1899,36 @@ public final class HeistScene: SKScene {
             // Death: stars stay alpha 0 — no medals on fail.
         }
 
+        // Star labels (Finish / All Shinies / Par) — keep visible under NEW BEST.
+        let starLabels = ["Finish", "All Shinies", "Par"]
+        for i in 0..<3 {
+            guard let star = starsNode.childNode(withName: "star\(i)") else { continue }
+            star.childNode(withName: "starCaption")?.removeFromParent()
+            let cap = SKLabelNode(fontNamed: "AvenirNext-Medium")
+            cap.name = "starCaption"
+            cap.text = starLabels[i]
+            cap.fontSize = 8
+            cap.fontColor = SKColor(white: 0.78, alpha: 1)
+            cap.position = CGPoint(x: 0, y: -16)
+            star.addChild(cap)
+        }
+
         if isWin, let result = clearResult {
             if result.isNewBest {
                 let stamp = SKLabelNode(fontNamed: "AvenirNext-Heavy")
                 stamp.name = "newBestStamp"
                 stamp.text = "NEW BEST"
-                stamp.fontSize = 18
+                stamp.fontSize = 16
                 stamp.fontColor = ArtCatalog.neonOrange
-                stamp.position = CGPoint(x: 0, y: 78)
+                // Below the star row so stars stay readable.
+                stamp.position = CGPoint(x: 36, y: 52)
+                stamp.zRotation = -0.14
                 stamp.alpha = 0
                 stamp.setScale(1.4)
+                stamp.zPosition = 5
                 card.addChild(stamp)
                 stamp.run(SKAction.sequence([
-                    SKAction.wait(forDuration: 0.7),
+                    SKAction.wait(forDuration: 0.85),
                     SKAction.group([
                         SKAction.run { JuiceSound.shared.playNewBest() },
                         SKAction.fadeIn(withDuration: 0.12),
@@ -1879,25 +1936,7 @@ public final class HeistScene: SKScene {
                     ]),
                 ]))
             }
-            if result.didLevelUp {
-                let up = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-                up.name = "levelUpStamp"
-                up.text = "LEVEL \(result.rankLevel)"
-                up.fontSize = 15
-                up.fontColor = ArtCatalog.neonCyan
-                up.position = CGPoint(x: 0, y: -118)
-                up.alpha = 0
-                up.setScale(0.7)
-                card.addChild(up)
-                up.run(SKAction.sequence([
-                    SKAction.wait(forDuration: 0.95),
-                    SKAction.group([
-                        SKAction.run { JuiceSound.shared.playLevelUp() },
-                        SKAction.fadeIn(withDuration: 0.14),
-                        SKAction.scale(to: 1.0, duration: 0.18),
-                    ]),
-                ]))
-            }
+            // level_up intentionally unused — no rank system yet.
         }
 
         let retry = card.childNode(withName: "retryBtn")
@@ -1937,7 +1976,17 @@ public final class HeistScene: SKScene {
             runSpeed: runSpeed,
             smokeLite: false
         )
-        bandit.alpha = b.invuln > 0 && Int(b.invuln * 20) % 2 == 0 ? 0.4 : 1
+        if b.anim == .death {
+            bandit.alpha = 1
+            bandit.zPosition = 55
+        } else if b.invuln > 0 {
+            // Stay at least half-visible during i-frames — never a faint ghost.
+            bandit.alpha = Int(b.invuln * 16) % 2 == 0 ? 0.55 : 1
+            bandit.zPosition = 20
+        } else {
+            bandit.alpha = 1
+            bandit.zPosition = 20
+        }
 
         for s in sim.state.shinies {
             guard let node = shinyNodes[s.id] else { continue }
@@ -2001,14 +2050,9 @@ public final class HeistScene: SKScene {
             (label.childNode(withName: "hudOutline") as? SKLabelNode)?.text = label.text
             (label.childNode(withName: "hudGlow") as? SKLabelNode)?.text = label.text
         }
-        // Mask Mode: trail + soft edge pulse (no full-screen cyan plate / wash).
+        // Mask Mode: soft edge pulse only — afterimages come from BanditVisual.tickMotionTrail.
         if b.maskMode {
-            maskParticleAcc += dt
             maskGradePulse += dt
-            if maskParticleAcc >= 0.07 {
-                maskParticleAcc = 0
-                bandit.emitMaskTrail()
-            }
             maskVignette.alpha = 1
             if let edge = maskVignette.childNode(withName: "vignetteEdge") as? SKSpriteNode {
                 edge.alpha = 0.18 + 0.06 * sin(maskGradePulse * 3.5)
@@ -2026,15 +2070,21 @@ public final class HeistScene: SKScene {
             }
         }
 
-        let lead = CGFloat(b.facing * tuning.cameraLeadTiles * tuning.tileSize)
-        // Bias camera up so skyline fills the top of the portrait frame (no empty black band).
-        var target = CGPoint(x: CGFloat(b.position.x) + lead, y: CGFloat(b.position.y) + 56)
+        // Keep the hero at ~30–38% of screen width with ~35% look-ahead (not pinned to the left cut-off).
+        let leadTiles = max(tuning.cameraLeadTiles, 2.6)
+        let lead = CGFloat(b.facing * leadTiles * tuning.tileSize)
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
         let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
         let viewW = size.width / Self.worldZoom
         let viewH = size.height / Self.worldZoom
-        let minX = viewW * 0.42
-        let maxX = max(minX, mapW - viewW * 0.42)
+        let heroBias = viewW * (b.facing >= 0 ? 0.18 : -0.12)
+        var target = CGPoint(
+            x: CGFloat(b.position.x) + lead + heroBias,
+            y: CGFloat(b.position.y) + 56
+        )
+        // Allow the camera to leave the left clamp near spawn so Mask/stomp stay framed.
+        let minX = viewW * 0.28
+        let maxX = max(minX, mapW - viewW * 0.35)
         let minY = viewH * 0.38
         let maxY = max(minY, mapH - viewH * 0.25)
         target.x = min(max(target.x, minX), maxX)
@@ -2068,23 +2118,48 @@ public final class HeistScene: SKScene {
         bandit.squash(x: x, y: y)
     }
 
+    private func ensureLandDustEmitter() {
+        guard landDustEmitter == nil else { return }
+        let e = SKEmitterNode()
+        e.particleTexture = ArtCatalog.softCircleTexture()
+        e.particleBirthRate = 0
+        e.numParticlesToEmit = 0
+        e.particleLifetime = 0.28
+        e.particleLifetimeRange = 0.06
+        e.particlePositionRange = CGVector(dx: 10, dy: 2)
+        e.emissionAngle = .pi / 2
+        e.emissionAngleRange = 1.1
+        e.particleSpeed = 55
+        e.particleSpeedRange = 35
+        e.particleAlpha = 0.85
+        e.particleAlphaSpeed = -3.0
+        e.particleScale = 0.35
+        e.particleScaleRange = 0.15
+        e.particleScaleSpeed = -0.8
+        e.particleColor = ArtCatalog.neonOrange
+        e.particleColorBlendFactor = 1
+        e.particleBlendMode = .add
+        e.zPosition = 40
+        e.targetNode = world
+        world.addChild(e)
+        landDustEmitter = e
+    }
+
     private func dust(at pos: Vec2) {
-        for _ in 0..<8 {
-            let p = SKShapeNode(circleOfRadius: CGFloat.random(in: 2.5...5))
-            p.fillColor = ArtCatalog.neonOrange.withAlphaComponent(0.8)
-            p.strokeColor = .clear
-            p.position = cg(pos)
-            p.zPosition = 40
-            world.addChild(p)
-            p.run(SKAction.sequence([
-                SKAction.group([
-                    SKAction.moveBy(x: CGFloat.random(in: -28...28), y: CGFloat.random(in: 2...22), duration: 0.28),
-                    SKAction.fadeOut(withDuration: 0.28),
-                    SKAction.scale(to: 0.3, duration: 0.28),
-                ]),
-                SKAction.removeFromParent(),
-            ]))
-        }
+        ensureLandDustEmitter()
+        guard let e = landDustEmitter else { return }
+        e.position = cg(pos)
+        e.particleBirthRate = 0
+        e.numParticlesToEmit = 8
+        e.particleBirthRate = 120
+        e.resetSimulation()
+        e.run(SKAction.sequence([
+            SKAction.wait(forDuration: 0.07),
+            SKAction.run { [weak e] in
+                e?.particleBirthRate = 0
+                e?.numParticlesToEmit = 0
+            },
+        ]), withKey: "dustBurst")
     }
 
     private func shinySparkle(at pos: Vec2) {

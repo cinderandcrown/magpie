@@ -300,9 +300,12 @@ sleep 3
 write_flag "smoke_map_ok.txt"
 
 # 08 — Daily Heist screen (must appear in the continuous video, not only as a still)
+# Clear map flag first so the app doesn't flip map↔daily every frame.
+rm -f "$(data_container)/Documents/smoke_show_map.txt" 2>/dev/null || true
 write_flag "smoke_show_daily.txt"
 wait_status "daily-heist" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "daily=1" in s else 1)' 60
-sleep 0.35
+# Let RetentionChrome.present() finish its fade-in before the still.
+sleep 0.55
 shot "$OUT_DIR/08-daily-heist.png"
 # Hold Daily Heist long enough to read in the continuous take.
 sleep 5
@@ -604,8 +607,10 @@ mag = sum(1 for r,g,b in pixels if r > 160 and b > 100 and r > g + 30)
 teal = sum(1 for r,g,b in pixels if b > 140 and g > 120 and b > r + 20)
 neon = mag + teal
 print(f"palette midrun magenta={mag/n:.3%} teal={teal/n:.3%} neon={neon/n:.3%}")
-if neon / n < 0.002:
-    raise SystemExit("FAIL: midrun has no magenta/teal neon pixels (flat placeholders?)")
+if mag / n < 0.003:
+    raise SystemExit(f"FAIL: midrun magenta={mag/n:.3%} < 0.3% (teal-only alley?)")
+if teal / n < 0.005:
+    raise SystemExit(f"FAIL: midrun teal={teal/n:.3%} < 0.5%")
 
 # Readability: sprites must pop against the local playfield — not mean(sky) vs mean(char),
 # which both sit in the same dark alley mid-tones after neon lift.
@@ -765,6 +770,51 @@ if (( MEDALS < 1 || MAP < 1 || DAILY < 1 || COMBO < 1 )); then
   echo "FAIL: retention milestones medals=$MEDALS map=$MAP daily=$DAILY combo=$COMBO" >&2
   exit 1
 fi
+
+# Land SFX must only fire on air→ground (not every grounded frame). Fail if >3/s over live play.
+python3 - "$OUT_DIR/smoke_audio_events.txt" "$OUT_DIR/smoke_timer_log.txt" <<'PY'
+import sys
+events_path, timer_path = sys.argv[1], sys.argv[2]
+lands = 0
+with open(events_path, encoding="utf-8", errors="replace") as f:
+    for line in f:
+        if "sfx land" in line.lower():
+            lands += 1
+play_s = 1.0
+try:
+    vals = [float(x.strip()) for x in open(timer_path, encoding="utf-8") if x.strip()]
+    if vals:
+        play_s = max(1.0, vals[-1])
+except OSError:
+    play_s = 60.0
+rate = lands / play_s
+print(f"land_sfx count={lands} play_s={play_s:.1f} rate={rate:.2f}/s")
+if rate > 3.0:
+    raise SystemExit(f"FAIL: land SFX {rate:.2f}/s > 3/s (land-every-frame regression?)")
+print("OK land SFX rate")
+PY
+
+# Daily Heist board must actually render (lime neon border in the centre), not a bare level shot.
+"$PALETTE_PY" - "$OUT_DIR/08-daily-heist.png" <<'PY'
+import sys
+from PIL import Image
+im = Image.open(sys.argv[1]).convert("RGB")
+w, h = im.size
+# Centre card band where RetentionChrome.dailyBoard lives.
+box = (int(w * 0.22), int(h * 0.22), int(w * 0.78), int(h * 0.78))
+px = list(im.crop(box).getdata())
+n = max(1, len(px))
+# Lime border / title: high G, moderate R, low-ish B relative to G.
+lime = sum(1 for r, g, b in px if g > 160 and g > r + 20 and g > b + 20)
+# Also accept cyan accents on the board.
+cyan = sum(1 for r, g, b in px if b > 150 and g > 120 and b > r + 20)
+print(f"daily-board lime={lime/n:.3%} cyan={cyan/n:.3%}")
+if lime / n < 0.0015 and cyan / n < 0.004:
+    raise SystemExit(
+        "FAIL: 08-daily-heist missing Daily Heist board chrome (map↔daily flip?)"
+    )
+print("OK daily heist board visible")
+PY
 
 # 04 must be Mask Mode gameplay, not the death/results card — assert it differs from 05.
 "$PALETTE_PY" - "$OUT_DIR/04-mask-mode.png" "$OUT_DIR/05-death-retry.png" <<'PY'
