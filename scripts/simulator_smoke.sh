@@ -822,9 +822,9 @@ HERO_STATUS="$(read_status)"
 STATUS_LINE="$HERO_STATUS" python3 - <<'PY'
 import os, re, sys
 line = os.environ.get("STATUS_LINE", "")
-mn = re.search(r"heroXMin=([0-9.]+)", line)
-mx = re.search(r"heroXMax=([0-9.]+)", line)
-hx = re.search(r"heroX=([0-9.]+)", line)
+mn = re.search(r"heroXMin=(-?[0-9.]+)", line)
+mx = re.search(r"heroXMax=(-?[0-9.]+)", line)
+hx = re.search(r"heroX=(-?[0-9.]+)", line)
 if not mn or not mx:
     raise SystemExit(f"FAIL: smoke_status missing heroXMin/Max (line={line[:160]!r})")
 lo, hi = float(mn.group(1)), float(mx.group(1))

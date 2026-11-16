@@ -321,6 +321,30 @@ final class GameCoreTests: XCTestCase {
         XCTAssertNotEqual(sim.state.phase, .title)
     }
 
+    /// Post-Mask death must wait for smoke_death_ok — no failWait auto-retry while harness drives.
+    func testSmokeBrainHoldsPostMaskDeathUntilDeathOk() throws {
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 1)
+        var brain = SmokeBrain()
+        SmokeBrain.clearSmokeFlags()
+        SmokeBrain.setSmokeFlag("smoke_mask_ok.txt", present: true)
+        defer { SmokeBrain.clearSmokeFlags() }
+        brain.sawMask = true
+        brain.act = .showcaseMask
+        sim.state.phase = .failed(.fellInWater)
+        var sawRetry = false
+        for _ in 0..<4000 {
+            let cue = brain.next(sim: sim)
+            if cue.retry { sawRetry = true; break }
+        }
+        XCTAssertFalse(sawRetry, "harness-driving post-Mask death must not auto-retry on failWait")
+        XCTAssertTrue(brain.diedOnce)
+        SmokeBrain.setSmokeFlag("smoke_death_ok.txt", present: true)
+        let cue = brain.next(sim: sim)
+        XCTAssertTrue(cue.retry, "death_ok must release the hold")
+        XCTAssertEqual(brain.act, .finishPush)
+    }
+
     /// Smoke brain on real Neon Docks + ship tuning must hit stomp → Mask → death → EXIT.
     func testSmokeBrainHitsStompMaskAndDeath() throws {
         let map = try NeonDocksLevel.load()

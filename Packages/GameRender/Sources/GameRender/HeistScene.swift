@@ -1334,6 +1334,8 @@ public final class HeistScene: SKScene {
         sim.startRun()
         titleRoot.isHidden = true
         layoutUI()
+        snapCameraToHero()
+        resetHeroFramingSamples()
         writeSmokeStatus()
     }
 
@@ -1347,7 +1349,72 @@ public final class HeistScene: SKScene {
         mopAlerted.removeAll()
         sim.retry()
         hideOutcome()
+        snapCameraToHero()
+        resetHeroFramingSamples()
         updateHUDVisibility()
+    }
+
+    /// Instantly park the camera on the hero so the first frames aren't focus=(0,0) → negative heroX.
+    private func snapCameraToHero() {
+        cameraFacing = sim.state.bandit.facing >= 0 ? 1 : -1
+        cameraFocus = cameraTarget(for: sim.state.bandit)
+        let z = Self.worldZoom
+        stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
+    }
+
+    private func resetHeroFramingSamples() {
+        smokeStatus.heroX = 0.5
+        smokeStatus.heroXMin = 1
+        smokeStatus.heroXMax = 0
+    }
+
+    /// Same look-ahead + soft clamp as the live camera update (single 0.18×viewW lead).
+    private func cameraTarget(for b: BanditState) -> CGPoint {
+        let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
+        let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
+        let viewW = size.width / Self.worldZoom
+        let viewH = size.height / Self.worldZoom
+        let lead = cameraFacing * 0.18 * viewW
+        var target = CGPoint(
+            x: CGFloat(b.position.x) + lead,
+            y: CGFloat(b.position.y) + 56
+        )
+        let minX = viewW * 0.18
+        let maxX = max(minX, mapW - viewW * 0.18)
+        let minY = viewH * 0.38
+        let maxY = max(minY, mapH - viewH * 0.25)
+        target.x = min(max(target.x, minX), maxX)
+        target.y = min(max(target.y, minY), maxY)
+        return target
+    }
+
+    /// Undo a post-Mask splash/bag that landed before pause/bg finished — keeps harness order intact.
+    private func softReviveSmokeHarness() {
+        sim.state.phase = .playing
+        if sim.state.bandit.hearts <= 0 {
+            sim.state.bandit.hearts = max(1, tuning.hearts)
+        }
+        sim.state.bandit.anim = .idle
+        sim.state.bandit.animHold = 0
+        sim.state.bandit.invuln = 2.0
+        sim.state.bandit.velocity = .zero
+        // Nudge up out of water/spikes if the fail reason was a hazard tile.
+        let tile = tuning.tileSize
+        let tx = Int(floor(sim.state.bandit.position.x / tile))
+        let ty = Int(floor((sim.state.bandit.position.y - 12) / tile))
+        let t = sim.map.tile(atX: tx, y: ty)
+        if t == .water || t == .spike {
+            sim.state.bandit.position.y += tile * 2.5
+        }
+        failOutcomeHold = 0
+        hideOutcome()
+        // Cancelled deaths must not sticky-set diedOnce → finishPush → phase=won before 05.
+        smoke.diedOnce = false
+        smoke.failWait = 0
+        if smoke.act != .showcaseMask && smoke.act != .seekDeath {
+            smoke.act = .showcaseMask
+        }
+        snapCameraToHero()
     }
 
     // MARK: - Touch
@@ -1677,6 +1744,15 @@ public final class HeistScene: SKScene {
             }
         }
 
+        // Safety net: if a post-Mask fail stuck us before pause/bg finished, revive in place.
+        if smokeEnabled,
+           smoke.sawMask,
+           !SmokeBrain.smokeFlagExists("smoke_foreground.txt"),
+           case .failed = sim.state.phase
+        {
+            softReviveSmokeHarness()
+        }
+
         if failOutcomeHold > 0 {
             failOutcomeHold = max(0, failOutcomeHold - dt)
             sync(dt: CGFloat(dt))
@@ -1750,6 +1826,18 @@ public final class HeistScene: SKScene {
 
             if case .playing = sim.state.phase {
                 sim.step(input)
+                // After Mask, keep the bandit alive through pause/bg so death wait isn't raced by phase=won.
+                if smokeEnabled,
+                   smoke.sawMask,
+                   !SmokeBrain.smokeFlagExists("smoke_foreground.txt"),
+                   case .failed = sim.state.phase
+                {
+                    softReviveSmokeHarness()
+                    sim.state.events.removeAll {
+                        if case .fail = $0.kind { return true }
+                        return false
+                    }
+                }
                 handle(sim.state.events)
                 // Hold Mask Mode open until the harness snaps 04 / 04b — screenshot I/O
                 // can take seconds of wall time while the sim keeps ticking.
@@ -1757,6 +1845,10 @@ public final class HeistScene: SKScene {
                     let mask1Pending = !SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
                     let mask2Pending = SmokeBrain.smokeFlagExists("smoke_mask_ok.txt")
                         && !SmokeBrain.smokeFlagExists("smoke_mask2_ok.txt")
+                    // Invuln through Mask showcase + pause/bg (MOPs); water/spikes use soft-revive above.
+                    if smoke.sawMask, !SmokeBrain.smokeFlagExists("smoke_foreground.txt") {
+                        sim.state.bandit.invuln = max(sim.state.bandit.invuln, 0.35)
+                    }
                     if !sim.state.bandit.maskMode, !mask1Pending {
                         smokeSawMaskDropAfterFirst = true
                     }
@@ -2188,35 +2280,29 @@ public final class HeistScene: SKScene {
 
         // Single look-ahead: facing × 0.18×viewW → hero at ~32% (right) / ~68% (left).
         // Do NOT also add cameraLeadTiles — that stacked and pinned him off the left edge.
-        let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
-        let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
         let viewW = size.width / Self.worldZoom
-        let viewH = size.height / Self.worldZoom
         let wantFace: CGFloat = b.facing >= 0 ? 1 : -1
         let faceBlend = min(1, CGFloat(dt) / 0.4)
         cameraFacing += (wantFace - cameraFacing) * faceBlend
-        let lead = cameraFacing * 0.18 * viewW
-        var target = CGPoint(
-            x: CGFloat(b.position.x) + lead,
-            y: CGFloat(b.position.y) + 56
-        )
-        // Soft left clamp so spawn/Mask still frames at ~32% (not pinned off-screen).
-        let minX = viewW * 0.18
-        let maxX = max(minX, mapW - viewW * 0.18)
-        let minY = viewH * 0.38
-        let maxY = max(minY, mapH - viewH * 0.25)
-        target.x = min(max(target.x, minX), maxX)
-        target.y = min(max(target.y, minY), maxY)
+        let target = cameraTarget(for: b)
         let s = CGFloat(tuning.cameraSmooth)
         cameraFocus.x += (target.x - cameraFocus.x) * s
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
         // Hero screen-x fraction (0 = left edge, 1 = right) for the smoke framing gate.
-        // Sample while facing right — gate expects ~30–35% (20–45% band).
+        // Sample only when facing right AND camera has settled — mid-turn lag spiked max to ~60%.
         let banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
         let heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
-        if case .playing = sim.state.phase, !runPaused, resumeCountdown <= 0, cameraFacing > 0.5 {
+        let settled = abs(cameraFocus.x - target.x) < viewW * 0.05
+        if case .playing = sim.state.phase,
+           !runPaused,
+           resumeCountdown <= 0,
+           sim.state.elapsed > 1.0,
+           b.facing > 0,
+           cameraFacing > 0.9,
+           settled
+        {
             smokeStatus.heroX = heroFrac
             smokeStatus.heroXMin = min(smokeStatus.heroXMin, heroFrac)
             smokeStatus.heroXMax = max(smokeStatus.heroXMax, heroFrac)

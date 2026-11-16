@@ -95,9 +95,14 @@ public struct SmokeBrain: Equatable, Sendable {
                 }
                 return (input, start, retry)
             }
-            // Canonical death beat after Mask: hold until harness snaps 05 (~60s manual fallback).
+            // Canonical death beat after Mask: hold until harness snaps 05.
+            // When the smoke harness is driving (mask_ok present), NEVER auto-retry on
+            // failWait — a premature splash during pause/bg used to hit 3600 (~60s),
+            // retry into finishPush, and race the death wait with phase=won.
             if !diedOnce { diedOnce = true }
-            if deathOk || failWait >= 3600 {
+            let harnessDriving = Self.smokeFlagExists("smoke_mask_ok.txt")
+            let manualFallback = !harnessDriving && failWait >= 3600
+            if deathOk || manualFallback {
                 retry = true
                 failWait = 0
                 act = .finishPush
