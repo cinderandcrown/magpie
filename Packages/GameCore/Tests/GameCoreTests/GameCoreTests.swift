@@ -630,6 +630,53 @@ final class GameCoreTests: XCTestCase {
         XCTAssertTrue(sawJump)
         XCTAssertTrue(sawApex)
     }
+
+    func testFlatWalkEmitsZeroLandEvents() throws {
+        let map = try TileMap.parse("""
+        ############
+        #..........#
+        #.@........#
+        #==========#
+        ############
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        // Settle onto the deck first (spawn may start slightly airborne).
+        for _ in 0..<30 { sim.step(InputFrame()) }
+        var lands = 0
+        for _ in 0..<120 {
+            sim.step(InputFrame(moveX: 1))
+            lands += sim.state.events.filter { $0.kind == .land }.count
+        }
+        XCTAssertEqual(lands, 0, "flat walk must not spam land every grounded frame")
+        XCTAssertTrue(sim.state.bandit.onGround)
+    }
+
+    func testSingleJumpEmitsExactlyOneLand() throws {
+        let map = try TileMap.parse("""
+        ##########
+        #........#
+        #...@....#
+        #========#
+        ##########
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        for _ in 0..<30 { sim.step(InputFrame()) }
+        XCTAssertTrue(sim.state.bandit.onGround)
+        var lands = 0
+        var leftGround = false
+        // Hold jump long enough to clear the deck, then fall.
+        for i in 0..<160 {
+            let held = i < 18
+            sim.step(InputFrame(jumpPressed: i == 0, jumpHeld: held))
+            if !sim.state.bandit.onGround { leftGround = true }
+            lands += sim.state.events.filter { $0.kind == .land }.count
+            if leftGround && sim.state.bandit.onGround && i > 20 { break }
+        }
+        XCTAssertTrue(leftGround)
+        XCTAssertEqual(lands, 1, "one jump must produce exactly one land event")
+    }
 }
 
 struct SeededGenerator: RandomNumberGenerator {

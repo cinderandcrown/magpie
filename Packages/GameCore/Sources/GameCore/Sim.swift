@@ -74,7 +74,7 @@ public struct Sim: Equatable, Sendable {
             let span = tile * (i < 6 ? 0.35 : 2.2)
             mops.append(MopEnemy(
                 id: i, position: p, home: p, patrolSpan: span, phase: Double(i) * 0.85,
-                alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1
+                alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1, stun: 0
             ))
         }
         var cps: [Checkpoint] = []
@@ -269,6 +269,8 @@ public struct Sim: Equatable, Sendable {
 
     private mutating func collide(bandit: inout BanditState) {
         let tile = tuning.tileSize
+        // Capture before the probe reset — otherwise every grounded step looks like a landing.
+        let wasGrounded = bandit.onGround
         bandit.onGround = false
         bandit.onWallLeft = false
         bandit.onWallRight = false
@@ -304,15 +306,14 @@ public struct Sim: Equatable, Sendable {
             let feet = bandit.position.y - halfH
             if solidAt(bandit.position.x - halfW * 0.6, feet) || solidAt(bandit.position.x + halfW * 0.6, feet) {
                 let ty = Int(floor(feet / tile))
-                let wasAir = !bandit.onGround && bandit.anim != .idle
                 bandit.position.y = Double(ty + 1) * tile + halfH
-                if bandit.velocity.y < -40 {
+                // Fire land/dust only on the air → ground transition (plus hard-land shake).
+                if !wasGrounded {
                     state.events.append(SimEvent(kind: .land, position: bandit.position))
                     state.events.append(SimEvent(kind: .dust, position: bandit.position))
-                    state.events.append(SimEvent(kind: .shake, position: bandit.position))
-                } else if wasAir || bandit.velocity.y < -5 {
-                    state.events.append(SimEvent(kind: .land, position: bandit.position))
-                    state.events.append(SimEvent(kind: .dust, position: bandit.position))
+                    if bandit.velocity.y < -40 {
+                        state.events.append(SimEvent(kind: .shake, position: bandit.position))
+                    }
                 }
                 bandit.velocity.y = 0
                 bandit.onGround = true
@@ -434,13 +435,20 @@ public struct Sim: Equatable, Sendable {
             if state.mops[i].animHold > 0 {
                 state.mops[i].animHold = max(0, state.mops[i].animHold - dt)
             }
-            let prevX = state.mops[i].position.x
-            state.mops[i].phase += dt
-            let ox = sin(state.mops[i].phase) * state.mops[i].patrolSpan
-            state.mops[i].position.x = state.mops[i].home.x + ox
-            state.mops[i].position.y = state.mops[i].home.y
-            let dx = state.mops[i].position.x - prevX
-            if abs(dx) > 0.01 { state.mops[i].facing = dx >= 0 ? 1 : -1 }
+            if state.mops[i].stun > 0 {
+                state.mops[i].stun = max(0, state.mops[i].stun - dt)
+            }
+            if state.mops[i].stun <= 0 {
+                let prevX = state.mops[i].position.x
+                state.mops[i].phase += dt
+                let ox = sin(state.mops[i].phase) * state.mops[i].patrolSpan
+                state.mops[i].position.x = state.mops[i].home.x + ox
+                state.mops[i].position.y = state.mops[i].home.y
+                let dx = state.mops[i].position.x - prevX
+                if abs(dx) > 0.01 { state.mops[i].facing = dx >= 0 ? 1 : -1 }
+            } else {
+                state.mops[i].position.y = state.mops[i].home.y
+            }
             if state.mops[i].animHold <= 0 {
                 state.mops[i].anim = .walk
             }
@@ -478,19 +486,23 @@ public struct Sim: Equatable, Sendable {
             if d <= tuning.hurtHitRadius && bandit.invuln <= 0 && !(stompFalling && aboveMop) {
                 bandit.hearts -= 1
                 bandit.invuln = tuning.invulnSeconds
+                let away = bandit.position.x >= state.mops[i].position.x ? 1.0 : -1.0
                 bandit.velocity.y = tuning.jumpVelocity * tuning.tileSize / 3
-                bandit.velocity.x = -bandit.facing * tuning.runSpeed * tuning.tileSize * 0.55
+                bandit.velocity.x = away * tuning.runSpeed * tuning.tileSize * 0.85
+                // Separate sprites on contact — no half-second overlap.
+                bandit.position.x += away * tuning.tileSize * 1.2
+                state.mops[i].position.x -= away * tuning.tileSize * 0.5
+                state.mops[i].home.x = state.mops[i].position.x
+                state.mops[i].stun = 0.5
                 bandit.anim = .hurt
                 bandit.animHold = 0.35
                 state.mops[i].anim = .attack
-                state.mops[i].animHold = 0.35
-                // Nudge MOP away so sprites don't sit overlapping for half a second.
-                let push = bandit.facing >= 0 ? -1.0 : 1.0
-                state.mops[i].position.x += push * 10
+                state.mops[i].animHold = 0.5
                 state.events.append(SimEvent(kind: .hurt, position: bandit.position))
                 if bandit.hearts <= 0 {
                     bandit.anim = .death
                     bandit.animHold = 1.35
+                    bandit.invuln = 0
                     fail(.bagged, at: bandit.position)
                 }
             }
@@ -528,6 +540,7 @@ public struct Sim: Equatable, Sendable {
         guard case .playing = state.phase else { return }
         state.bandit.anim = .death
         state.bandit.animHold = 1.35
+        state.bandit.invuln = 0
         state.phase = .failed(reason)
         state.events.append(SimEvent(kind: .fail(reason), position: pos))
     }

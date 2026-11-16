@@ -79,6 +79,8 @@ public struct MopEnemy: Equatable, Sendable, Identifiable {
     public var anim: MopAnim
     public var animHold: Double
     public var facing: Double
+    /// While > 0, patrol freezes (post-hurt separation).
+    public var stun: Double
 }
 
 public struct Checkpoint: Equatable, Sendable, Identifiable {
