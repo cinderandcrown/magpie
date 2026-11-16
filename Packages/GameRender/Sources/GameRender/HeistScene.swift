@@ -80,7 +80,8 @@ public final class HeistScene: SKScene {
     private var maskGradePulse: CGFloat = 0
     private var lastAwardedMedals = 0
     private var retentionMode: String? = nil // "map" | "daily"
-    private var isPaused = false
+    /// Gameplay pause (not SKScene.isPaused — that freezes the whole tree).
+    private var runPaused = false
     private var pauseFromSystem = false
     private var resumeCountdown: TimeInterval = 0
     private var failOutcomeHold: TimeInterval = 0
@@ -869,10 +870,10 @@ public final class HeistScene: SKScene {
             if case .playing = sim.state.phase { return true }
             return false
         }()
-        guard playing || isPaused else { return }
+        guard playing || runPaused else { return }
         if on {
-            if isPaused { return }
-            isPaused = true
+            if runPaused { return }
+            runPaused = true
             pauseFromSystem = system
             resumeCountdown = 0
             pauseCountLabel?.alpha = 0
@@ -886,7 +887,7 @@ public final class HeistScene: SKScene {
             pauseRoot.isHidden = false
             layoutUI()
         } else {
-            isPaused = false
+            runPaused = false
             pauseFromSystem = false
             pauseRoot.isHidden = true
             layoutUI()
@@ -900,9 +901,9 @@ public final class HeistScene: SKScene {
 
     /// Resume after lifecycle pause: brief 3-2-1, else immediate unpause.
     private func beginResumeFromPause() {
-        guard isPaused else { return }
+        guard runPaused else { return }
         JuiceSound.shared.playUITap()
-        isPaused = false
+        runPaused = false
         pauseRoot.isHidden = true
         if pauseFromSystem {
             pauseFromSystem = false
@@ -1113,11 +1114,11 @@ public final class HeistScene: SKScene {
         let showPlayHUD = playing && resumeCountdown <= 0
         playHUD.isHidden = !showPlayHUD
         pauseBtn?.isHidden = !showPlayHUD
-        if !showPlayHUD || isPaused {
+        if !showPlayHUD || runPaused {
             stickKnob.position = stickBase.position
             moveX = 0
         }
-        if isPaused {
+        if runPaused {
             for node in [stickBase, stickKnob, jumpBtn, pounceBtn, pauseBtn] as [SKNode?] {
                 node?.alpha = 0
             }
@@ -1262,7 +1263,7 @@ public final class HeistScene: SKScene {
                 }
                 if card.contains(pCard) { return }
             }
-            if case .playing = sim.state.phase, resumeCountdown <= 0, !isPaused {
+            if case .playing = sim.state.phase, resumeCountdown <= 0, !runPaused {
                 let pHud = touch.location(in: hud)
                 if pauseBtn?.contains(pHud) == true {
                     JuiceSound.shared.playUITap()
@@ -1270,7 +1271,7 @@ public final class HeistScene: SKScene {
                     return
                 }
             }
-            if isPaused || resumeCountdown > 0 { return }
+            if runPaused || resumeCountdown > 0 { return }
             if !outcomeRoot.isHidden, let card = outcomeRoot.childNode(withName: "outcomeCard") {
                 let pCard = touch.location(in: card)
                 if let home = card.childNode(withName: "homeBtn"), home.contains(pCard) {
@@ -1324,14 +1325,14 @@ public final class HeistScene: SKScene {
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if smokeEnabled || isPaused || resumeCountdown > 0 { return }
+        if smokeEnabled || runPaused || resumeCountdown > 0 { return }
         for touch in touches where touch === stickTouch {
             updateStick(touch.location(in: hud))
         }
     }
 
     public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if smokeEnabled || isPaused || resumeCountdown > 0 { return }
+        if smokeEnabled || runPaused || resumeCountdown > 0 { return }
         for touch in touches {
             if touch === stickTouch {
                 stickTouch = nil
@@ -1468,7 +1469,7 @@ public final class HeistScene: SKScene {
             }
         }
 
-        if isPaused {
+        if runPaused {
             sync(dt: 0)
             updateHUDVisibility()
             return

@@ -10,6 +10,11 @@ import GameCore
 public final class MusicManager: @unchecked Sendable {
     public static let shared = MusicManager()
 
+    /// Box so Timer closures can bump the crossfade step without capturing a mutable Int.
+    private final class CrossfadeStep: @unchecked Sendable {
+        var value = 0
+    }
+
     private enum Mode: Equatable {
         case idle
         case menu
@@ -236,19 +241,18 @@ public final class MusicManager: @unchecked Sendable {
 
         let steps = 25
         let stepInterval = crossfadeSeconds / Double(steps)
-        let target = effectiveVolume
-        var step = 0
+        let stepBox = CrossfadeStep()
         crossfadeTimer = Timer.scheduledTimer(withTimeInterval: stepInterval, repeats: true) { [weak self] timer in
             guard let self else {
                 timer.invalidate()
                 return
             }
-            step += 1
-            let t = Float(step) / Float(steps)
+            stepBox.value += 1
+            let t = Float(stepBox.value) / Float(steps)
             let vol = self.effectiveVolume
             incoming.volume = vol * t
             self.crossfadeFrom?.volume = vol * (1 - t)
-            if step >= steps {
+            if stepBox.value >= steps {
                 timer.invalidate()
                 self.crossfadeFrom?.stop()
                 self.crossfadeFrom = nil
