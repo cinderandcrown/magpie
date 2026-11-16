@@ -2323,8 +2323,10 @@ public final class HeistScene: SKScene {
                         smokeSawMaskDropAfterFirst = true
                     }
                     if sim.state.bandit.maskMode {
-                        let holdFirst = mask1Pending
-                        let holdSecond = mask2Pending && smokeSawMaskDropAfterFirst
+                        // Don't pin Mask open before midrun still — street neon palette needs a clean alley.
+                        let midrunOk = SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
+                        let holdFirst = midrunOk && mask1Pending
+                        let holdSecond = midrunOk && mask2Pending && smokeSawMaskDropAfterFirst
                         if holdFirst || holdSecond {
                             sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
                         }

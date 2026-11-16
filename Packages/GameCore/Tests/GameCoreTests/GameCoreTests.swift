@@ -910,10 +910,9 @@ final class GameCoreTests: XCTestCase {
         XCTAssertFalse(story.introPanels.isEmpty)
         XCTAssertEqual(story.crew.count, 4)
         XCTAssertFalse(story.paTaunts.isEmpty)
-        XCTAssertFalse(story.tagline.isEmpty)
-        XCTAssertTrue(story.tagline.lowercased().contains("trash") || story.tagline.lowercased().contains("raccoon"))
+        XCTAssertEqual(story.tagline, "One city's trash is one raccoon's treasure.")
         XCTAssertTrue(story.premise.lowercased().contains("omniclean"))
-        XCTAssertTrue(story.premise.lowercased().contains("vigilante") || story.tagline.lowercased().contains("raccoon"))
+        XCTAssertTrue(story.premise.lowercased().contains("vigilante"))
         XCTAssertNotNil(story.district(id: .neonDocks))
     }
 

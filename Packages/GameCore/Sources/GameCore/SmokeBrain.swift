@@ -163,6 +163,14 @@ public struct SmokeBrain: Equatable, Sendable {
         let tx = Int(floor(b.position.x / tile))
         let ty = Int(floor(b.position.y / tile))
 
+        let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
+
+        // Beat 1 — street run until midrun still lands (palette needs magenta neon, not Mask/roof).
+        // Prefer_roof is armed only AFTER midrun_ok by the harness.
+        if !midrunOk, sim.state.elapsed < 90, act != .seekDeath, act != .finishPush {
+            return showcaseRunInput(sim: sim, tx: tx, ty: ty)
+        }
+
         // Harness rooftop clip: climb while prefer_roof is set (even during showcaseMask).
         if Self.smokeFlagExists("smoke_prefer_roof.txt"),
            act != .seekDeath, act != .finishPush {
@@ -194,13 +202,6 @@ public struct SmokeBrain: Equatable, Sendable {
 
         if act == .finishPush {
             return finishPushInput(sim: sim, tx: tx, ty: ty)
-        }
-
-        // Beat 1 — run / jump / wall-slide until harness snaps 02-midrun (or elapsed fallback).
-        // Do NOT leave this hold on an accidental early stomp/mask — midrun shot must land first.
-        let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
-        if !midrunOk, sim.state.elapsed < 90 {
-            return showcaseRunInput(sim: sim, tx: tx, ty: ty)
         }
 
         // Beat 2 — hunt MOPs for stomp → Mask Mode (ship combo 5 on Neon Docks).

@@ -223,18 +223,17 @@ if [[ -z "${REC_PID:-}" ]] || ! kill -0 "$REC_PID" 2>/dev/null; then
 fi
 REC_STARTED_AT="${REC_STARTED_AT:-$(date +%s)}"
 
-# Prefer the rooftop route during midrun so we can smoke-record a climb clip.
-write_flag "smoke_prefer_roof.txt"
-
 # Harness handshakes: app holds each beat until the matching flag is written after the shot.
-# 02 — midrun: running/jumping before MOP hunt (holds until smoke_midrun_ok.txt).
+# 02 — midrun: street neon run BEFORE prefer_roof (palette gate needs magenta storefronts).
 # Allow sticky died= from a prior premature splash; require live playing + no stomps yet.
+# Prefer maskOn=0 for the neon alley still; don't hard-require it (timer-hold can race).
 wait_status "midrun" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"elapsed=([0-9.]+)", s); st=re.search(r"stomps=([0-9]+)", s); sys.exit(0 if ("phase=playing" in s and m and float(m.group(1))>=2.5 and (not st or int(st.group(1))==0)) else 1)' 120
 shot "$OUT_DIR/02-midrun.png"
-# Release midrun so subsequent stomps count — prefer_roof climb still runs until cleared.
+# Release midrun so subsequent stomps count.
 write_flag "smoke_midrun_ok.txt"
 
-# 02r — soft rooftop wait (do NOT hard-exit: wait_status's exit 1 kills the whole smoke script).
+# 02r — climb for rooftop-route clip AFTER the street midrun still (keeps magenta palette honest).
+write_flag "smoke_prefer_roof.txt"
 ROOF_WAIT_START="$(date +%s)"
 while true; do
   require_app "rooftop"
