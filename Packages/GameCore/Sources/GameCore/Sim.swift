@@ -403,13 +403,13 @@ public struct Sim: Equatable, Sendable {
             state.mops[i].position.y = state.mops[i].home.y
 
             let d = state.mops[i].position.distance(to: bandit.position)
-            // Stomp hitbox live only on contact frame: flopping, or committed downward fall.
+            // Stomp hitbox live only on contact: flopping, or falling onto the MOP from above.
             let fallSpeed = -bandit.velocity.y / max(tuning.tileSize, 1)
             let stompActive = bandit.flopping
                 || (bandit.velocity.y < 0 && fallSpeed >= tuning.stompMinFallSpeed)
             if stompActive
                 && d < tuning.stompHitRadius
-                && bandit.position.y > state.mops[i].position.y
+                && bandit.position.y > state.mops[i].position.y + 2
             {
                 state.mops[i].alive = false
                 state.mops[i].respawn = 3.5

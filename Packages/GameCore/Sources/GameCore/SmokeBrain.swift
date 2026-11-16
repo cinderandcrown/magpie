@@ -215,16 +215,18 @@ public struct SmokeBrain: Equatable, Sendable {
             var jumpHeld = false
             var pouncePressed = false
 
-            if abs(dx) < tile * 1.6, abs(dy) < tile * 1.2 {
+            // Hop then belly-flop so the stomp contact frame always arms above the MOP.
+            if abs(dx) < tile * 2.2, abs(dy) < tile * 1.8 {
                 if b.onGround {
                     jumpPressed = true
                     jumpHeld = true
-                } else if b.velocity.y <= 0, b.position.y >= mop.position.y - 2 {
-                    pouncePressed = true
+                } else if b.position.y >= mop.position.y - 4 {
+                    pouncePressed = true // arms flopping / committed fall for stomp
+                    jumpHeld = b.velocity.y > 0
                 } else {
                     jumpHeld = true
                 }
-            } else if abs(dx) < tile * 3, b.onGround, tick % 18 < 3 {
+            } else if abs(dx) < tile * 3.5, b.onGround, tick % 14 < 4 {
                 jumpPressed = true
                 jumpHeld = true
             } else if gapAhead(sim: sim, tx: tx, ty: ty), !hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {

@@ -21,8 +21,9 @@ public struct Tuning: Equatable, Sendable {
     /// Extra gravity while falling (Celeste-style fast drop).
     public var fallGravity: Double = 122
     public var jumpCutGravity: Double = 155
-    /// Stomp hitbox only while falling at least this fast (tiles/s), or while flopping.
-    public var stompMinFallSpeed: Double = 3.5
+    /// Stomp hitbox while falling at least this fast (tiles/s), or while flopping.
+    /// Keep low so hop-stomps still connect; “contact frame” = any committed downward hit.
+    public var stompMinFallSpeed: Double = 0.2
 
     // Jump
     public var jumpVelocity: Double = 15.6
