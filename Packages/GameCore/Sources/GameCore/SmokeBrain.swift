@@ -125,11 +125,12 @@ public struct SmokeBrain: Equatable, Sendable {
                     }
                 case .showcaseMask:
                     maskShowcaseFrames += 1
-                    // Hold Mask Mode until harness snaps 04. Fallback ~60s for manual runs —
-                    // a short hold lets seekDeath/die/retry finish during a slow 04 screenshot,
-                    // so the death wait never sees phase=failed.
+                    // Hold until harness snaps 04 (mask) AND finishes pause/bg beats.
+                    // Seeking death right after mask_ok races pause-resume (phase=failed
+                    // while the script still waits for phase=playing).
                     let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
-                    if maskOk || maskShowcaseFrames >= 3600 {
+                    let pauseBgDone = Self.smokeFlagExists("smoke_foreground.txt")
+                    if (maskOk && pauseBgDone) || maskShowcaseFrames >= 3600 {
                         act = .seekDeath
                     }
                 default:

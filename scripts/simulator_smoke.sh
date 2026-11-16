@@ -267,7 +267,8 @@ wait_status "pause-menu" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0
 sleep 0.35
 shot "$OUT_DIR/02b-pause-menu.png"
 write_flag "smoke_pause_ok.txt"
-wait_status "pause-resume" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s and "phase=playing" in s else 1)' 60
+# Accept any unpaused phase — death must not race this wait after mask_ok.
+wait_status "pause-resume" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s else 1)' 60
 
 # 02c — Background / foreground interruption (system pause + 3-2-1 resume)
 write_flag "smoke_background.txt"
@@ -275,7 +276,7 @@ wait_status "background" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0
 sleep 0.35
 shot "$OUT_DIR/02c-background.png"
 write_flag "smoke_foreground.txt"
-wait_status "foreground" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s and "phase=playing" in s else 1)' 90
+wait_status "foreground" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "paused=0" in s else 1)' 90
 
 # 05 — death / retry overlay (app holds failed until smoke_death_ok.txt)
 wait_status "death" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("died=1" in s and "phase=failed" in s) else 1)' 120

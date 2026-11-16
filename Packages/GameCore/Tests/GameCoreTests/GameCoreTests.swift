@@ -300,7 +300,10 @@ final class GameCoreTests: XCTestCase {
         var sim = Sim(map: map, tuning: tuning, seed: 7)
         var brain = SmokeBrain()
         SmokeBrain.clearSmokeFlags()
-        for name in ["smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_death_ok.txt"] {
+        for name in [
+            "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt",
+            "smoke_foreground.txt", "smoke_death_ok.txt",
+        ] {
             SmokeBrain.setSmokeFlag(name, present: true)
         }
         defer { SmokeBrain.clearSmokeFlags() }
@@ -325,7 +328,10 @@ final class GameCoreTests: XCTestCase {
         var brain = SmokeBrain()
         // Unit test: pre-arm harness flags so the director can run end-to-end without waits.
         SmokeBrain.clearSmokeFlags()
-        for name in ["smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt", "smoke_death_ok.txt"] {
+        for name in [
+            "smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt",
+            "smoke_foreground.txt", "smoke_death_ok.txt",
+        ] {
             SmokeBrain.setSmokeFlag(name, present: true)
         }
         defer { SmokeBrain.clearSmokeFlags() }
