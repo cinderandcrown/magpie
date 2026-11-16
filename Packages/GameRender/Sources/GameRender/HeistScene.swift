@@ -225,36 +225,49 @@ public final class HeistScene: SKScene {
         let maxPx: CGFloat = 1280
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
 
-        func tileLayer(_ node: SKSpriteNode, into parent: SKNode, y: CGFloat, z: CGFloat, brighten: Bool) {
+        func tileLayer(
+            _ node: SKSpriteNode,
+            into parent: SKNode,
+            y: CGFloat,
+            z: CGFloat,
+            neonBoost: Bool
+        ) {
             let width = max(node.size.width, 1)
             let copies = max(3, Int(ceil((mapW + size.width) / width)) + 1)
             for i in 0..<copies {
                 let plate = node.copy() as? SKSpriteNode ?? SKSpriteNode(texture: node.texture, size: node.size)
                 plate.position = CGPoint(x: CGFloat(i) * width * 0.92, y: y)
                 plate.zPosition = z
-                // Slightly desaturate/darken so sprites pop (QA P1-2).
-                plate.color = SKColor(red: 0.75, green: 0.72, blue: 0.95, alpha: 1)
-                plate.colorBlendFactor = brighten ? 0.22 : 0.18
-                plate.alpha = brighten ? 0.92 : 0.88
+                // Keep storefront neon readable for the midrun palette gate — do NOT
+                // wash toward muted purple-gray (that hid magenta/teal and dimmed the city).
+                if neonBoost {
+                    plate.color = SKColor(red: 1.0, green: 0.55, blue: 0.95, alpha: 1)
+                    plate.colorBlendFactor = 0.16
+                    plate.alpha = 1.0
+                } else {
+                    plate.color = SKColor(red: 0.55, green: 0.85, blue: 1.0, alpha: 1)
+                    plate.colorBlendFactor = 0.10
+                    plate.alpha = 0.96
+                }
                 parent.addChild(plate)
             }
         }
 
-        // Anchor plates so they fill from below the HUD skyline through the playfield.
-        let midY = viewH * 0.08
+        // Raise skyline into the midrun sample band (y 18–62% of the frame).
+        let midY = viewH * 0.18
         if let far = ArtCatalog.background(.farSkyline, height: h, maxPixel: maxPx) {
-            tileLayer(far, into: parallaxFar, y: midY + 40, z: -30, brighten: false)
+            tileLayer(far, into: parallaxFar, y: midY + 60, z: -30, neonBoost: false)
         }
         let gridW = max(mapW + size.width, 1400)
         let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.7)
-        grid.position = CGPoint(x: gridW * 0.28, y: midY - 20)
-        grid.alpha = 0.35
+        grid.position = CGPoint(x: gridW * 0.28, y: midY)
+        grid.alpha = 0.45
         parallaxFar.addChild(grid)
-        if let mid = ArtCatalog.background(.midBuildings, height: h * 1.05, maxPixel: maxPx) {
-            tileLayer(mid, into: parallaxMid, y: midY - 10, z: -20, brighten: true)
+        if let mid = ArtCatalog.background(.midBuildings, height: h * 1.15, maxPixel: maxPx) {
+            tileLayer(mid, into: parallaxMid, y: midY + 10, z: -20, neonBoost: true)
         }
-        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.9, maxPixel: maxPx) {
-            tileLayer(near, into: parallaxNear, y: midY - 50, z: -10, brighten: false)
+        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.95, maxPixel: maxPx) {
+            tileLayer(near, into: parallaxNear, y: midY - 40, z: -10, neonBoost: false)
         }
 
         let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: size.width / Self.worldZoom, height: h))

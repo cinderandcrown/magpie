@@ -9,7 +9,7 @@ import UIKit
 @MainActor
 public enum ArtCatalog {
     /// Bright magenta / teal neon night — Game Plan v1 “bright neon on dark”.
-    public static let nightSky = SKColor(red: 0.06, green: 0.04, blue: 0.16, alpha: 1)
+    public static let nightSky = SKColor(red: 0.08, green: 0.05, blue: 0.20, alpha: 1)
     public static let neonPink = SKColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 1)
     public static let neonCyan = SKColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 1)
     public static let neonLime = SKColor(red: 0.62, green: 1.0, blue: 0.42, alpha: 1)
@@ -290,8 +290,8 @@ public enum ArtCatalog {
         let n = SKSpriteNode(texture: tex, size: CGSize(width: h * aspect, height: h))
         n.anchorPoint = CGPoint(x: 0.5, y: 0.5)
         // Brighten toward Game Plan magenta/teal neon read.
-        n.color = SKColor(white: 1.12, alpha: 1)
-        n.colorBlendFactor = 0.12
+        n.color = SKColor(red: 1.15, green: 0.95, blue: 1.2, alpha: 1)
+        n.colorBlendFactor = 0.18
         return n
     }
 

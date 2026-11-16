@@ -309,8 +309,13 @@ public struct SmokeBrain: Equatable, Sendable {
             moveX = max(moveX, 0.85)
         }
         if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 2) {
-            moveX = -0.35
-            jumpPressed = false
+            // Jump the hazard — never reverse into the left water pit by spawn.
+            jumpPressed = b.onGround || b.coyote > 0
+            jumpHeld = true
+            moveX = max(moveX, 0.85)
+        }
+        if tx <= 5 {
+            moveX = max(moveX, 0.9)
         }
         if b.onWallLeft || b.onWallRight, !b.onGround {
             jumpPressed = tick % 20 == 0
