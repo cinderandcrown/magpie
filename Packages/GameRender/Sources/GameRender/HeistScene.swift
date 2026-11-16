@@ -697,95 +697,213 @@ public final class HeistScene: SKScene {
     private func setupTitle() {
         titleRoot.zPosition = 300
         overlay.addChild(titleRoot)
-        // Fully opaque title plate — no live level geometry or shinies behind the UI.
-        let bg = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
-        bg.fillColor = SKColor(red: 0.05, green: 0.03, blue: 0.14, alpha: 1)
-        bg.strokeColor = .clear
-        bg.zPosition = -10
-        bg.name = "titleWash"
-        titleRoot.addChild(bg)
 
-        let glow = SKShapeNode(circleOfRadius: 90)
+        // Dedicated cyberpunk alley — never live level geometry or pickups.
+        let alley = SKNode()
+        alley.name = "titleAlley"
+        alley.zPosition = -20
+        titleRoot.addChild(alley)
+
+        let wash = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
+        wash.fillColor = SKColor(red: 0.02, green: 0.02, blue: 0.07, alpha: 1)
+        wash.strokeColor = .clear
+        wash.name = "titleWash"
+        alley.addChild(wash)
+
+        if let far = ArtCatalog.background(.farSkyline, height: 920, maxPixel: 1024) {
+            far.name = "titleFar"
+            far.alpha = 0.55
+            far.zPosition = 0
+            alley.addChild(far)
+        }
+        if let mid = ArtCatalog.background(.midBuildings, height: 780, maxPixel: 1100) {
+            mid.name = "titleMid"
+            mid.alpha = 0.92
+            mid.zPosition = 1
+            mid.color = SKColor(red: 1.2, green: 0.75, blue: 1.35, alpha: 1)
+            mid.colorBlendFactor = 0.28
+            alley.addChild(mid)
+            // Wet-floor reflection: flipped mid plate under the horizon.
+            let wet = mid.copy() as? SKSpriteNode ?? SKSpriteNode()
+            wet.name = "titleWetFloor"
+            wet.yScale = -0.42
+            wet.alpha = 0.28
+            wet.zPosition = 2
+            wet.position = CGPoint(x: 0, y: -210)
+            alley.addChild(wet)
+        }
+
+        // Flickering neon blade signs.
+        for (i, spec) in [
+            (CGPoint(x: -150, y: 40), ArtCatalog.neonPink, CGSize(width: 18, height: 110)),
+            (CGPoint(x: 168, y: 70), ArtCatalog.neonCyan, CGSize(width: 16, height: 90)),
+            (CGPoint(x: -40, y: 120), ArtCatalog.neonLime, CGSize(width: 70, height: 14)),
+        ].enumerated() {
+            let sign = SKShapeNode(rectOf: spec.2, cornerRadius: 3)
+            sign.fillColor = spec.1.withAlphaComponent(0.55)
+            sign.strokeColor = spec.1
+            sign.lineWidth = 1.5
+            sign.glowWidth = 4
+            sign.position = spec.0
+            sign.zPosition = 3
+            sign.name = "titleSign\(i)"
+            alley.addChild(sign)
+            sign.run(SKAction.repeatForever(SKAction.sequence([
+                SKAction.wait(forDuration: 0.4 + Double(i) * 0.35),
+                SKAction.fadeAlpha(to: 0.25, duration: 0.05),
+                SKAction.fadeAlpha(to: 0.95, duration: 0.08),
+                SKAction.wait(forDuration: 1.2 + Double(i) * 0.5),
+                SKAction.fadeAlpha(to: 0.4, duration: 0.04),
+                SKAction.fadeAlpha(to: 0.85, duration: 0.06),
+            ])))
+        }
+
+        let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: 480, height: 900))
+        rain.name = "titleRain"
+        rain.zPosition = 8
+        rain.position = CGPoint(x: 0, y: 220)
+        alley.addChild(rain)
+
+        // Background MOPs (atmosphere only — not live sim pickups).
+        if let mopA = ArtCatalog.makeMopIdleSprite(size: CGSize(width: 54, height: 54)) {
+            mopA.name = "titleMopA"
+            mopA.alpha = 0.7
+            mopA.zPosition = 4
+            alley.addChild(mopA)
+        }
+        if let mopB = ArtCatalog.makeMopIdleSprite(size: CGSize(width: 48, height: 48)) {
+            mopB.name = "titleMopB"
+            mopB.alpha = 0.55
+            mopB.zPosition = 4
+            alley.addChild(mopB)
+        }
+
+        let glow = SKShapeNode(circleOfRadius: 110)
         glow.name = "titleGlow"
-        glow.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.16)
-        glow.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.3)
+        glow.fillColor = ArtCatalog.neonPink.withAlphaComponent(0.14)
+        glow.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.28)
         glow.lineWidth = 2
-        glow.glowWidth = 6
-        glow.zPosition = -1
+        glow.glowWidth = 8
+        glow.zPosition = 9
         titleRoot.addChild(glow)
 
+        // B1 holo glass logo — hero of the top third (no font title).
         let logo = ArtCatalog.makeLogoNode(lite: false)
         logo.name = "titleLogo"
+        logo.zPosition = 12
+        logo.alpha = 0
         titleRoot.addChild(logo)
+        runTitleLogoIntro(logo)
 
-        // Front-facing Spriterrific idle for title / menu / Hideout mascot.
-        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 110, height: 110))
+        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 118, height: 118))
         mascot.name = "titleBandit"
-        mascot.zPosition = 2
+        mascot.zPosition = 11
         titleRoot.addChild(mascot)
-
-        let sub = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
-        sub.name = "titleSub"
-        // Swappable with TitleArt — no ASC / CFBundleDisplayName rename yet.
-        sub.text = TitleArt.workingSubtitle
-        sub.fontSize = 15
-        sub.fontColor = ArtCatalog.neonPink
-        titleRoot.addChild(sub)
 
         let play = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         play.name = "tapToStart"
-        play.text = "PLAY"
-        play.fontSize = 28
+        play.text = "TAP TO START"
+        play.fontSize = 22
         play.fontColor = .white
+        play.zPosition = 14
         titleRoot.addChild(play)
         play.run(SKAction.repeatForever(SKAction.sequence([
             SKAction.group([
-                SKAction.fadeAlpha(to: 0.35, duration: 0.5),
-                SKAction.scale(to: 0.94, duration: 0.5),
+                SKAction.fadeAlpha(to: 0.35, duration: 0.55),
+                SKAction.scale(to: 0.96, duration: 0.55),
             ]),
             SKAction.group([
-                SKAction.fadeAlpha(to: 1, duration: 0.5),
-                SKAction.scale(to: 1.08, duration: 0.5),
+                SKAction.fadeAlpha(to: 1, duration: 0.55),
+                SKAction.scale(to: 1.06, duration: 0.55),
             ]),
         ])))
 
-        let hintPlate = SKShapeNode(rectOf: CGSize(width: 280, height: 56), cornerRadius: 10)
-        hintPlate.name = "hintPlate"
-        hintPlate.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.1, alpha: 0.82)
-        hintPlate.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
-        hintPlate.lineWidth = 1.5
-        titleRoot.addChild(hintPlate)
-
-        let hint = SKLabelNode(fontNamed: "AvenirNext-Medium")
-        hint.name = "titleHint"
-        hint.text = "Left stick · JUMP · POUNCE\nStomp MOPs for Mask Mode"
-        hint.fontSize = 13
-        hint.fontColor = SKColor(white: 1, alpha: 0.95)
-        hint.numberOfLines = 2
-        hint.preferredMaxLayoutWidth = 260
-        hint.verticalAlignmentMode = .center
-        hintPlate.addChild(hint)
-
+        // Tidy bottom bar — MAP · MUTE · DAILY with spacing (no overlaps).
+        let bar = SKNode()
+        bar.name = "titleBottomBar"
+        bar.zPosition = 15
+        titleRoot.addChild(bar)
         let mapBtn = RetentionChrome.makeChromeButton(title: "MAP", color: ArtCatalog.neonCyan, name: "titleMap")
-        mapBtn.position = CGPoint(x: -78, y: -150)
-        titleRoot.addChild(mapBtn)
-        let dailyBtn = RetentionChrome.makeChromeButton(title: "DAILY", color: ArtCatalog.neonLime, name: "titleDaily")
-        dailyBtn.position = CGPoint(x: 78, y: -150)
-        titleRoot.addChild(dailyBtn)
-
+        bar.addChild(mapBtn)
         let muteBtn = RetentionChrome.makeChromeButton(
             title: JuiceSound.shared.muted ? "UNMUTE" : "MUTE",
             color: ArtCatalog.neonPink,
             name: "titleMute"
         )
-        muteBtn.position = CGPoint(x: 0, y: -210)
-        titleRoot.addChild(muteBtn)
+        bar.addChild(muteBtn)
+        let dailyBtn = RetentionChrome.makeChromeButton(title: "DAILY", color: ArtCatalog.neonLime, name: "titleDaily")
+        bar.addChild(dailyBtn)
+
+        let credit = SKLabelNode(fontNamed: "AvenirNext-Medium")
+        credit.name = "titleCredit"
+        credit.text = TitleArt.assetCredits
+        credit.fontSize = 9
+        credit.fontColor = SKColor(white: 1, alpha: 0.45)
+        credit.zPosition = 16
+        titleRoot.addChild(credit)
 
         layoutTitleChrome()
     }
 
+    /// Glitch-in (~0.6s) then idle shimmer/hover + occasional slice glitch.
+    private func runTitleLogoIntro(_ logo: SKNode) {
+        logo.removeAction(forKey: "logoPulse")
+        logo.removeAction(forKey: "logoGlitch")
+        logo.alpha = 0
+        logo.setScale(1.12)
+        let intro = SKAction.sequence([
+            SKAction.group([
+                SKAction.fadeAlpha(to: 1, duration: 0.22),
+                SKAction.scaleX(to: 1.2, duration: 0.08),
+            ]),
+            SKAction.group([
+                SKAction.scaleX(to: 0.82, duration: 0.07),
+                SKAction.fadeAlpha(to: 0.55, duration: 0.05),
+            ]),
+            SKAction.group([
+                SKAction.scaleX(to: 1.05, duration: 0.1),
+                SKAction.fadeAlpha(to: 1, duration: 0.08),
+            ]),
+            SKAction.scale(to: 1.0, duration: 0.13),
+            SKAction.run { [weak self, weak logo] in
+                guard let self, let logo else { return }
+                self.runTitleLogoIdle(logo)
+            },
+        ])
+        logo.run(intro, withKey: "logoIntro")
+    }
+
+    private func runTitleLogoIdle(_ logo: SKNode) {
+        let base = (logo.userData?["baseScale"] as? CGFloat) ?? logo.xScale
+        logo.removeAction(forKey: "logoPulse")
+        logo.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.group([
+                SKAction.moveBy(x: 0, y: 4, duration: 1.35),
+                SKAction.fadeAlpha(to: 0.92, duration: 1.35),
+                SKAction.scale(to: base * 1.02, duration: 1.35),
+            ]),
+            SKAction.group([
+                SKAction.moveBy(x: 0, y: -4, duration: 1.35),
+                SKAction.fadeAlpha(to: 1.0, duration: 1.35),
+                SKAction.scale(to: base, duration: 1.35),
+            ]),
+        ])), withKey: "logoPulse")
+        logo.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.wait(forDuration: 3.6),
+            SKAction.group([
+                SKAction.scaleX(to: base * 1.18, duration: 0.04),
+                SKAction.fadeAlpha(to: 0.7, duration: 0.04),
+            ]),
+            SKAction.group([
+                SKAction.scaleX(to: base * 0.9, duration: 0.05),
+                SKAction.fadeAlpha(to: 1, duration: 0.05),
+            ]),
+            SKAction.scale(to: base, duration: 0.08),
+        ])), withKey: "logoGlitch")
+    }
+
     private func refreshMuteButton() {
-        guard let btn = titleRoot.childNode(withName: "titleMute") else { return }
+        guard let btn = titleRoot.childNode(withName: "//titleMute") else { return }
         let label = btn.children.compactMap { $0 as? SKLabelNode }.first
         label?.text = JuiceSound.shared.muted ? "UNMUTE" : "MUTE"
     }
@@ -838,66 +956,87 @@ public final class HeistScene: SKScene {
         retentionMode = nil
     }
 
-    /// Fit full Neon City Bandit wordmark to ~85% width in the top third; pulse from fitted baseScale.
+    /// B1 logo in the top third; raccoon mid; TAP TO START; bottom bar with non-overlapping buttons.
     private func layoutTitleChrome() {
         guard size.width > 1, size.height > 1 else { return }
         let insets = safeInsets()
         let topSafe = max(insets.top, 54) + 10
-        let bottomSafe = max(insets.bottom, 20)
+        let bottomSafe = max(insets.bottom, 22)
         let hh = size.height * 0.5
         guard let logo = titleRoot.childNode(withName: "titleLogo") else { return }
-        let base = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.85)
-        // Top third of the safe playfield.
+        let base = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.82)
         let safeTop = hh - topSafe
         let safeBottom = -hh + bottomSafe
         let safeH = safeTop - safeBottom
-        let logoY = safeTop - safeH * 0.18
+        // Top third: logo hero.
+        let logoY = safeTop - safeH * 0.16
         logo.position = CGPoint(x: 0, y: logoY)
-        logo.removeAction(forKey: "logoPulse")
-        logo.run(SKAction.repeatForever(SKAction.sequence([
-            SKAction.group([
-                SKAction.fadeAlpha(to: 0.88, duration: 1.0),
-                SKAction.scale(to: base * 1.04, duration: 1.0),
-            ]),
-            SKAction.group([
-                SKAction.fadeAlpha(to: 1.0, duration: 1.0),
-                SKAction.scale(to: base, duration: 1.0),
-            ]),
-        ])), withKey: "logoPulse")
+        if logo.action(forKey: "logoIntro") == nil, logo.action(forKey: "logoPulse") == nil {
+            runTitleLogoIdle(logo)
+        } else if logo.action(forKey: "logoPulse") != nil {
+            // Refresh idle to the newly fitted baseScale.
+            runTitleLogoIdle(logo)
+        }
 
         if let glow = titleRoot.childNode(withName: "titleGlow") {
             glow.position = logo.position
-            glow.setScale(max(1.0, size.width * 0.85 / 220))
+            glow.setScale(max(1.0, size.width * 0.82 / 220))
         }
-        // Front idle mascot sits under the wordmark (feet on an invisible ground line).
+        if let alley = titleRoot.childNode(withName: "titleAlley") {
+            alley.childNode(withName: "titleFar")?.position = CGPoint(x: 0, y: 40)
+            alley.childNode(withName: "titleMid")?.position = CGPoint(x: 0, y: -20)
+            alley.childNode(withName: "titleWetFloor")?.position = CGPoint(x: 0, y: -230)
+            alley.childNode(withName: "titleMopA")?.position = CGPoint(x: -118, y: -168)
+            alley.childNode(withName: "titleMopB")?.position = CGPoint(x: 132, y: -158)
+        }
+        // Raccoon lower in the composition (mid/lower third).
         if let mascot = titleRoot.childNode(withName: "titleBandit") {
-            mascot.position = CGPoint(x: 0, y: logoY - 118)
+            mascot.position = CGPoint(x: 0, y: safeBottom + safeH * 0.38)
         }
-        titleRoot.childNode(withName: "titleSub")?.position = CGPoint(x: 0, y: logoY - 168)
-        titleRoot.childNode(withName: "tapToStart")?.position = CGPoint(x: 0, y: -12)
-        titleRoot.childNode(withName: "hintPlate")?.position = CGPoint(x: 0, y: -78)
-        titleRoot.childNode(withName: "titleMap")?.position = CGPoint(x: -78, y: -150)
-        titleRoot.childNode(withName: "titleDaily")?.position = CGPoint(x: 78, y: -150)
-        titleRoot.childNode(withName: "titleMute")?.position = CGPoint(x: 0, y: -210)
+        titleRoot.childNode(withName: "tapToStart")?.position = CGPoint(
+            x: 0,
+            y: safeBottom + safeH * 0.26
+        )
 
-        // Runtime + unit-testable gate: logo frame must sit inside safe area.
+        // Bottom bar: MAP · MUTE · DAILY evenly spaced with padding.
+        let barY = safeBottom + 36
+        if let bar = titleRoot.childNode(withName: "titleBottomBar") {
+            bar.position = .zero
+            let spacing = min(118, size.width * 0.28)
+            bar.childNode(withName: "titleMap")?.position = CGPoint(x: -spacing, y: barY)
+            bar.childNode(withName: "titleMute")?.position = CGPoint(x: 0, y: barY)
+            bar.childNode(withName: "titleDaily")?.position = CGPoint(x: spacing, y: barY)
+        }
+        titleRoot.childNode(withName: "titleCredit")?.position = CGPoint(x: 0, y: safeBottom + 8)
+
         let frame = logo.calculateAccumulatedFrame()
-        let ok = ArtCatalog.logoFrameInsideSafeArea(
+        var ok = ArtCatalog.logoFrameInsideSafeArea(
             logoFrame: frame,
             sceneSize: size,
             topSafe: topSafe,
             bottomSafe: bottomSafe
         )
         if !ok {
-            // Nudge down/scale if anything still clips (defensive for odd sim sizes).
-            let base2 = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.78)
-            logo.position = CGPoint(x: 0, y: logoY - 24)
-            logo.removeAction(forKey: "logoPulse")
-            logo.run(SKAction.repeatForever(SKAction.sequence([
-                SKAction.scale(to: base2 * 1.03, duration: 1.0),
-                SKAction.scale(to: base2, duration: 1.0),
-            ])), withKey: "logoPulse")
+            _ = ArtCatalog.fitTitleLogo(logo, sceneWidth: size.width, fraction: 0.72)
+            logo.position = CGPoint(x: 0, y: logoY - 18)
+            runTitleLogoIdle(logo)
+            ok = ArtCatalog.logoFrameInsideSafeArea(
+                logoFrame: logo.calculateAccumulatedFrame(),
+                sceneSize: size,
+                topSafe: topSafe,
+                bottomSafe: bottomSafe
+            )
         }
+        var buttonFrames: [CGRect] = []
+        for name in ["titleMap", "titleMute", "titleDaily"] {
+            if let n = titleRoot.childNode(withName: "//\(name)") {
+                buttonFrames.append(n.calculateAccumulatedFrame())
+            }
+        }
+        let noOverlap = ArtCatalog.framesNonOverlapping(buttonFrames, gap: 4)
+        smokeStatus.titleOk = ok && noOverlap
+        if smokeEnabled { writeSmokeStatus() }
+        _ = base
     }
 
     private func setupPauseMenu() {
@@ -926,12 +1065,16 @@ public final class HeistScene: SKScene {
         card.name = "pauseCard"
         pauseRoot.addChild(card)
 
+        let compact = ArtCatalog.makeCompactLogoNode(maxWidth: 148)
+        compact.name = "pauseLogo"
+        compact.position = CGPoint(x: 0, y: 198)
+        card.addChild(compact)
         let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         title.name = "pauseTitle"
         title.text = "PAUSED"
-        title.fontSize = 26
+        title.fontSize = 18
         title.fontColor = ArtCatalog.neonCyan
-        title.position = CGPoint(x: 0, y: 188)
+        title.position = CGPoint(x: 0, y: 158)
         card.addChild(title)
 
         let resume = makeOutcomeButton(title: "RESUME", color: ArtCatalog.neonLime, name: "pauseResume", wide: true)
@@ -1134,16 +1277,20 @@ public final class HeistScene: SKScene {
         card.name = "outcomeCard"
         outcomeRoot.addChild(card)
 
+        let compact = ArtCatalog.makeCompactLogoNode(maxWidth: 140)
+        compact.name = "outcomeLogo"
+        compact.position = CGPoint(x: 0, y: 128)
+        card.addChild(compact)
         let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         title.name = "outcomeTitle"
-        title.fontSize = 28
+        title.fontSize = 24
         title.fontColor = ArtCatalog.neonLime
-        title.position = CGPoint(x: 0, y: 118)
+        title.position = CGPoint(x: 0, y: 88)
         card.addChild(title)
 
         let stars = SKNode()
         stars.name = "outcomeStars"
-        stars.position = CGPoint(x: 0, y: 78)
+        stars.position = CGPoint(x: 0, y: 52)
         card.addChild(stars)
         for i in 0..<3 {
             let star = SKLabelNode(fontNamed: "AvenirNext-Heavy")
@@ -1157,7 +1304,7 @@ public final class HeistScene: SKScene {
 
         let shinyRow = SKNode()
         shinyRow.name = "outcomeShinies"
-        shinyRow.position = CGPoint(x: 0, y: 36)
+        shinyRow.position = CGPoint(x: 0, y: 14)
         card.addChild(shinyRow)
         let gear = SKLabelNode(fontNamed: "AvenirNext-Bold")
         gear.text = "⚙"
@@ -1179,7 +1326,7 @@ public final class HeistScene: SKScene {
         meta.name = "outcomeMeta"
         meta.fontSize = 15
         meta.fontColor = SKColor(white: 0.92, alpha: 1)
-        meta.position = CGPoint(x: 0, y: 4)
+        meta.position = CGPoint(x: 0, y: -18)
         card.addChild(meta)
 
         // Keep legacy name for count-up path compatibility.

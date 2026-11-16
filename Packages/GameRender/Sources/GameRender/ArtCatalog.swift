@@ -159,6 +159,22 @@ public enum ArtCatalog {
         MopVisual()
     }
 
+    /// Lightweight idle MOP sprite for title atmosphere (not a live sim enemy).
+    public static func makeMopIdleSprite(size: CGSize) -> SKSpriteNode? {
+        let cycle = SpriteCycles.mopBot("walk") ?? SpriteCycles.mopBot("idle")
+        guard let tex = cycle?.textures.first ?? texture(.mopIdle) else { return nil }
+        let n = SKSpriteNode(texture: tex, size: size)
+        n.name = "mopIdleTitle"
+        n.anchorPoint = CGPoint(x: 0.5, y: 0.12)
+        applyDespill(n)
+        if let cycle, cycle.textures.count > 1 {
+            n.run(SKAction.repeatForever(
+                SKAction.animate(with: Array(cycle.textures.prefix(6)), timePerFrame: 0.14)
+            ), withKey: "frames")
+        }
+        return n
+    }
+
     public static func makeBossNode() -> BossVisual {
         BossVisual()
     }
@@ -177,7 +193,7 @@ public enum ArtCatalog {
     public static func makeLogoNode(lite: Bool = false) -> SKNode {
         // Title art is path-swappable — drop a PNG at any TitleArt.logoCandidates path.
         // Callers MUST `fitTitleLogo` before pulse actions (scale(to:) is absolute).
-        let maxPx: CGFloat = lite ? 768 : 1024
+        let maxPx: CGFloat = lite ? 768 : 1400
         let tex: SKTexture? = {
             for rel in TitleArt.logoCandidates {
                 if let t = downsampledTexture(relative: rel, maxPixel: maxPx) { return t }
@@ -199,6 +215,42 @@ public enum ArtCatalog {
         t.numberOfLines = 2
         t.preferredMaxLayoutWidth = 360
         return t
+    }
+
+    /// Compact B1 lockup for pause / results headers.
+    public static func makeCompactLogoNode(maxWidth: CGFloat = 160) -> SKNode {
+        let tex: SKTexture? = {
+            for rel in TitleArt.compactLogoCandidates {
+                if let t = downsampledTexture(relative: rel, maxPixel: 512) { return t }
+            }
+            return nil
+        }()
+        if let tex {
+            let s = SKSpriteNode(texture: tex)
+            s.name = "compactLogo"
+            let scale = maxWidth / max(tex.size().width, 1)
+            s.setScale(scale)
+            return s
+        }
+        let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        t.text = "BANDIT"
+        t.fontSize = 18
+        t.fontColor = neonCyan
+        t.name = "compactLogo"
+        return t
+    }
+
+    /// True when none of the frames pairwise intersect (title chrome non-overlap gate).
+    public static func framesNonOverlapping(_ frames: [CGRect], gap: CGFloat = 2) -> Bool {
+        guard frames.count >= 2 else { return true }
+        for i in 0..<frames.count {
+            for j in (i + 1)..<frames.count {
+                if frames[i].insetBy(dx: -gap, dy: -gap).intersects(frames[j]) {
+                    return false
+                }
+            }
+        }
+        return true
     }
 
     /// Far-parallax perspective grid horizon (baked texture, additive, one node).
@@ -782,18 +834,23 @@ public enum ArtCatalog {
 
 /// Title art hooks — logo PNGs + strings. Bundle ID / Magpie target names stay unchanged.
 public enum TitleArt {
-    /// Prefer the first existing file. Ship `logo_neon_city_bandit` as the canonical wordmark.
+    /// Prefer Nicholas-approved B1 holo glass, then legacy wordmarks.
     public static let logoCandidates: [String] = [
+        "ui/logo_b1_holo_glass@1024",
+        "ui/logo_b1_holo_glass",
         "ui/logo_neon_city_bandit@1024",
         "ui/logo_neon_city_bandit",
         "ui/logo_title@1024",
         "ui/logo_title",
     ]
+    public static let compactLogoCandidates: [String] = [
+        "ui/logo_b1_holo_glass_compact",
+        "ui/logo_b1_holo_glass",
+    ]
     public static let displayTitle = "The Neon City Bandit"
     public static let fallbackWordmark = "THE NEON CITY\nBANDIT"
-    public static let workingSubtitle = "Free the crew · Stomp MOPs"
     /// In-game credits. Spriterrific steampunk-neon bandit / MOP sheets owned by Cinder & Crown.
-    public static let assetCredits = "Art: Spriterrific (Cinder & Crown)"
+    public static let assetCredits = "Art: Spriterrific (Cinder & Crown) · Logo: B1 Holo Glass"
 }
 
 /// Bandit raccoon — Spriterrific sheets (west-facing); feet sit IN the ground art.

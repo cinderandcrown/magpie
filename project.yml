@@ -58,8 +58,20 @@ targets:
           DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Generated"
           mkdir -p "$DEST"
           rsync -a --delete "${SRC}/" "${DEST}/"
+          test -f "${DEST}/ui/logo_b1_holo_glass.png"
+          test -f "${DEST}/ui/logo_b1_holo_glass@1024.png"
+          test -f "${DEST}/ui/logo_b1_holo_glass_compact.png"
           test -f "${DEST}/ui/logo_neon_city_bandit.png"
           test -f "${DEST}/ui/logo_neon_city_bandit@1024.png"
+          # Nicholas-approved B1 branding (also kept under Assets/Branding/logo/).
+          BRAND_SRC="${SRCROOT}/Assets/Branding"
+          BRAND_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Branding"
+          if [[ -d "$BRAND_SRC" ]]; then
+            mkdir -p "$BRAND_DEST"
+            rsync -a --delete "${BRAND_SRC}/" "${BRAND_DEST}/"
+            test -f "${BRAND_DEST}/logo/B1_holo_glass.png"
+            test -f "${BRAND_DEST}/logo/B1_holo_glass_icon.png"
+          fi
           test -f "${DEST}/audio/level_loop.m4a"
           test -f "${DEST}/sprites/spriterrific_ready/bandit/idle/01.png"
           test -f "${DEST}/sprites/spriterrific_ready/bandit/idle_front/01.png"

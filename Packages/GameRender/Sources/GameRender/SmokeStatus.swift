@@ -36,6 +36,8 @@ public struct SmokeStatus: Equatable, Sendable {
     /// Min/max heroX sampled during live play (framing gate).
     public var heroXMin: Double
     public var heroXMax: Double
+    /// Title chrome layout OK: logo in safe area + no overlapping button frames.
+    public var titleOk: Bool
 
     public init(
         phase: String = "title",
@@ -59,7 +61,8 @@ public struct SmokeStatus: Equatable, Sendable {
         paused: Bool = false,
         heroX: Double = 0.5,
         heroXMin: Double = 1,
-        heroXMax: Double = 0
+        heroXMax: Double = 0,
+        titleOk: Bool = false
     ) {
         self.phase = phase
         self.boot = boot
@@ -83,15 +86,16 @@ public struct SmokeStatus: Equatable, Sendable {
         self.heroX = heroX
         self.heroXMin = heroXMin
         self.heroXMax = heroXMax
+        self.titleOk = titleOk
     }
 
     public var line: String {
         String(
-            format: "phase=%@ boot=%@ fps=%.1f samples=%d maxFrameMs=%.0f stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d paused=%d heroX=%.3f heroXMin=%.3f heroXMax=%.3f",
+            format: "phase=%@ boot=%@ fps=%.1f samples=%d maxFrameMs=%.0f stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d paused=%d heroX=%.3f heroXMin=%.3f heroXMax=%.3f titleOk=%d",
             phase, boot, fpsAvg, fpsSamples, maxFrameMs, stomps, shinies,
             mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed, wallElapsed, debugLabels,
             combo, medals, map ? 1 : 0, daily ? 1 : 0, paused ? 1 : 0,
-            heroX, heroXMin, heroXMax
+            heroX, heroXMin, heroXMax, titleOk ? 1 : 0
         )
     }
 

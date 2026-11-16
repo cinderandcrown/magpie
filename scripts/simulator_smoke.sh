@@ -165,10 +165,10 @@ for attempt in 1 2; do
       sleep 0.2
       continue
     fi
-    if [[ "$status" == *"phase=title"* && "$status" == *"boot=ready"* ]]; then
+    if [[ "$status" == *"phase=title"* && "$status" == *"boot=ready"* && "$status" == *"titleOk=1"* ]]; then
       require_app "launch"
-      # One frame for SpriteKit to present title chrome after boot=ready.
-      sleep 0.35
+      # Let the B1 logo glitch-in (~0.6s) settle before the title still.
+      sleep 0.75
       shot "$OUT_DIR/01-title.png"
       TITLE_SHOT=1
       echo "ready@title: $status"
@@ -201,7 +201,7 @@ for attempt in 1 2; do
   done
 done
 if [[ "$TITLE_SHOT" -eq 0 ]]; then
-  echo "FAIL: could not capture phase=title boot=ready after relaunch" >&2
+  echo "FAIL: could not capture phase=title boot=ready titleOk=1 after relaunch" >&2
   shot "$OUT_DIR/fail-title-timeout.png" || true
   read_status >&2 || true
   exit 1
