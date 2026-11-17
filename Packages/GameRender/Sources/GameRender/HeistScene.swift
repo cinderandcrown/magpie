@@ -2497,24 +2497,36 @@ public final class HeistScene: SKScene {
                     } else {
                         smokeMaskPinActive = false
                     }
-                    // After 04: mop-pack bounce loops refresh maskTimer (×0.55 duration) with
-                    // zero input and mask-off never arrives. Enforce expected decay each step
-                    // (Sim already subtracted dt, then stomps may have raised the timer).
-                    // Counted in smoke_forced_detail (not a force_* flag).
-                    if !mask1Pending, mask2Pending, sim.state.bandit.maskMode {
-                        if !smokeMaskDecayArmed {
-                            smokeMaskDecayArmed = true
+                    // After 04: wait for a clean maskOn=0 before allowing Mask re-entry for 04b.
+                    // Mop-pack bounce + stomp refresh used to re-arm Mask forever past mask-off.
+                    if !mask1Pending, mask2Pending, !smokeSawMaskDropAfterFirst {
+                        if sim.state.bandit.maskMode {
+                            if !smokeMaskDecayArmed {
+                                smokeMaskDecayArmed = true
+                                // Cap remaining time so mask-off arrives within a few seconds
+                                // of the still (shot already captured under pin).
+                                smokeMaskDecayCap = min(sim.state.bandit.maskTimer, 3.0)
+                                sim.state.bandit.maskTimer = smokeMaskDecayCap
+                            }
+                            sim.state.bandit.velocity = .zero
+                            let expected = max(0, smokeMaskDecayCap - tuning.dt)
+                            if sim.state.bandit.maskTimer > expected {
+                                smokeMaskRefreshSuppressSeconds +=
+                                    sim.state.bandit.maskTimer - expected
+                                sim.state.bandit.maskTimer = expected
+                            }
                             smokeMaskDecayCap = sim.state.bandit.maskTimer
+                            if sim.state.bandit.maskTimer <= 0 {
+                                sim.state.bandit.maskMode = false
+                            }
+                        } else {
+                            // Suppress re-trigger until harness observes the drop.
+                            if sim.state.bandit.combo >= tuning.maskModeAtCombo {
+                                sim.state.bandit.combo = max(0, tuning.maskModeAtCombo - 1)
+                            }
+                            smokeMaskDecayArmed = false
+                            smokeMaskDecayCap = -1
                         }
-                        // Kill bounce every step so we cannot chain-land on MOP packs.
-                        sim.state.bandit.velocity = .zero
-                        let expected = max(0, smokeMaskDecayCap - tuning.dt)
-                        if sim.state.bandit.maskTimer > expected {
-                            smokeMaskRefreshSuppressSeconds +=
-                                sim.state.bandit.maskTimer - expected
-                            sim.state.bandit.maskTimer = expected
-                        }
-                        smokeMaskDecayCap = sim.state.bandit.maskTimer
                     } else if !sim.state.bandit.maskMode {
                         smokeMaskDecayArmed = false
                         smokeMaskDecayCap = -1
