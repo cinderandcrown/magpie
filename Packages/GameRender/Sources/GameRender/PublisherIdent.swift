@@ -5,6 +5,7 @@ import SpriteKit
 import UIKit
 
 /// Cinder & Crown Creative publisher splash (studio ident) before the game title.
+@MainActor
 public enum PublisherIdent {
     public static let presentsLine = "Cinder & Crown Creative Presents"
     public static let logoCredit = "Cinder & Crown logo, © Cinder and Crown LLC, used by permission."
@@ -154,16 +155,19 @@ public enum PublisherIdent {
         let side = max(logo.frame.width, 1)
 
         if reduceMotion {
-            let fadeIn = SKAction.fadeIn(withDuration: 0.35)
-            let hold = SKAction.wait(forDuration: total - 0.85)
-            let fadeOut = SKAction.fadeOut(withDuration: 0.4)
-            logo.run(fadeIn)
-            title.run(SKAction.sequence([SKAction.wait(forDuration: 0.2), fadeIn]))
-            credit.run(SKAction.sequence([SKAction.wait(forDuration: 0.25), SKAction.fadeAlpha(to: 0.45, duration: 0.3)]))
+            logo.run(SKAction.fadeIn(withDuration: 0.35))
+            title.run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.2),
+                SKAction.fadeIn(withDuration: 0.35),
+            ]))
+            credit.run(SKAction.sequence([
+                SKAction.wait(forDuration: 0.25),
+                SKAction.fadeAlpha(to: 0.45, duration: 0.3),
+            ]))
             glow.run(SKAction.fadeAlpha(to: 0.5, duration: 0.35))
             root.run(SKAction.sequence([
                 SKAction.wait(forDuration: total - 0.4),
-                fadeOut,
+                SKAction.fadeOut(withDuration: 0.4),
                 SKAction.run(onFinished),
             ]), withKey: "publisherIdent")
             return

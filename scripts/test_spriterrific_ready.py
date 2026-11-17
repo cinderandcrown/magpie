@@ -50,7 +50,7 @@ class SpriterrificReadyTests(unittest.TestCase):
         sfx = ROOT / "Assets/Audio/sfx"
         man = json.loads((sfx / "sfx_manifest.json").read_text())
         sounds = man["sounds"]
-        self.assertEqual(len(sounds), 41)
+        self.assertEqual(len(sounds), 42)  # + publisher_ident_whoosh
         for entry in sounds:
             self.assertTrue((sfx / entry["file"]).is_file(), msg=entry["file"])
         for required in (
@@ -69,6 +69,7 @@ class SpriterrificReadyTests(unittest.TestCase):
             "boss_tread_rumble",
             "ui_tap",
             "ui_back",
+            "publisher_ident_whoosh",
         ):
             self.assertTrue(
                 any(s["name"] == required for s in sounds),
