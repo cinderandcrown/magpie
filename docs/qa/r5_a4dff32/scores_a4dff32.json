@@ -1,0 +1,176 @@
+{
+ "33257aa": {
+  "01-title.png": {
+   "magenta_pct": 0.4,
+   "teal_pct": 0.77,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 41.9
+  },
+  "02-midrun.png": {
+   "magenta_pct": 0.32,
+   "teal_pct": 1.34,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 36.2
+  },
+  "03-mop-stomp.png": {
+   "magenta_pct": 0.31,
+   "teal_pct": 1.56,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 35.1
+  },
+  "04-mask-mode.png": {
+   "magenta_pct": 0.22,
+   "teal_pct": 1.51,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 27.6
+  },
+  "05-death-retry.png": {
+   "magenta_pct": 0.75,
+   "teal_pct": 1.36,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 26.3
+  },
+  "06-results.png": {
+   "magenta_pct": 0.25,
+   "teal_pct": 1.36,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 27.0
+  },
+  "08-daily-heist.png": {
+   "magenta_pct": 0.01,
+   "teal_pct": 0.92,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 31.1
+  }
+ },
+ "9db5db9": {
+  "01-title.png": {
+   "magenta_pct": 2.49,
+   "teal_pct": 1.03,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 48.6
+  },
+  "02-midrun.png": {
+   "magenta_pct": 1.22,
+   "teal_pct": 1.61,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 44.5
+  },
+  "03-mop-stomp.png": {
+   "magenta_pct": 2.35,
+   "teal_pct": 1.38,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 29.8
+  },
+  "04-mask-mode.png": {
+   "magenta_pct": 2.04,
+   "teal_pct": 1.62,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 38.9
+  },
+  "05-death-retry.png": {
+   "magenta_pct": 0.67,
+   "teal_pct": 1.38,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 31.2
+  },
+  "06-results.png": {
+   "magenta_pct": 0.25,
+   "teal_pct": 1.36,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 29.8
+  },
+  "08-daily-heist.png": {
+   "magenta_pct": 0.24,
+   "teal_pct": 0.18,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 24.6
+  }
+ },
+ "a4dff32": {
+  "01-title.png": {
+   "magenta_pct": 0.45,
+   "teal_pct": 0.44,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 34.7,
+   "ssim_vs_9db5db9": 0.295,
+   "palette_dE_vs_9db5db9": 6.13,
+   "palette_dE_vs_33257aa": 4.94
+  },
+  "02-midrun.png": {
+   "magenta_pct": 12.31,
+   "teal_pct": 0.63,
+   "flat_magenta_pct": 8.64,
+   "largest_flat_magenta_blob_pct": 4.7,
+   "mean_luma": 51.0,
+   "ssim_vs_9db5db9": 0.282,
+   "palette_dE_vs_9db5db9": 7.37,
+   "palette_dE_vs_33257aa": 7.28
+  },
+  "03-mop-stomp.png": {
+   "magenta_pct": 1.09,
+   "teal_pct": 1.12,
+   "flat_magenta_pct": 0.4,
+   "largest_flat_magenta_blob_pct": 0.3,
+   "mean_luma": 40.3,
+   "ssim_vs_9db5db9": 0.337,
+   "palette_dE_vs_9db5db9": 4.27,
+   "palette_dE_vs_33257aa": 4.67
+  },
+  "04-mask-mode.png": {
+   "magenta_pct": 12.13,
+   "teal_pct": 1.52,
+   "flat_magenta_pct": 7.14,
+   "largest_flat_magenta_blob_pct": 5.24,
+   "mean_luma": 55.6,
+   "ssim_vs_9db5db9": 0.275,
+   "palette_dE_vs_9db5db9": 4.53,
+   "palette_dE_vs_33257aa": 6.54
+  },
+  "05-death-retry.png": {
+   "magenta_pct": 0.6,
+   "teal_pct": 1.46,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 33.1,
+   "ssim_vs_9db5db9": 0.543,
+   "palette_dE_vs_9db5db9": 3.46,
+   "palette_dE_vs_33257aa": 2.67
+  },
+  "06-results.png": {
+   "magenta_pct": 0.24,
+   "teal_pct": 1.46,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 29.6,
+   "ssim_vs_9db5db9": 0.562,
+   "palette_dE_vs_9db5db9": 1.96,
+   "palette_dE_vs_33257aa": 3.23
+  },
+  "08-daily-heist.png": {
+   "magenta_pct": 0.24,
+   "teal_pct": 0.17,
+   "flat_magenta_pct": 0.0,
+   "largest_flat_magenta_blob_pct": 0.0,
+   "mean_luma": 24.5,
+   "ssim_vs_9db5db9": 0.967,
+   "palette_dE_vs_9db5db9": 0.29,
+   "palette_dE_vs_33257aa": 9.21
+  }
+ }
+}
