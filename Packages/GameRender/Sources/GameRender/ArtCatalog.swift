@@ -659,15 +659,18 @@ public enum ArtCatalog {
         root.zPosition = 2.8
         let textures = loadStorefrontSignTextures()
         let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
-        // Dense early-corridor signs so midrun stills (worldTX ~18–36) hit magenta ≥0.3%.
-        let count = max(12, textures.count + 4)
+        // Neon Docks street deck sits near tile y≈7. Signs MUST hang ABOVE that deck
+        // (y≈9–12) so the midrun crop (screen 18–62% / storefront 12–48%) sees opaque
+        // magenta — earlier y≈3.6 buried plates inside the ground slab.
+        let count = max(16, textures.count + 6)
         for i in 0..<count {
-            let x = tile * 10 + CGFloat(i) * (mapWidth * 0.055)
-            guard x < mapWidth * 0.7 else { break }
-            let w = tile * (2.8 + CGFloat(i % 3) * 0.5)
-            let h = tile * (1.15 + CGFloat(i % 2) * 0.35)
+            // Pack denser through the pre-midrun patrol band (worldTX ~18–36 → x≈tile*18…36).
+            let x = tile * 12 + CGFloat(i) * (tile * 3.2)
+            guard x < mapWidth * 0.72 else { break }
+            let w = tile * (3.2 + CGFloat(i % 3) * 0.55)
+            let h = tile * (1.35 + CGFloat(i % 2) * 0.4)
             let accent = accents[i % accents.count]
-            let y = tile * (3.6 + CGFloat(i % 3) * 0.5)
+            let y = tile * (9.2 + CGFloat(i % 4) * 0.65)
 
             let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.7, height: h * 2.2))
             glow.name = "storefrontGlow"
@@ -681,10 +684,10 @@ public enum ArtCatalog {
 
             // Opaque neon plate so midrun palette still reads on dark brick (add-blend alone washes out).
             // Bias magenta: every sign gets a solid pink plate (CI crop needs ≥0.3%).
-            let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 1.15, height: h * 1.05))
+            let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 1.2, height: h * 1.1))
             plate.name = "storefrontPlate"
             plate.position = CGPoint(x: x, y: y)
-            plate.alpha = 0.98
+            plate.alpha = 1.0
             plate.blendMode = .alpha
             plate.zPosition = 0.5
             root.addChild(plate)
@@ -708,10 +711,10 @@ public enum ArtCatalog {
             sign.blendMode = .add
             root.addChild(sign)
 
-            // Wet-floor reflection puddle under the sign.
+            // Wet-floor reflection puddle on the street deck under the sign.
             let puddle = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.1, height: tile * 0.4))
             puddle.name = "storefrontWet"
-            puddle.position = CGPoint(x: x, y: tile * 1.15)
+            puddle.position = CGPoint(x: x, y: tile * 7.35)
             puddle.color = accent
             puddle.colorBlendFactor = 1
             puddle.alpha = 0.4

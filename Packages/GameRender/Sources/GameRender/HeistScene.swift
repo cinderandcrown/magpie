@@ -64,6 +64,8 @@ public final class HeistScene: SKScene {
     private var cameraFacing: CGFloat = 1
     /// Smoke: after 04 is snapped, let Mask expire once before holding for 04b re-entry.
     private var smokeSawMaskDropAfterFirst = false
+    /// Wall-clock deadline: keep Mask forced off after 04 until status (0.35s cadence) can sample maskOn=0.
+    private var smokeMaskOffHoldUntil: TimeInterval = 0
     private var maskMusicOn = false
     /// MOP ids that already barked `mop_bot_alert` this approach.
     private var mopAlerted: Set<Int> = []
@@ -2355,20 +2357,29 @@ public final class HeistScene: SKScene {
                     }
                     // Don't pin Mask open before midrun still — street neon palette needs a clean alley.
                     let holdFirst = midrunOk && mask1Pending
+                    let now = CACurrentMediaTime()
+                    let holdingOffForSample = smokeSawMaskDropAfterFirst && now < smokeMaskOffHoldUntil
+                    // holdSecond only AFTER the harness has had time to sample maskOn=0.
                     let holdSecond = midrunOk && mask2Pending && smokeSawMaskDropAfterFirst
-                    if sim.state.bandit.maskMode {
-                        if holdFirst || holdSecond {
-                            sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
-                        } else if midrunOk, !mask1Pending, !smokeSawMaskDropAfterFirst {
-                            // After 04: force Mask off. Stomp refresh + combo re-entry used to
-                            // pin maskOn=1 through the entire mask-off wait.
-                            sim.state.bandit.maskMode = false
-                            sim.state.bandit.maskTimer = 0
+                        && !holdingOffForSample
+                    if midrunOk, !mask1Pending, (!smokeSawMaskDropAfterFirst || holdingOffForSample) {
+                        // After 04: force Mask off AND clamp combo so the next stomp can't
+                        // re-enter before statusAcc (0.35s) writes maskOn=0. holdSecond used
+                        // to re-pin the timer the instant combo re-triggered Mask.
+                        sim.state.bandit.maskMode = false
+                        sim.state.bandit.maskTimer = 0
+                        sim.state.bandit.combo = min(
+                            sim.state.bandit.combo,
+                            max(0, tuning.maskModeAtCombo - 1)
+                        )
+                        if !smokeSawMaskDropAfterFirst {
+                            smokeSawMaskDropAfterFirst = true
+                            // > status write interval so wait_status("mask-off") can observe it.
+                            smokeMaskOffHoldUntil = now + 0.7
+                            writeSmokeStatus()
                         }
-                    }
-                    // Record drop AFTER the force-off so mask-2 can re-enter cleanly.
-                    if !sim.state.bandit.maskMode, !mask1Pending {
-                        smokeSawMaskDropAfterFirst = true
+                    } else if sim.state.bandit.maskMode, holdFirst || holdSecond {
+                        sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
                     }
                 }
             }
