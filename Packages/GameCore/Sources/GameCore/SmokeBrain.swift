@@ -514,7 +514,10 @@ public struct SmokeBrain: Equatable, Sendable {
             return InputFrame(moveX: moveX, moveY: -1, jumpPressed: false, jumpHeld: false)
         }
 
-        // Unstick: same tile + low speed for ~0.75s → hop hard right (mask-2 CI hang).
+        let exitX = sim.map.findFirst(.exit)?.0 ?? (sim.map.width - 2)
+        let nearExit = tx >= exitX - 15
+
+        // Unstick: same tile + low speed for ~0.75s → hop away from EXIT (never into it).
         if tx == huntIdleTX, abs(b.velocity.x) < 4 {
             huntIdleFrames += 1
         } else {
@@ -523,25 +526,45 @@ public struct SmokeBrain: Equatable, Sendable {
         }
         if huntIdleFrames > 45 {
             huntIdleFrames = 0
+            let away: Double = nearExit ? -1.0 : 1.0
             return InputFrame(
-                moveX: 1.0,
+                moveX: away,
                 jumpPressed: b.onGround || b.coyote > 0,
                 jumpHeld: true,
                 pouncePressed: !b.onGround && !b.flopping
             )
         }
 
-        guard let mop else {
-            // No living street MOP nearby — sprint right toward later packs / exit approach.
+        // Camped on the EXIT lip with no stomps — retreat to mid-docks mop packs.
+        if nearExit || progressStallSeconds > 3.5 {
             return InputFrame(
-                moveX: 1.0,
+                moveX: -1.0,
+                jumpPressed: (b.onGround || b.coyote > 0) && (gapAhead(sim: sim, tx: tx, ty: ty) || tick % 18 == 0),
+                jumpHeld: !b.onGround && b.velocity.y > 0,
+                pouncePressed: !b.onGround && !b.flopping && b.velocity.y < 0
+            )
+        }
+
+        guard let mop else {
+            // No living street MOP — patrol mid docks (never sprint into EXIT).
+            let mid = max(28, min(55, exitX / 2))
+            let moveX: Double = tx > mid ? -0.95 : 1.0
+            return InputFrame(
+                moveX: moveX,
                 jumpPressed: (b.onGround || b.coyote > 0) && (gapAhead(sim: sim, tx: tx, ty: ty) || tick % 24 == 0),
                 jumpHeld: !b.onGround && b.velocity.y > 0
             )
         }
         let dx = mop.position.x - b.position.x
-        // Prefer approaching from the left; only ease left briefly if we overshot.
-        var moveX: Double = dx < -tile * 1.2 ? -0.55 : 1.0
+        // Chase hard toward the mop (left or right) — mild -0.55 left used to strand past packs.
+        var moveX: Double
+        if dx < -tile * 1.0 {
+            moveX = -1.0
+        } else if dx > tile * 1.0 {
+            moveX = 1.0
+        } else {
+            moveX = dx >= 0 ? 0.85 : -0.85
+        }
         var jumpPressed = false
         var jumpHeld = false
         var pouncePressed = false
