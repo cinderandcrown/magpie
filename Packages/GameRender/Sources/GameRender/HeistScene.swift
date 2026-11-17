@@ -392,12 +392,13 @@ public final class HeistScene: SKScene {
             tileLayer(mid, into: parallaxMid, y: midY + 10, z: -20, neonBoost: true)
         }
         // Magenta + teal storefront signage in the mid band (readability + palette).
+        // Keep strips high enough that the midrun storefront-band (12–48% screen) sees them.
         let signs = ArtCatalog.neonSignageStrip(width: mapW * 0.7, height: 96)
-        signs.position = CGPoint(x: mapW * 0.18, y: midY + 78)
+        signs.position = CGPoint(x: mapW * 0.18, y: midY + 118)
         parallaxMid.addChild(signs)
         let signsLow = ArtCatalog.neonSignageStrip(width: mapW * 0.45, height: 56)
-        signsLow.position = CGPoint(x: mapW * 0.4, y: midY + 18)
-        signsLow.alpha = 0.85
+        signsLow.position = CGPoint(x: mapW * 0.4, y: midY + 52)
+        signsLow.alpha = 0.9
         parallaxMid.addChild(signsLow)
         if let near = ArtCatalog.background(.nearRooftops, height: h * 0.9, maxPixel: maxPx) {
             tileLayer(near, into: parallaxNear, y: midY - 40, z: -10, neonBoost: false)

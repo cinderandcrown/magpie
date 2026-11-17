@@ -627,16 +627,29 @@ public enum ArtCatalog {
             sign.position = glow.position
             sign.alpha = 1
             sign.zPosition = 1
-            if i % 2 == 0 {
+            let isPink = i % 2 == 0
+            if isPink {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.35
+                sign.colorBlendFactor = 0.5
                 sign.blendMode = .add
+                glow.alpha = 0.72
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.25
+                sign.colorBlendFactor = 0.3
                 sign.blendMode = .add
             }
             root.addChild(sign)
+
+            let rim = SKShapeNode(rectOf: CGSize(width: w * 1.08, height: h * 1.12), cornerRadius: 2)
+            rim.name = "storefrontRim"
+            rim.position = glow.position
+            rim.fillColor = .clear
+            rim.strokeColor = accent
+            rim.lineWidth = isPink ? 2.0 : 1.4
+            rim.glowWidth = isPink ? 3.5 : 1.5
+            rim.alpha = isPink ? 0.92 : 0.65
+            rim.zPosition = 1.5
+            root.addChild(rim)
 
             if i % 5 == 0 {
                 let flicker = SKAction.sequence([
@@ -657,28 +670,32 @@ public enum ArtCatalog {
     public static func worldStorefrontSigns(mapWidth: CGFloat, tile: CGFloat) -> SKNode {
         let root = SKNode()
         root.name = "worldStorefronts"
-        root.zPosition = 2.8
+        // Above facade panels (~2.4) / shafts (~2.6); below actors (≥20).
+        root.zPosition = 7.5
         let textures = loadStorefrontSignTextures()
         let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
-        // Neon Docks street deck sits near tile y≈7. Hang a handful of real signs above it.
-        // Never paint opaque hot-pink slabs to chase a CI magenta threshold.
+        // Neon Docks street deck sits near tile y≈7. Hang 4–6 real signs above it,
+        // starting early enough that midrun (worldTX≈20–28) frames at least two.
+        // Soft glow + thin neon rim — never opaque hot-pink slabs for a CI gate.
         let count = min(6, max(4, textures.isEmpty ? 4 : textures.count))
-        let span = mapWidth * 0.45
-        let startX = tile * 16
+        let span = mapWidth * 0.42
+        let startX = tile * 10
         for i in 0..<count {
             let x = startX + CGFloat(i) * (span / CGFloat(max(count - 1, 1)))
-            guard x < mapWidth * 0.7 else { break }
-            let w = tile * (2.4 + CGFloat(i % 3) * 0.35)
-            let h = tile * (1.05 + CGFloat(i % 2) * 0.25)
+            guard x < mapWidth * 0.72 else { break }
+            let w = tile * (2.6 + CGFloat(i % 3) * 0.4)
+            let h = tile * (1.15 + CGFloat(i % 2) * 0.3)
             let accent = accents[i % accents.count]
-            let y = tile * (9.4 + CGFloat(i % 3) * 0.45)
+            let isPink = i % 2 == 0
+            // Hang above camera (hero+56 ≈ tile*8–9) so midrun upper-band (12–48% screen) catches neon.
+            let y = tile * (12.8 + CGFloat(i % 3) * 0.55)
 
-            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.55, height: h * 2.0))
+            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.85, height: h * 2.4))
             glow.name = "storefrontGlow"
             glow.position = CGPoint(x: x, y: y)
             glow.color = accent
             glow.colorBlendFactor = 1
-            glow.alpha = 0.5
+            glow.alpha = isPink ? 0.78 : 0.55
             glow.blendMode = .add
             glow.zPosition = 0
             root.addChild(glow)
@@ -704,15 +721,27 @@ public enum ArtCatalog {
             sign.name = "storefrontSign"
             sign.position = CGPoint(x: x, y: y)
             sign.zPosition = 1
-            if i % 2 == 0 {
+            if isPink {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.28
+                sign.colorBlendFactor = 0.55
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.22
+                sign.colorBlendFactor = 0.32
             }
             sign.blendMode = .add
             root.addChild(sign)
+
+            // Thin neon tube rim (stroke, not a filled slab) so pink signs read as magenta pixels.
+            let rim = SKShapeNode(rectOf: CGSize(width: w * 1.06, height: h * 1.1), cornerRadius: 3)
+            rim.name = "storefrontRim"
+            rim.position = CGPoint(x: x, y: y)
+            rim.fillColor = .clear
+            rim.strokeColor = accent
+            rim.lineWidth = isPink ? 2.4 : 1.6
+            rim.glowWidth = isPink ? 4 : 2
+            rim.alpha = isPink ? 0.95 : 0.7
+            rim.zPosition = 1.5
+            root.addChild(rim)
 
             let puddle = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 0.9, height: tile * 0.32))
             puddle.name = "storefrontWet"
@@ -724,7 +753,7 @@ public enum ArtCatalog {
             puddle.zPosition = -1
             root.addChild(puddle)
 
-            if i % 2 == 0 {
+            if isPink {
                 sign.run(SKAction.repeatForever(SKAction.sequence([
                     SKAction.fadeAlpha(to: 0.65, duration: 0.12),
                     SKAction.fadeAlpha(to: 1.0, duration: 0.16),
