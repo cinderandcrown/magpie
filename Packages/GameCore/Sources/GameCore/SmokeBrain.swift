@@ -221,23 +221,20 @@ public struct SmokeBrain: Equatable, Sendable {
         if act == .showcaseMask {
             let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
             let mask2Ok = Self.smokeFlagExists("smoke_mask2_ok.txt")
-            // Never freeze on the latch-tower ledge — drop to street first, then hold for the shot.
             let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? b.position.y
             let elevated = b.position.y > streetY + tile * 1.2
             let onLatch = sim.map.tile(atX: tx, y: ty) == .latch
                 || sim.map.tile(atX: tx + 1, y: ty) == .latch
                 || sim.map.tile(atX: tx - 1, y: ty) == .latch
+            // After 04 is snapped: while Mask is still on, freeze input. Each stomp would
+            // refresh maskTimer (maskDuration*0.55) and mask-off never arrives. Standing
+            // still (even elevated) lets the real timer expire; mask-off only needs maskOn=0.
+            if maskOk, !mask2Ok, b.maskMode {
+                return InputFrame(moveX: 0, jumpPressed: false, jumpHeld: false)
+            }
+            // Never freeze on the latch-tower ledge — drop to street first, then hold for the shot.
             if elevated || onLatch {
                 return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
-            }
-            // After 04 is snapped, do NOT stomp-hunt while Mask is still on — stomps refresh
-            // maskTimer and mask-off never arrives. Stand still until the timer expires.
-            if maskOk, !mask2Ok, b.maskMode {
-                return steerFromExit(
-                    InputFrame(moveX: 0.05, jumpPressed: false, jumpHeld: false),
-                    sim: sim,
-                    tx: tx
-                )
             }
             // Hunt whenever Mask is off and a Mask still (04 / 04b) is still pending.
             if !b.maskMode, (!maskOk || !mask2Ok) {
