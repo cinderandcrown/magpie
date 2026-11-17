@@ -2491,21 +2491,22 @@ public final class HeistScene: SKScene {
                         smokeMaskPinActive = false
                     }
                     // After 04: mop-pack bounce loops refresh maskTimer (×0.55 duration) with
-                    // zero input and mask-off never arrives. Clamp to a decaying cap until
-                    // natural drop; counted in smoke_forced_detail (not a force_* flag).
+                    // zero input and mask-off never arrives. Enforce expected decay each step
+                    // (Sim already subtracted dt, then stomps may have raised the timer).
+                    // Counted in smoke_forced_detail (not a force_* flag).
                     if !mask1Pending, mask2Pending, sim.state.bandit.maskMode {
                         if !smokeMaskDecayArmed {
                             smokeMaskDecayArmed = true
                             smokeMaskDecayCap = sim.state.bandit.maskTimer
-                            // Kill residual stomp bounce so we don't chain-land on MOPs.
-                            sim.state.bandit.velocity = .zero
                         }
-                        if sim.state.bandit.maskTimer > smokeMaskDecayCap {
+                        // Kill bounce every step so we cannot chain-land on MOP packs.
+                        sim.state.bandit.velocity = .zero
+                        let expected = max(0, smokeMaskDecayCap - tuning.dt)
+                        if sim.state.bandit.maskTimer > expected {
                             smokeMaskRefreshSuppressSeconds +=
-                                sim.state.bandit.maskTimer - smokeMaskDecayCap
-                            sim.state.bandit.maskTimer = smokeMaskDecayCap
+                                sim.state.bandit.maskTimer - expected
+                            sim.state.bandit.maskTimer = expected
                         }
-                        // Follow natural decay from Sim.updateCombo (stomps can only raise above cap).
                         smokeMaskDecayCap = sim.state.bandit.maskTimer
                     } else if !sim.state.bandit.maskMode {
                         smokeMaskDecayArmed = false

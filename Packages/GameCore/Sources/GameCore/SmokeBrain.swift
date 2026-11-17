@@ -159,10 +159,16 @@ public struct SmokeBrain: Equatable, Sendable {
                     // Hold until harness snaps 04 + 04b (second Mask) AND finishes pause/bg.
                     // Seeking death right after mask_ok races pause-resume (phase=failed
                     // while the script still waits for phase=playing).
+                    // Do NOT abandon on a frame budget while smoke_proceed is set — the CI
+                    // harness needs mask-off → 04b before seekDeath, and 3600 frames (~60s)
+                    // expires long before 04 is even snapped.
                     let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
                     let mask2Ok = Self.smokeFlagExists("smoke_mask2_ok.txt")
                     let pauseBgDone = Self.smokeFlagExists("smoke_foreground.txt")
-                    if (maskOk && mask2Ok && pauseBgDone) || maskShowcaseFrames >= 3600 {
+                    let harnessDriving = Self.smokeFlagExists("smoke_proceed.txt")
+                    if maskOk && mask2Ok && pauseBgDone {
+                        act = .seekDeath
+                    } else if !harnessDriving, maskShowcaseFrames >= 3600 {
                         act = .seekDeath
                     }
                 default:
