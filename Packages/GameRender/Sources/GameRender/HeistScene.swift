@@ -77,6 +77,10 @@ public final class HeistScene: SKScene {
     private var smokeInvulnTopUpCount: Int = 0
     private var smokeMaskPinActive = false
     private var smokeLastForcedWrite: TimeInterval = 0
+    /// After 04: decay-only Mask timer so mop-pack bounce stomps cannot refresh forever.
+    private var smokeMaskDecayCap: Double = -1
+    private var smokeMaskRefreshSuppressSeconds: Double = 0
+    private var smokeMaskDecayArmed = false
     /// Camera side-switch hysteresis — ignore brief facing flips for lead direction.
     private var cameraFacingHoldUntil: TimeInterval = 0
     private var cameraWantFace: CGFloat = 1
@@ -2482,6 +2486,27 @@ public final class HeistScene: SKScene {
                     } else {
                         smokeMaskPinActive = false
                     }
+                    // After 04: mop-pack bounce loops refresh maskTimer (×0.55 duration) with
+                    // zero input and mask-off never arrives. Clamp to a decaying cap until
+                    // natural drop; counted in smoke_forced_detail (not a force_* flag).
+                    if !mask1Pending, mask2Pending, sim.state.bandit.maskMode {
+                        if !smokeMaskDecayArmed {
+                            smokeMaskDecayArmed = true
+                            smokeMaskDecayCap = sim.state.bandit.maskTimer
+                            // Kill residual stomp bounce so we don't chain-land on MOPs.
+                            sim.state.bandit.velocity = .zero
+                        }
+                        if sim.state.bandit.maskTimer > smokeMaskDecayCap {
+                            smokeMaskRefreshSuppressSeconds +=
+                                sim.state.bandit.maskTimer - smokeMaskDecayCap
+                            sim.state.bandit.maskTimer = smokeMaskDecayCap
+                        }
+                        // Follow natural decay from Sim.updateCombo (stomps can only raise above cap).
+                        smokeMaskDecayCap = sim.state.bandit.maskTimer
+                    } else if !sim.state.bandit.maskMode {
+                        smokeMaskDecayArmed = false
+                        smokeMaskDecayCap = -1
+                    }
                     if !sim.state.bandit.maskMode, !mask1Pending {
                         smokeSawMaskDropAfterFirst = true
                     }
@@ -3365,6 +3390,7 @@ public final class HeistScene: SKScene {
         soft_revive_count=\(smokeSoftReviveCount)
         pre_midrun_mask_cancel=\(smokePreMidrunMaskCancelCount)
         invuln_topup_count=\(smokeInvulnTopUpCount)
+        mask_refresh_suppress_seconds=\(String(format: "%.1f", smokeMaskRefreshSuppressSeconds))
         """
         try? body.write(to: url, atomically: true, encoding: .utf8)
     }

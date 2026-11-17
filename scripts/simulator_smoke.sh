@@ -1195,6 +1195,7 @@ MASK_FORCE_OFF_S=0
 SOFT_REVIVE_N=0
 PRE_MID_CANCEL=0
 INVULN_TOPUP=0
+MASK_REFRESH_SUPPRESS_S=0
 if [[ -f "$DETAIL_SRC" ]]; then
   cp -f "$DETAIL_SRC" "$OUT_DIR/smoke_forced_detail.txt" || true
   MASK_PIN_S="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"mask_pin_seconds=([0-9.]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
@@ -1203,8 +1204,9 @@ if [[ -f "$DETAIL_SRC" ]]; then
   SOFT_REVIVE_N="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"soft_revive_count=([0-9]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
   PRE_MID_CANCEL="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"pre_midrun_mask_cancel=([0-9]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
   INVULN_TOPUP="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"invuln_topup_count=([0-9]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
+  MASK_REFRESH_SUPPRESS_S="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"mask_refresh_suppress_seconds=([0-9.]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
 fi
-echo "SMOKE_FORCED forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL mask_pin_s=$MASK_PIN_S force_off=$MASK_FORCE_OFF_N soft_revive=$SOFT_REVIVE_N"
+echo "SMOKE_FORCED forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL mask_pin_s=$MASK_PIN_S force_off=$MASK_FORCE_OFF_N soft_revive=$SOFT_REVIVE_N refresh_suppress_s=$MASK_REFRESH_SUPPRESS_S"
 if (( FORCED_MASK + FORCED_FAIL > 0 )); then
   echo "WARN: smoke used $((FORCED_MASK + FORCED_FAIL)) forced harness fallback(s) (forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL) — NOT proof the feature works" >&2
 fi
@@ -1217,4 +1219,5 @@ echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED won=$WON m
   printf 'soft_revive_count=%s\n' "$SOFT_REVIVE_N"
   printf 'pre_midrun_mask_cancel=%s\n' "$PRE_MID_CANCEL"
   printf 'invuln_topup_count=%s\n' "$INVULN_TOPUP"
+  printf 'mask_refresh_suppress_seconds=%s\n' "$MASK_REFRESH_SUPPRESS_S"
 } > "$OUT_DIR/smoke_forced.txt"
