@@ -1872,7 +1872,11 @@ public final class HeistScene: SKScene {
         sim.retry()
         hideOutcome()
         snapCameraToHero()
-        resetHeroFramingSamples()
+        // Keep pre-death heroX min/max for the CI framing gate — finishPush sprints
+        // to EXIT and must not wipe (or re-sample) the live-play band.
+        if !smoke.diedOnce {
+            resetHeroFramingSamples()
+        }
         updateHUDVisibility()
     }
 
@@ -1890,14 +1894,14 @@ public final class HeistScene: SKScene {
         smokeStatus.heroXMax = 0
     }
 
-    /// Same look-ahead + soft clamp as the live camera update (single 0.22×viewW lead).
+    /// Same look-ahead + soft clamp as the live camera update (single 0.26×viewW lead).
     private func cameraTarget(for b: BanditState) -> CGPoint {
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
         let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
         let viewW = size.width / Self.worldZoom
         let viewH = size.height / Self.worldZoom
-        // 0.22×viewW → hero ~28% when facing right (keeps max under 45% with lag).
-        let lead = cameraFacing * 0.22 * viewW
+        // 0.26×viewW → hero ~24% when facing right (keeps max under 45% with lag).
+        let lead = cameraFacing * 0.26 * viewW
         var target = CGPoint(
             x: CGFloat(b.position.x) + lead,
             y: CGFloat(b.position.y) + 56
@@ -2987,34 +2991,44 @@ public final class HeistScene: SKScene {
             }
         }
 
-        // Single look-ahead: facing × 0.22×viewW → hero at ~28% (right) / ~72% (left).
+        // Single look-ahead: facing × 0.26×viewW → hero at ~24% (right) / ~76% (left).
         // Side-switch delay: ignore brief facing flips so a quick reverse doesn't park the
         // hero near ~70% while he faces right again.
         let rawWant: CGFloat = b.facing >= 0 ? 1 : -1
         let nowFace = CACurrentMediaTime()
-        // ~0.65s side-switch delay so a quick reverse can't park the hero near ~70%.
+        // ~0.7s side-switch delay so a quick reverse can't park the hero near ~70%.
         if rawWant != cameraWantFace {
             if nowFace >= cameraFacingHoldUntil {
                 cameraWantFace = rawWant
-                cameraFacingHoldUntil = nowFace + 0.65
+                cameraFacingHoldUntil = nowFace + 0.7
             }
         } else {
-            cameraFacingHoldUntil = nowFace + 0.65
+            cameraFacingHoldUntil = nowFace + 0.7
         }
-        let faceBlend = min(1, CGFloat(dt) / 0.4)
+        let faceBlend = min(1, CGFloat(dt) / 0.35)
         cameraFacing += (cameraWantFace - cameraFacing) * faceBlend
-        let target = cameraTarget(for: b)
+        var target = cameraTarget(for: b)
         // Snappier follow so a sprint can't outrun the lead into the right half.
-        let s = min(1, CGFloat(tuning.cameraSmooth) * 1.35)
+        let s = min(1, CGFloat(tuning.cameraSmooth) * 1.55)
         cameraFocus.x += (target.x - cameraFocus.x) * s
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
+        // If the hero drifts past ~40% while the lead wants right, hard-correct focus.
+        var banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
+        var heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
+        if cameraWantFace > 0, cameraFacing > 0.85, heroFrac > 0.40 {
+            let desired = size.width * (0.28 - 0.5) // scene-x for 28% of width
+            cameraFocus.x = CGFloat(b.position.x) - desired / z
+            target = cameraTarget(for: b)
+            cameraFocus.x += (target.x - cameraFocus.x) * 0.5
+            banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
+            heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
+        }
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
         // Hero screen-x every live frame. Min/max accumulate when the right lead is settled
         // (mid-lerp after a reverse is not a placement the framing gate should measure).
         // Skip post-death EXIT sprint (finishPush) — that intentionally rushes the camera.
-        let banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
-        let heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
+        // Samples are preserved across death→retry so the gate still sees live-play framing.
         if case .playing = sim.state.phase,
            !runPaused,
            resumeCountdown <= 0,
