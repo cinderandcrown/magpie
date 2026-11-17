@@ -165,8 +165,8 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 | Tail Swing max time | 1.2 s |
 | Stomp bounce airtime | 0.6 s |
 | Eject hop airtime | 0.7 s |
-| Coyote time | 0.10 s |
-| Input buffer | 0.12 s |
+| Coyote time | 0.12 s |
+| Input buffer | 0.14 s |
 | Tap threshold | 180 ms and 10 points |
 | Stomp target radius | 1.5 tiles |
 | Combo ground grace | 0.4 s |
