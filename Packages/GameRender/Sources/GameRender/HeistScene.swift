@@ -2957,7 +2957,6 @@ public final class HeistScene: SKScene {
         // Single look-ahead: facing × 0.18×viewW → hero at ~32% (right) / ~68% (left).
         // Side-switch delay: ignore brief facing flips so a quick reverse doesn't park the
         // hero near ~70% while he faces right again.
-        let viewW = size.width / Self.worldZoom
         let rawWant: CGFloat = b.facing >= 0 ? 1 : -1
         let nowFace = CACurrentMediaTime()
         if rawWant != cameraWantFace {
