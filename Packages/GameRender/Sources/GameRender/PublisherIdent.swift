@@ -157,6 +157,24 @@ public enum PublisherIdent {
         let sweep = logo.childNode(withName: "publisherSweep")
         let side = max(logo.frame.width, 1)
 
+        // Smoke / CI: show the full splash immediately so boot=ident stills are the
+        // charcoal Cinder & Crown card — not a mid-fade peek at the title alley.
+        if smokeHold {
+            logo.alpha = 1
+            logo.setScale(1)
+            title.alpha = 1
+            credit.alpha = 0.45
+            glow.alpha = 0.55
+            sweep?.alpha = 0
+            root.alpha = 1
+            root.run(SKAction.sequence([
+                SKAction.wait(forDuration: max(2.4, total - 0.5)),
+                SKAction.fadeOut(withDuration: 0.4),
+                SKAction.run(onFinished),
+            ]), withKey: "publisherIdent")
+            return
+        }
+
         if reduceMotion {
             logo.run(SKAction.fadeIn(withDuration: 0.35))
             title.run(SKAction.sequence([

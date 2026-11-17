@@ -81,11 +81,11 @@ final class GameCoreTests: XCTestCase {
         ##########
         """)
         var tuning = Tuning.default
-        XCTAssertEqual(tuning.feel.coyoteSeconds, 0.10, accuracy: 0.001)
+        XCTAssertEqual(tuning.feel.coyoteSeconds, 0.12, accuracy: 0.001)
         var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
         for _ in 0..<20 { sim.step(.idle) }
-        // Force an air frame with coyote still armed (GameFeel default 100 ms).
+        // Force an air frame with coyote still armed (GameFeel default 120 ms).
         sim.state.bandit.onGround = false
         sim.state.bandit.coyote = tuning.feel.coyoteSeconds
         sim.state.bandit.velocity = .zero
@@ -121,7 +121,7 @@ final class GameCoreTests: XCTestCase {
         ######
         """)
         var tuning = Tuning.default
-        XCTAssertEqual(tuning.feel.jumpBufferSeconds, 0.12, accuracy: 0.001)
+        XCTAssertEqual(tuning.feel.jumpBufferSeconds, 0.14, accuracy: 0.001)
         var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
         sim.step(InputFrame(jumpPressed: true, jumpHeld: true))

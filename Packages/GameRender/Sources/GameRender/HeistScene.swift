@@ -282,9 +282,12 @@ public final class HeistScene: SKScene {
         Self.didShowPublisherIdentThisProcess = true
         showingPublisherIdent = true
         titleRoot.isHidden = true
+        // Scene-level (above overlay) so the charcoal splash can't sit under title chrome.
         let root = PublisherIdent.buildRoot(sceneSize: size)
+        root.zPosition = 900
         publisherIdentRoot = root
-        overlay.addChild(root)
+        addChild(root)
+        layoutPublisherIdentBackground()
         if smokeEnabled {
             smokeStatus.phase = "title"
             smokeStatus.boot = "ident"
@@ -299,6 +302,16 @@ public final class HeistScene: SKScene {
         ) { [weak self] in
             self?.finishPublisherIdentAndShowTitle()
         }
+    }
+
+    private func layoutPublisherIdentBackground() {
+        guard let root = publisherIdentRoot,
+              let bg = root.childNode(withName: "publisherBg") as? SKSpriteNode else { return }
+        bg.xScale = 1
+        bg.yScale = 1
+        bg.size = CGSize(width: max(size.width, 1) * 4, height: max(size.height, 1) * 4)
+        bg.position = .zero
+        bg.alpha = 1
     }
 
     private func skipPublisherIdentIfNeeded() {
@@ -875,30 +888,19 @@ public final class HeistScene: SKScene {
             alley.addChild(wet)
         }
 
-        // Flickering neon blade signs.
-        for (i, spec) in [
-            (CGPoint(x: -150, y: 40), ArtCatalog.neonPink, CGSize(width: 18, height: 110)),
-            (CGPoint(x: 168, y: 70), ArtCatalog.neonCyan, CGSize(width: 16, height: 90)),
-            (CGPoint(x: -40, y: 120), ArtCatalog.neonLime, CGSize(width: 70, height: 14)),
-        ].enumerated() {
-            let sign = SKShapeNode(rectOf: spec.2, cornerRadius: 3)
-            sign.fillColor = spec.1.withAlphaComponent(0.55)
-            sign.strokeColor = spec.1
-            sign.lineWidth = 1.5
-            sign.glowWidth = 4
-            sign.position = spec.0
-            sign.zPosition = 3
-            sign.name = "titleSign\(i)"
-            alley.addChild(sign)
-            sign.run(SKAction.repeatForever(SKAction.sequence([
-                SKAction.wait(forDuration: 0.4 + Double(i) * 0.35),
-                SKAction.fadeAlpha(to: 0.25, duration: 0.05),
-                SKAction.fadeAlpha(to: 0.95, duration: 0.08),
-                SKAction.wait(forDuration: 1.2 + Double(i) * 0.5),
-                SKAction.fadeAlpha(to: 0.4, duration: 0.04),
-                SKAction.fadeAlpha(to: 0.85, duration: 0.06),
-            ])))
-        }
+        // Real storefront crops as title neon (no flat pink/cyan/lime blade plates).
+        let titleSigns = ArtCatalog.neonSignageStrip(width: 420, height: 72)
+        titleSigns.name = "titleStorefrontSigns"
+        titleSigns.position = CGPoint(x: 0, y: 88)
+        titleSigns.zPosition = 3
+        titleSigns.alpha = 0.95
+        alley.addChild(titleSigns)
+        let titleSignsLow = ArtCatalog.neonSignageStrip(width: 280, height: 48)
+        titleSignsLow.name = "titleStorefrontSignsLow"
+        titleSignsLow.position = CGPoint(x: 24, y: 28)
+        titleSignsLow.zPosition = 3
+        titleSignsLow.alpha = 0.8
+        alley.addChild(titleSignsLow)
 
         let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: 480, height: 900))
         rain.name = "titleRain"
@@ -1509,8 +1511,8 @@ public final class HeistScene: SKScene {
         pa.numberOfLines = 2
         pa.verticalAlignmentMode = .top
         pa.horizontalAlignmentMode = .center
-        // Two lines of flavor sit fully above the primary buttons (was overlapping NEXT).
-        pa.position = CGPoint(x: 0, y: -22)
+        // Two lines of OmniClean PA flavor fully above NEXT/RETRY (was overlapping).
+        pa.position = CGPoint(x: 0, y: -18)
         pa.isHidden = true
         card.addChild(pa)
 
@@ -1634,9 +1636,8 @@ public final class HeistScene: SKScene {
         if !titleRoot.isHidden {
             layoutTitleChrome()
         }
-        if showingPublisherIdent, let root = publisherIdentRoot {
-            root.childNode(withName: "publisherBg")?.xScale = max(size.width / 100, 1)
-            root.childNode(withName: "publisherBg")?.yScale = max(size.height / 100, 1)
+        if showingPublisherIdent {
+            layoutPublisherIdentBackground()
         }
         updateHUDVisibility()
     }
@@ -2706,20 +2707,15 @@ public final class HeistScene: SKScene {
 
         let shinies = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
         let isWin: Bool
-        // Results time must match the HUD timer source (wall clock under smoke).
-        let hudSeconds: Double = {
-            if smokeEnabled, smokeWallStart > 0 {
-                return CACurrentMediaTime() - smokeWallStart
-            }
-            return sim.state.elapsed
-        }()
+        // Results always show the run clock (sim elapsed) — same number the player watched
+        // on a normal clear. Smoke wall-clock is harness-only and must not inflate the card.
         let seconds: Double
         let combo: Int
         var clearResult: ProgressStore.ClearResult?
         switch sim.state.phase {
         case .won(_, let shinyTotal, let c):
             isWin = true
-            seconds = hudSeconds
+            seconds = sim.state.elapsed
             combo = c
             title.fontColor = ArtCatalog.neonLime
             title.text = "RESULTS"
@@ -2746,7 +2742,7 @@ public final class HeistScene: SKScene {
             ]), count: max(1, finalShinies)), withKey: "count")
         case .failed(let reason):
             isWin = false
-            seconds = hudSeconds
+            seconds = sim.state.elapsed
             combo = sim.state.bestCombo
             title.fontColor = ArtCatalog.neonPink
             title.text = reason == .fellInWater ? "SPLASHED" : (reason == .spiked ? "SPIKED" : "BAGGED")
@@ -3009,20 +3005,20 @@ public final class HeistScene: SKScene {
         // hero near ~70% while he faces right again.
         let rawWant: CGFloat = b.facing >= 0 ? 1 : -1
         let nowFace = CACurrentMediaTime()
-        // ~0.7s side-switch delay so a quick reverse can't park the hero near ~70%.
+        // ~0.9s side-switch delay so a quick reverse can't whip the hero to ~70%.
         if rawWant != cameraWantFace {
             if nowFace >= cameraFacingHoldUntil {
                 cameraWantFace = rawWant
-                cameraFacingHoldUntil = nowFace + 0.7
+                cameraFacingHoldUntil = nowFace + 0.9
             }
         } else {
-            cameraFacingHoldUntil = nowFace + 0.7
+            cameraFacingHoldUntil = nowFace + 0.9
         }
-        let faceBlend = min(1, CGFloat(dt) / 0.35)
+        let faceBlend = min(1, CGFloat(dt) / 0.45)
         cameraFacing += (cameraWantFace - cameraFacing) * faceBlend
         var target = cameraTarget(for: b)
-        // Snappier follow so a sprint can't outrun the lead into the right half.
-        let s = min(1, CGFloat(tuning.cameraSmooth) * 1.55)
+        // Follow the lead without lagging a sprint into the right half.
+        let s = min(1, CGFloat(tuning.cameraSmooth) * 1.45)
         cameraFocus.x += (target.x - cameraFocus.x) * s
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom

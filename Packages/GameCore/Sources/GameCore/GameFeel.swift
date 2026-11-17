@@ -13,11 +13,11 @@ public struct GameFeel: Equatable, Sendable {
     /// Stick magnitude at/above this uses runSpeed; below blends toward walkSpeed.
     public var walkRunStickThreshold: Double = 0.55
     /// Seconds from rest → top run speed on ground (≈0.1 s).
-    public var groundAccelTime: Double = 0.10
+    public var groundAccelTime: Double = 0.09
     /// Seconds from top speed → stop on ground with stick released (≈0.08 s).
-    public var groundStopTime: Double = 0.08
+    public var groundStopTime: Double = 0.075
     /// Extra accel multiplier when reversing against current velocity.
-    public var turnAccelMul: Double = 1.85
+    public var turnAccelMul: Double = 1.9
     /// Air horizontal accel as a fraction of ground accel (≈65%).
     public var airControlMul: Double = 0.65
     /// Radial stick dead zone (normalized 0…1).
@@ -45,8 +45,8 @@ public struct GameFeel: Equatable, Sendable {
     public var jumpVelocity: Double = 30.0
     /// Early JUMP release multiplies upward velocity by this (50% cut → 0.5).
     public var jumpCutFraction: Double = 0.5
-    public var coyoteSeconds: Double = 0.10
-    public var jumpBufferSeconds: Double = 0.12
+    public var coyoteSeconds: Double = 0.12
+    public var jumpBufferSeconds: Double = 0.14
     /// Max horizontal nudge (px) around ledge corners on head bump / near-miss land.
     public var cornerCorrectPx: Double = 6
 
@@ -78,7 +78,7 @@ public struct GameFeel: Equatable, Sendable {
     /// How hard the magnet pulls (tiles/s² scale via tileSize).
     public var pounceMagnetAccel: Double = 28
     /// Hit-stop on stomp (seconds) — render consumes via events; also used as a feel note.
-    public var stompHitstop: Double = 0.06
+    public var stompHitstop: Double = 0.07
     public var invulnSeconds: Double = 1.0
     /// Minimum bandit alpha while blinking during i-frames (≥ 50%).
     public var invulnMinAlpha: Double = 0.55
