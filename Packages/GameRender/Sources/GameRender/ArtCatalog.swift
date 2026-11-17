@@ -673,7 +673,13 @@ public enum ArtCatalog {
         // Above facade panels (~2.4) / shafts (~2.6); below actors (≥20).
         root.zPosition = 7.5
         let textures = loadStorefrontSignTextures()
-        let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
+        // Varied pinks so additive glow doesn't collapse into one flat 8-bit magenta bin.
+        let pinks: [SKColor] = [
+            SKColor(red: 1.0, green: 0.22, blue: 0.66, alpha: 1),
+            SKColor(red: 1.0, green: 0.34, blue: 0.78, alpha: 1),
+            SKColor(red: 0.92, green: 0.18, blue: 0.72, alpha: 1),
+        ]
+        let accents: [SKColor] = [pinks[0], neonCyan, pinks[1], neonCyan, pinks[2], neonCyan]
         // Neon Docks street deck sits near tile y≈7. Hang 4–6 real signs above it,
         // starting early enough that midrun (worldTX≈20–28) frames at least two.
         // Soft glow + thin neon rim — never opaque hot-pink slabs for a CI gate.
@@ -690,16 +696,21 @@ public enum ArtCatalog {
             // Hang above camera (hero+56 ≈ tile*8–9) so midrun upper-band (12–48% screen) catches neon.
             let y = tile * (12.8 + CGFloat(i % 3) * 0.55)
 
-            // Soft corona — keep alpha modest so CI flat-magenta/slab gates stay honest.
-            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.55, height: h * 2.0))
-            glow.name = "storefrontGlow"
-            glow.position = CGPoint(x: x, y: y)
-            glow.color = accent
-            glow.colorBlendFactor = 1
-            glow.alpha = isPink ? 0.42 : 0.35
-            glow.blendMode = .add
-            glow.zPosition = 0
-            root.addChild(glow)
+            // Two smaller coronas (not one huge uniform blob) — readable neon, split bins.
+            for (j, off) in [CGPoint(x: -w * 0.18, y: h * 0.12), CGPoint(x: w * 0.2, y: -h * 0.08)].enumerated() {
+                let glow = SKSpriteNode(
+                    texture: softCircleTexture(),
+                    size: CGSize(width: w * 0.95, height: h * 1.35)
+                )
+                glow.name = "storefrontGlow"
+                glow.position = CGPoint(x: x + off.x, y: y + off.y)
+                glow.color = isPink ? pinks[(i + j) % pinks.count] : accent
+                glow.colorBlendFactor = 1
+                glow.alpha = isPink ? 0.58 : 0.38
+                glow.blendMode = .add
+                glow.zPosition = 0
+                root.addChild(glow)
+            }
 
             // Subtle dark plate behind the crop — not a flat magenta fill.
             let backing = SKSpriteNode(
@@ -723,8 +734,8 @@ public enum ArtCatalog {
             sign.position = CGPoint(x: x, y: y)
             sign.zPosition = 1
             if isPink {
-                sign.color = neonPink
-                sign.colorBlendFactor = 0.38
+                sign.color = pinks[i % pinks.count]
+                sign.colorBlendFactor = 0.42
             } else {
                 sign.color = neonCyan
                 sign.colorBlendFactor = 0.28
@@ -738,9 +749,9 @@ public enum ArtCatalog {
             rim.position = CGPoint(x: x, y: y)
             rim.fillColor = .clear
             rim.strokeColor = accent
-            rim.lineWidth = isPink ? 1.6 : 1.2
-            rim.glowWidth = isPink ? 2.0 : 1.2
-            rim.alpha = isPink ? 0.75 : 0.55
+            rim.lineWidth = isPink ? 1.8 : 1.2
+            rim.glowWidth = isPink ? 2.2 : 1.2
+            rim.alpha = isPink ? 0.85 : 0.55
             rim.zPosition = 1.5
             root.addChild(rim)
 
