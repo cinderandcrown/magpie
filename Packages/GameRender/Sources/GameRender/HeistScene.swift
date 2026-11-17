@@ -292,7 +292,11 @@ public final class HeistScene: SKScene {
         }
         JuiceSound.shared.playPublisherIdentWhoosh()
         let reduce = PublisherIdent.reduceMotionEnabled
-        PublisherIdent.runPresentation(on: root, reduceMotion: reduce) { [weak self] in
+        PublisherIdent.runPresentation(
+            on: root,
+            reduceMotion: reduce,
+            smokeHold: smokeEnabled
+        ) { [weak self] in
             self?.finishPublisherIdentAndShowTitle()
         }
     }

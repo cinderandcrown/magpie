@@ -278,6 +278,11 @@ for attempt in 1 2; do
       continue
     fi
     if [[ "$status" == *"phase=title"* && "$status" == *"boot=ready"* && "$status" == *"titleOk=1"* ]]; then
+      # Ident finished before we attached — relaunch so 00-publisher-ident is not skipped.
+      if [[ "$IDENT_SHOT" -eq 0 ]]; then
+        echo "missed ident before title (status=$status) — relaunch attempt=$attempt" >&2
+        break
+      fi
       require_app "launch"
       # Let the B1 logo glitch-in (~0.6s) settle before the title still.
       sleep 0.75

@@ -15,8 +15,10 @@ public enum PublisherIdent {
     public static let charcoal = SKColor(red: 0.07, green: 0.06, blue: 0.055, alpha: 1)
 
     /// Total length target 1.8…2.2 s (Reduce Motion uses the short end).
-    public static func duration(reduceMotion: Bool) -> TimeInterval {
-        reduceMotion ? 1.85 : 2.05
+    /// Smoke holds longer so the harness can attach and snap 00-publisher-ident.
+    public static func duration(reduceMotion: Bool, smokeHold: Bool = false) -> TimeInterval {
+        if smokeHold { return 3.6 }
+        return reduceMotion ? 1.85 : 2.05
     }
 
     public static var reduceMotionEnabled: Bool {
@@ -140,9 +142,10 @@ public enum PublisherIdent {
     public static func runPresentation(
         on root: SKNode,
         reduceMotion: Bool,
+        smokeHold: Bool = false,
         onFinished: @escaping () -> Void
     ) {
-        let total = duration(reduceMotion: reduceMotion)
+        let total = duration(reduceMotion: reduceMotion, smokeHold: smokeHold)
         guard let logo = root.childNode(withName: "publisherLogo"),
               let title = root.childNode(withName: "publisherTitle"),
               let credit = root.childNode(withName: "publisherCredit"),
