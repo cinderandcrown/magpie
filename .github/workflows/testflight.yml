@@ -3,7 +3,8 @@ name: TestFlight
 # Upload ONLY on pushed tags matching testflight/*.
 # Fork-safe: never uses pull_request_target; PR jobs from forks are skipped.
 # Never publishes a .ipa artifact.
-# ASC app: Magpie Toy City, Apple ID 6834947645, SKU magpie-001.
+# ASC app record (unchanged): Magpie Toy City, Apple ID 6834947645, SKU magpie-001.
+# User-facing title: The Neon City Bandit.
 
 on:
   push:
@@ -202,7 +203,8 @@ jobs:
             --team "$APPLE_TEAM_ID" \
             --bundle-id "$BUNDLE_ID" \
             --version "$VERSION" \
-            --build "$BUILD"
+            --build "$BUILD" \
+            --require-export-compliance
 
       - name: Validate with Apple
         # altool needs the ASC app record; skip on PR sign-checks until Nicholas creates it.

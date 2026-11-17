@@ -1,0 +1,23 @@
+{
+  "tile_size": 64,
+  "bits": "N=1 E=2 S=4 W=8",
+  "source": "Original neon industrial autotiles (Kenney Industrial CC0 used for decorative props only)",
+  "masks": {
+    "0": "mask_00.png",
+    "1": "mask_01.png",
+    "2": "mask_02.png",
+    "3": "mask_03.png",
+    "4": "mask_04.png",
+    "5": "mask_05.png",
+    "6": "mask_06.png",
+    "7": "mask_07.png",
+    "8": "mask_08.png",
+    "9": "mask_09.png",
+    "10": "mask_10.png",
+    "11": "mask_11.png",
+    "12": "mask_12.png",
+    "13": "mask_13.png",
+    "14": "mask_14.png",
+    "15": "mask_15.png"
+  }
+}
