@@ -1894,14 +1894,14 @@ public final class HeistScene: SKScene {
         smokeStatus.heroXMax = 0
     }
 
-    /// Same look-ahead + soft clamp as the live camera update (single 0.26×viewW lead).
+    /// Same look-ahead + soft clamp as the live camera update (single 0.20×viewW lead).
     private func cameraTarget(for b: BanditState) -> CGPoint {
         let mapW = CGFloat(sim.map.width) * CGFloat(tuning.tileSize)
         let mapH = CGFloat(sim.map.height) * CGFloat(tuning.tileSize)
         let viewW = size.width / Self.worldZoom
         let viewH = size.height / Self.worldZoom
-        // 0.26×viewW → hero ~24% when facing right (keeps max under 45% with lag).
-        let lead = cameraFacing * 0.26 * viewW
+        // 0.20×viewW → hero ~30% when facing right (20–45% framing band).
+        let lead = cameraFacing * 0.20 * viewW
         var target = CGPoint(
             x: CGFloat(b.position.x) + lead,
             y: CGFloat(b.position.y) + 56
@@ -2991,7 +2991,7 @@ public final class HeistScene: SKScene {
             }
         }
 
-        // Single look-ahead: facing × 0.26×viewW → hero at ~24% (right) / ~76% (left).
+        // Single look-ahead: facing × 0.20×viewW → hero at ~30% (right) / ~70% (left).
         // Side-switch delay: ignore brief facing flips so a quick reverse doesn't park the
         // hero near ~70% while he faces right again.
         let rawWant: CGFloat = b.facing >= 0 ? 1 : -1
@@ -3013,14 +3013,14 @@ public final class HeistScene: SKScene {
         cameraFocus.x += (target.x - cameraFocus.x) * s
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
-        // If the hero drifts past ~40% while the lead wants right, hard-correct focus.
+        // Keep the hero in the 22–40% band while the right lead is active.
         var banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
         var heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
-        if cameraWantFace > 0, cameraFacing > 0.85, heroFrac > 0.40 {
-            let desired = size.width * (0.28 - 0.5) // scene-x for 28% of width
+        if cameraWantFace > 0, cameraFacing > 0.85, (heroFrac > 0.40 || heroFrac < 0.22) {
+            let desired = size.width * (0.30 - 0.5) // scene-x for 30% of width
             cameraFocus.x = CGFloat(b.position.x) - desired / z
             target = cameraTarget(for: b)
-            cameraFocus.x += (target.x - cameraFocus.x) * 0.5
+            cameraFocus.x += (target.x - cameraFocus.x) * 0.45
             banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
             heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
         }
