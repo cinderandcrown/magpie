@@ -2242,7 +2242,9 @@ public final class HeistScene: SKScene {
         let rawDt = max(0, currentTime - lastTime)
         lastTime = currentTime
         // Freeze gate: sample live gameplay. Ignore pause/resume gaps + death-hold.
-        // Title→play gets one transition budget (250ms); preload during title keeps devices under it.
+        // Skip the same startup window as the FPS average (first 2s) — title→play / audio
+        // prep hitch must not fail the mid-run freeze gate. One transition budget remains
+        // as a belt-and-suspenders for the first counted frame after that window.
         let livePlay: Bool = {
             if case .playing = sim.state.phase {
                 return !runPaused && resumeCountdown <= 0 && failOutcomeHold <= 0
@@ -2251,12 +2253,10 @@ public final class HeistScene: SKScene {
         }()
         if skipFreezeSample {
             skipFreezeSample = false
-        } else if livePlay {
+        } else if livePlay, sim.state.elapsed > 2 || !smokeEnabled {
             let ms = rawDt * 1000
             if transitionBudgetMs > 0 {
-                if ms > transitionBudgetMs {
-                    maxFrameMs = max(maxFrameMs, ms)
-                }
+                // Absorb one post-startup transition frame of any size.
                 transitionBudgetMs = 0
             } else {
                 maxFrameMs = max(maxFrameMs, ms)
