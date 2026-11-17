@@ -2389,9 +2389,14 @@ public final class HeistScene: SKScene {
 
         accumulator += dt
         var steps = 0
-        // Smoke: always 1:1 with display so wall-clock audio logs (sim land gate) and
-        // screenshots match sim time. maxSteps=2 made landCooldown 0.10s ≈ 50ms wall.
-        let maxSteps: Int = smokeEnabled ? 1 : 4
+        // Smoke: 1:1 on title (ident/title stills); allow 2 catch-up steps in play so
+        // wall-clock harness timeouts keep pace. landCooldown is ≥0.22s so the raw
+        // sim-land gate (≥100ms wall) still holds at 2× stepping.
+        let maxSteps: Int = {
+            if !smokeEnabled { return 4 }
+            if case .title = sim.state.phase { return 1 }
+            return 2
+        }()
         while accumulator >= tuning.dt && steps < maxSteps {
             var input = InputFrame(moveX: moveX, moveY: moveY, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
             jumpPressed = false

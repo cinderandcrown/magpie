@@ -436,8 +436,9 @@ public struct Sim: Equatable, Sendable {
                     if bandit.velocity.y < -40 {
                         state.events.append(SimEvent(kind: .shake, position: bandit.position))
                     }
-                    // ≥100ms so CI wall-clock "sim land" pairs stay ≥100ms apart (gate).
-                    bandit.landCooldown = 0.12
+                    // ≥0.22s sim so CI wall-clock "sim land" pairs stay ≥100ms apart even
+                    // when smoke catch-up steps run at 2× display (0.22/2 ≈ 0.11s wall).
+                    bandit.landCooldown = 0.22
                 }
                 bandit.velocity.y = 0
                 bandit.onGround = true

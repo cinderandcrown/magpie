@@ -188,8 +188,8 @@ public final class JuiceSound: @unchecked Sendable {
     public func playLand() {
         prepare()
         let now = ProcessInfo.processInfo.systemUptime
-        // Match Sim.landCooldown (0.12s): one audible land per airborne beat.
-        if lastLandLogUptime >= 0, now - lastLandLogUptime < 0.12 {
+        // Match Sim.landCooldown (0.22s): one audible land per airborne beat.
+        if lastLandLogUptime >= 0, now - lastLandLogUptime < 0.22 {
             return
         }
         lastLandLogUptime = now
