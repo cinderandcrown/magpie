@@ -112,6 +112,13 @@ public final class JuiceSound: @unchecked Sendable {
         playLegacyOneShot(url)
     }
 
+    /// Soft ember/whoosh under the Cinder & Crown publisher splash. Respects mute.
+    public func playPublisherIdentWhoosh() {
+        prepare()
+        logSmoke("sfx publisher_ident_whoosh")
+        SFXManager.shared.play("publisher_ident_whoosh", rate: 1.0, gain: 0.55)
+    }
+
     /// Title / logo ident — juice `startup_jingle`, then crossfade menu theme.
     public func playTitleSting() {
         prepare()
@@ -170,6 +177,12 @@ public final class JuiceSound: @unchecked Sendable {
         prepare()
         logSmoke("sfx jump")
         SFXManager.shared.playJump()
+    }
+
+    /// Raw Sim `.land` event for CI (before audible debounce). Gate on these, not `sfx land`.
+    public func logRawLand() {
+        guard smokeAutoplay else { return }
+        logSmoke("sim land")
     }
 
     public func playLand() {

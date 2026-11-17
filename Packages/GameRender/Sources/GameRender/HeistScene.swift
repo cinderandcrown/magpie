@@ -46,6 +46,10 @@ public final class HeistScene: SKScene {
     private var pounceBtn: SKShapeNode!
 
     private var titleRoot = SKNode()
+    private var publisherIdentRoot: SKNode?
+    private var showingPublisherIdent = false
+    /// Process-lifetime gate: cold launch only (never on resume / return-to-title).
+    private static var didShowPublisherIdentThisProcess = false
     private var outcomeRoot = SKNode()
     private var retentionRoot = SKNode()
     private var hudCarried = SKLabelNode(fontNamed: "AvenirNext-Bold")
@@ -64,8 +68,18 @@ public final class HeistScene: SKScene {
     private var cameraFacing: CGFloat = 1
     /// Smoke: after 04 is snapped, let Mask expire once before holding for 04b re-entry.
     private var smokeSawMaskDropAfterFirst = false
-    /// Wall-clock deadline: keep Mask forced off after 04 until status (0.35s cadence) can sample maskOn=0.
-    private var smokeMaskOffHoldUntil: TimeInterval = 0
+    /// Smoke harness accounting (written to Documents/smoke_forced_detail.txt).
+    private var smokeMaskPinSeconds: Double = 0
+    private var smokeMaskForceOffCount: Int = 0
+    private var smokeMaskForceOffSeconds: Double = 0
+    private var smokeSoftReviveCount: Int = 0
+    private var smokePreMidrunMaskCancelCount: Int = 0
+    private var smokeInvulnTopUpCount: Int = 0
+    private var smokeMaskPinActive = false
+    private var smokeLastForcedWrite: TimeInterval = 0
+    /// Camera side-switch hysteresis — ignore brief facing flips for lead direction.
+    private var cameraFacingHoldUntil: TimeInterval = 0
+    private var cameraWantFace: CGFloat = 1
     private var maskMusicOn = false
     /// MOP ids that already barked `mop_bot_alert` this approach.
     private var mopAlerted: Set<Int> = []
@@ -230,10 +244,9 @@ public final class HeistScene: SKScene {
         #if DEBUG
         setupDebugTuning()
         #endif
-        // Defer AVAudioSession until after atlases warm / title is up — early prepare jetsams
-        // the sim. Same path for smoke and ship (parity): jingle → menu theme.
+        // Defer AVAudioSession until after atlases warm — early prepare jetsams the sim.
+        // Title sting waits until after the publisher ident (or immediately if skipped).
         JuiceSound.shared.prepare()
-        JuiceSound.shared.playTitleSting()
         if !smokeEnabled {
             hapticLight.prepare(); hapticMed.prepare(); hapticHeavy.prepare()
         }
@@ -246,11 +259,68 @@ public final class HeistScene: SKScene {
             SKAction.run { [weak self] in self?.layoutUI() },
         ]), withKey: "safeAreaRelayout")
         sync(dt: 0)
+        // Publisher splash first (cold launch / smoke). Gameplay textures already preloading above.
+        if shouldPresentPublisherIdent() {
+            presentPublisherIdent()
+        } else {
+            finishPublisherIdentAndShowTitle()
+        }
         updateHUDVisibility()
+    }
+
+    private func shouldPresentPublisherIdent() -> Bool {
+        // Smoke always shows once per launch so CI can artifact the still.
+        if smokeEnabled { return !Self.didShowPublisherIdentThisProcess }
+        return !Self.didShowPublisherIdentThisProcess
+    }
+
+    private func presentPublisherIdent() {
+        Self.didShowPublisherIdentThisProcess = true
+        showingPublisherIdent = true
+        titleRoot.isHidden = true
+        let root = PublisherIdent.buildRoot(sceneSize: size)
+        publisherIdentRoot = root
+        overlay.addChild(root)
+        if smokeEnabled {
+            smokeStatus.phase = "title"
+            smokeStatus.boot = "ident"
+            writeSmokeStatus()
+        }
+        JuiceSound.shared.playPublisherIdentWhoosh()
+        let reduce = PublisherIdent.reduceMotionEnabled
+        PublisherIdent.runPresentation(on: root, reduceMotion: reduce) { [weak self] in
+            self?.finishPublisherIdentAndShowTitle()
+        }
+    }
+
+    private func skipPublisherIdentIfNeeded() {
+        guard showingPublisherIdent else { return }
+        publisherIdentRoot?.removeAction(forKey: "publisherIdent")
+        finishPublisherIdentAndShowTitle()
+    }
+
+    private func finishPublisherIdentAndShowTitle() {
+        publisherIdentRoot?.removeAllActions()
+        publisherIdentRoot?.removeFromParent()
+        publisherIdentRoot = nil
+        showingPublisherIdent = false
+        presentIntroIfNeededAfterIdent()
+        if showingIntro {
+            // Intro covers title; still mark boot ready so smoke can proceed after comic skip paths.
+            if smokeEnabled {
+                smokeStatus.boot = "ready"
+                writeSmokeStatus()
+            }
+            updateHUDVisibility()
+            return
+        }
+        showTitleScreen()
+        JuiceSound.shared.playTitleSting()
         if smokeEnabled {
             smokeStatus.boot = "ready"
             writeSmokeStatus()
         }
+        updateHUDVisibility()
     }
 
     public override func didChangeSize(_ oldSize: CGSize) {
@@ -416,7 +486,9 @@ public final class HeistScene: SKScene {
         for y in 0..<sim.map.height {
             for x in 0..<sim.map.width {
                 let kind = sim.map.tile(atX: x, y: y)
-                guard isGroundSolid(kind) else { continue }
+                // Latch poles are drawn as neon pillars below — skip autotile (isolated
+                // neighbour masks read as a grey "X" placeholder on the climb tower).
+                guard kind == .ground || kind == .wall || kind == .crate else { continue }
                 // 4-neighbour mask: N=1 E=2 S=4 W=8
                 var mask = 0
                 if solidNeighbor(x: x, y: y + 1) { mask |= 1 }
@@ -430,13 +502,34 @@ public final class HeistScene: SKScene {
         tileMapNode = mapNode
         placeWorldStorefrontSigns()
 
+        // Neon latch poles (climbable) — thin cyan/magenta shaft, not grey autotile X.
+        for y in 0..<sim.map.height {
+            for x in 0..<sim.map.width {
+                guard sim.map.tile(atX: x, y: y) == .latch else { continue }
+                let pos = cg(sim.map.worldCenter(ofX: x, y: y, tileSize: tuning.tileSize))
+                let shaft = SKShapeNode(rectOf: CGSize(width: tile * 0.28, height: tile * 0.98), cornerRadius: 2)
+                shaft.fillColor = SKColor(red: 0.12, green: 0.14, blue: 0.22, alpha: 0.95)
+                shaft.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.75)
+                shaft.lineWidth = 1.2
+                shaft.glowWidth = 0.6
+                shaft.position = pos
+                shaft.zPosition = 2.6
+                world.addChild(shaft)
+                let rim = SKSpriteNode(color: ArtCatalog.neonPink.withAlphaComponent(0.55), size: CGSize(width: tile * 0.08, height: tile * 0.9))
+                rim.position = CGPoint(x: pos.x + tile * 0.1, y: pos.y)
+                rim.zPosition = 2.65
+                rim.blendMode = .add
+                world.addChild(rim)
+            }
+        }
+
         // Kenney CC0 crates/pipes as sparse decoration — never as collision face / under-ledge drips.
         let propTextures = ArtCatalog.sidePropTextures()
         var propI = 0
         for y in 0..<sim.map.height {
             for x in 0..<sim.map.width {
                 let kind = sim.map.tile(atX: x, y: y)
-                guard kind == .ground || kind == .wall || kind == .latch else { continue }
+                guard kind == .ground || kind == .wall else { continue }
                 let pos = cg(sim.map.worldCenter(ofX: x, y: y, tileSize: tuning.tileSize))
                 let below = sim.map.tile(atX: x, y: y - 1)
                 let openBelow = !sim.map.isSolid(below) && below != .water
@@ -449,9 +542,9 @@ public final class HeistScene: SKScene {
                     n.position = CGPoint(x: pos.x, y: pos.y + tile * 0.55)
                     n.zPosition = 3.2
                     n.alpha = 0.92
-                    // Neutralize any baked green tint from Kenney sheets.
-                    n.color = SKColor(red: 0.75, green: 0.72, blue: 0.82, alpha: 1)
-                    n.colorBlendFactor = 0.35
+                    // Kill any baked green tint from Kenney sheets (no green drips).
+                    n.color = SKColor(red: 0.72, green: 0.68, blue: 0.78, alpha: 1)
+                    n.colorBlendFactor = 0.55
                     world.addChild(n)
                 }
 
@@ -735,6 +828,7 @@ public final class HeistScene: SKScene {
 
     private func setupTitle() {
         titleRoot.zPosition = 300
+        titleRoot.isHidden = true // Revealed after publisher ident (or immediately if skipped).
         overlay.addChild(titleRoot)
 
         // Dedicated cyberpunk alley — never live level geometry or pickups.
@@ -1402,11 +1496,12 @@ public final class HeistScene: SKScene {
         pa.name = "outcomePA"
         pa.fontSize = 11
         pa.fontColor = ArtCatalog.neonPink
-        pa.preferredMaxLayoutWidth = 260
+        pa.preferredMaxLayoutWidth = 240
         pa.numberOfLines = 2
-        pa.verticalAlignmentMode = .center
+        pa.verticalAlignmentMode = .top
         pa.horizontalAlignmentMode = .center
-        pa.position = CGPoint(x: 0, y: -36)
+        // Two lines of flavor sit fully above the primary buttons (was overlapping NEXT).
+        pa.position = CGPoint(x: 0, y: -22)
         pa.isHidden = true
         card.addChild(pa)
 
@@ -1417,14 +1512,14 @@ public final class HeistScene: SKScene {
         card.addChild(stats)
 
         let primary = makeOutcomeButton(title: "RETRY", color: ArtCatalog.neonLime, name: "retryBtn", wide: true)
-        primary.position = CGPoint(x: 0, y: -68)
+        primary.position = CGPoint(x: 0, y: -78)
         card.addChild(primary)
         let next = makeOutcomeButton(title: "NEXT", color: ArtCatalog.neonLime, name: "nextBtn", wide: true)
-        next.position = CGPoint(x: 0, y: -68)
+        next.position = CGPoint(x: 0, y: -78)
         next.isHidden = true
         card.addChild(next)
         let home = makeOutcomeButton(title: "HOME", color: ArtCatalog.neonPink, name: "homeBtn", wide: false)
-        home.position = CGPoint(x: 0, y: -132)
+        home.position = CGPoint(x: 0, y: -138)
         card.addChild(home)
     }
 
@@ -1530,6 +1625,10 @@ public final class HeistScene: SKScene {
         if !titleRoot.isHidden {
             layoutTitleChrome()
         }
+        if showingPublisherIdent, let root = publisherIdentRoot {
+            root.childNode(withName: "publisherBg")?.xScale = max(size.width / 100, 1)
+            root.childNode(withName: "publisherBg")?.yScale = max(size.height / 100, 1)
+        }
         updateHUDVisibility()
     }
 
@@ -1538,7 +1637,7 @@ public final class HeistScene: SKScene {
             if case .playing = sim.state.phase { return true }
             return false
         }()
-        let onTitle = !titleRoot.isHidden
+        let onTitle = !titleRoot.isHidden || showingPublisherIdent
         // Title owns the screen — hide live level so geometry/shinies can't peek under UI.
         stage.isHidden = onTitle
         skyFill.isHidden = onTitle
@@ -1576,7 +1675,10 @@ public final class HeistScene: SKScene {
         districtCardRoot.name = "districtCardRoot"
         overlay.addChild(districtCardRoot)
 
-        // First launch: comic intro before title chrome takes taps.
+        // Comic intro is presented after the publisher ident (see finishPublisherIdentAndShowTitle).
+    }
+
+    private func presentIntroIfNeededAfterIdent() {
         if !smokeEnabled, !progressStore.load().sawIntro {
             presentIntro(fromScratch: true)
         }
@@ -1892,6 +1994,10 @@ public final class HeistScene: SKScene {
                 finishDistrictCardAndPlay()
                 return
             }
+            if showingPublisherIdent {
+                skipPublisherIdentIfNeeded()
+                return
+            }
             if case .title = sim.state.phase {
                 let hitNames = Set(nodes(at: touch.location(in: self)).compactMap(\.name))
                 if hitNames.contains("titleMute") {
@@ -2172,9 +2278,11 @@ public final class HeistScene: SKScene {
         statusAcc += dt
         if smokeEnabled {
             // Title: write every frame so CI can snap 01-title before autoplay advances.
+            // Write often so screenshot-moment status matches what the still shows.
             let interval: TimeInterval = {
                 if case .title = sim.state.phase { return 0.05 }
-                return 0.35
+                if showingPublisherIdent { return 0.05 }
+                return 0.08
             }()
             if statusAcc >= interval {
                 statusAcc = 0
@@ -2223,6 +2331,7 @@ public final class HeistScene: SKScene {
            case .failed = sim.state.phase
         {
             softReviveSmokeHarness()
+            smokeSoftReviveCount += 1
         }
 
         if failOutcomeHold > 0 {
@@ -2305,6 +2414,7 @@ public final class HeistScene: SKScene {
                    case .failed = sim.state.phase
                 {
                     softReviveSmokeHarness()
+                    smokeSoftReviveCount += 1
                     sim.state.events.removeAll {
                         if case .fail = $0.kind { return true }
                         return false
@@ -2319,6 +2429,9 @@ public final class HeistScene: SKScene {
                         && !SmokeBrain.smokeFlagExists("smoke_mask2_ok.txt")
                     // Invuln through Mask showcase + pause/bg (MOPs); water/spikes use soft-revive above.
                     if smoke.sawMask, !SmokeBrain.smokeFlagExists("smoke_foreground.txt") {
+                        if sim.state.bandit.invuln < 0.35 {
+                            smokeInvulnTopUpCount += 1
+                        }
                         sim.state.bandit.invuln = max(sim.state.bandit.invuln, 0.35)
                     }
                     let midrunOk = SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
@@ -2327,6 +2440,7 @@ public final class HeistScene: SKScene {
                         sim.state.bandit.maskMode = false
                         sim.state.bandit.maskTimer = 0
                         sim.state.bandit.combo = 0
+                        smokePreMidrunMaskCancelCount += 1
                     }
                     // Harness: force Mask Mode for 04 / 04b when the bot can't re-chain in time.
                     if midrunOk, SmokeBrain.smokeFlagExists("smoke_force_mask.txt"),
@@ -2355,34 +2469,28 @@ public final class HeistScene: SKScene {
                         sim.state.bandit.maskTimer = 0
                         smoke.act = .seekDeath
                     }
-                    // Don't pin Mask open before midrun still — street neon palette needs a clean alley.
-                    let holdFirst = midrunOk && mask1Pending
-                    let now = CACurrentMediaTime()
-                    let holdingOffForSample = smokeSawMaskDropAfterFirst && now < smokeMaskOffHoldUntil
-                    // holdSecond only AFTER the harness has had time to sample maskOn=0.
-                    let holdSecond = midrunOk && mask2Pending && smokeSawMaskDropAfterFirst
-                        && !holdingOffForSample
-                    if midrunOk, !mask1Pending, (!smokeSawMaskDropAfterFirst || holdingOffForSample) {
-                        // After 04: force Mask off AND clamp combo so the next stomp can't
-                        // re-enter before the harness samples maskOn=0. CI's first mask-off
-                        // poll can land ~2–3s after smoke_mask_ok (require_app + shot I/O),
-                        // so hold the off-window for several seconds — not just one status tick.
-                        sim.state.bandit.maskMode = false
-                        sim.state.bandit.maskTimer = 0
-                        sim.state.bandit.combo = min(
-                            sim.state.bandit.combo,
-                            max(0, tuning.maskModeAtCombo - 1)
-                        )
-                        if !smokeSawMaskDropAfterFirst {
-                            smokeSawMaskDropAfterFirst = true
-                            smokeMaskOffHoldUntil = now + 4.0
-                        }
-                        // Status is normally written at frame-start (before this force-off).
-                        // Publish maskOn=0 every step while holding so a late first poll still sees it.
-                        writeSmokeStatus()
-                    } else if sim.state.bandit.maskMode, holdFirst || holdSecond {
+                    // Pin Mask open only while the harness is actively capturing 04 / 04b
+                    // (smoke_capture_mask.txt). Do NOT pin from midrun→stomp-chain — that
+                    // stretched Mask to ~48s vs the ~design window.
+                    let capturingMask = SmokeBrain.smokeFlagExists("smoke_capture_mask.txt")
+                    let holdFirst = midrunOk && mask1Pending && capturingMask
+                    let holdSecond = midrunOk && mask2Pending && smokeSawMaskDropAfterFirst && capturingMask
+                    if sim.state.bandit.maskMode, holdFirst || holdSecond {
                         sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
+                        smokeMaskPinSeconds += tuning.dt
+                        smokeMaskPinActive = true
+                    } else {
+                        smokeMaskPinActive = false
                     }
+                    if !sim.state.bandit.maskMode, !mask1Pending {
+                        smokeSawMaskDropAfterFirst = true
+                    }
+                    // Harness can request an immediate status write at shot time.
+                    if SmokeBrain.smokeFlagExists("smoke_snap_status.txt") {
+                        writeSmokeStatus()
+                        SmokeBrain.setSmokeFlag("smoke_snap_status.txt", present: false)
+                    }
+                    writeSmokeForcedDetailIfNeeded()
                 }
             }
             accumulator -= tuning.dt
@@ -2404,6 +2512,8 @@ public final class HeistScene: SKScene {
                 if !smokeEnabled { hapticLight.impactOccurred() }
                 squash(0.78, 1.28)
             case .land:
+                // Raw sim land for CI double-land gate (before audible debounce).
+                JuiceSound.shared.logRawLand()
                 JuiceSound.shared.playLand()
                 squash(1.35, 0.65)
                 dust(at: e.position)
@@ -2845,33 +2955,41 @@ public final class HeistScene: SKScene {
         }
 
         // Single look-ahead: facing × 0.18×viewW → hero at ~32% (right) / ~68% (left).
-        // Do NOT also add cameraLeadTiles — that stacked and pinned him off the left edge.
+        // Side-switch delay: ignore brief facing flips so a quick reverse doesn't park the
+        // hero near ~70% while he faces right again.
         let viewW = size.width / Self.worldZoom
-        let wantFace: CGFloat = b.facing >= 0 ? 1 : -1
-        let faceBlend = min(1, CGFloat(dt) / 0.4)
-        cameraFacing += (wantFace - cameraFacing) * faceBlend
+        let rawWant: CGFloat = b.facing >= 0 ? 1 : -1
+        let nowFace = CACurrentMediaTime()
+        if rawWant != cameraWantFace {
+            if nowFace >= cameraFacingHoldUntil {
+                cameraWantFace = rawWant
+                cameraFacingHoldUntil = nowFace + 0.28
+            }
+        } else {
+            cameraFacingHoldUntil = nowFace + 0.28
+        }
+        let faceBlend = min(1, CGFloat(dt) / 0.45)
+        cameraFacing += (cameraWantFace - cameraFacing) * faceBlend
         let target = cameraTarget(for: b)
         let s = CGFloat(tuning.cameraSmooth)
         cameraFocus.x += (target.x - cameraFocus.x) * s
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
-        // Hero screen-x fraction (0 = left edge, 1 = right) for the smoke framing gate.
-        // Sample only when facing right AND camera has settled — mid-turn lag spiked max to ~60%.
+        // Hero screen-x every live frame. Min/max accumulate while the camera lead is
+        // right-biased (no settled / facing-right skip windows that hid ~70% spikes).
         let banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
         let heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
-        let settled = abs(cameraFocus.x - target.x) < viewW * 0.05
         if case .playing = sim.state.phase,
            !runPaused,
            resumeCountdown <= 0,
-           sim.state.elapsed > 1.0,
-           b.facing > 0,
-           cameraFacing > 0.9,
-           settled
+           sim.state.elapsed > 1.0
         {
             smokeStatus.heroX = heroFrac
-            smokeStatus.heroXMin = min(smokeStatus.heroXMin, heroFrac)
-            smokeStatus.heroXMax = max(smokeStatus.heroXMax, heroFrac)
+            if cameraFacing > 0 {
+                smokeStatus.heroXMin = min(smokeStatus.heroXMin, heroFrac)
+                smokeStatus.heroXMax = max(smokeStatus.heroXMax, heroFrac)
+            }
         }
         // Slow parallax — keep plates covering the view (tiled in buildParallax).
         parallaxFar.position = CGPoint(x: cameraFocus.x * 0.88, y: cameraFocus.y * 0.96)
@@ -3226,7 +3344,27 @@ public final class HeistScene: SKScene {
         smokeStatus.worldTX = wtx
         smokeStatus.worldTY = wty
         smokeStatus.worldTXMax = max(smokeStatus.worldTXMax, wtx)
+        smokeStatus.stallSec = smoke.progressStallSeconds
         smokeStatus.write()
+    }
+
+    /// Count every smoke-only state edit so CI can report honest forced-fallback totals.
+    private func writeSmokeForcedDetailIfNeeded() {
+        let now = CACurrentMediaTime()
+        guard now - smokeLastForcedWrite >= 0.5 else { return }
+        smokeLastForcedWrite = now
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let url = docs.appendingPathComponent("smoke_forced_detail.txt")
+        let body = """
+        mask_pin_seconds=\(String(format: "%.1f", smokeMaskPinSeconds))
+        mask_force_off_count=\(smokeMaskForceOffCount)
+        mask_force_off_seconds=\(String(format: "%.1f", smokeMaskForceOffSeconds))
+        soft_revive_count=\(smokeSoftReviveCount)
+        pre_midrun_mask_cancel=\(smokePreMidrunMaskCancelCount)
+        invuln_topup_count=\(smokeInvulnTopUpCount)
+        """
+        try? body.write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// CI gate: any visible SKLabel whose text matches the ban list fails smoke.

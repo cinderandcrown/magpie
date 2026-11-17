@@ -600,20 +600,22 @@ public enum ArtCatalog {
             glow.position = CGPoint(x: x, y: CGFloat((i % 4) * 24) - 8)
             glow.color = accent
             glow.colorBlendFactor = 1
-            glow.alpha = 0.7
+            glow.alpha = 0.55
             glow.blendMode = .add
             glow.zPosition = 0
             root.addChild(glow)
 
-            if i % 2 == 0 {
-                let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 0.95, height: h * 0.85))
-                plate.name = "storefrontPlate"
-                plate.position = glow.position
-                plate.alpha = 0.9
-                plate.blendMode = .alpha
-                plate.zPosition = 0.5
-                root.addChild(plate)
-            }
+            // Dark backing only — never flat hot-pink slabs.
+            let backing = SKSpriteNode(
+                color: SKColor(red: 0.08, green: 0.05, blue: 0.12, alpha: 1),
+                size: CGSize(width: w * 1.02, height: h * 1.05)
+            )
+            backing.name = "storefrontBacking"
+            backing.position = glow.position
+            backing.alpha = 0.85
+            backing.zPosition = 0.4
+            root.addChild(backing)
+
             let sign: SKSpriteNode
             if !textures.isEmpty {
                 let tex = textures[i % textures.count]
@@ -625,14 +627,13 @@ public enum ArtCatalog {
             sign.position = glow.position
             sign.alpha = 1
             sign.zPosition = 1
-            // Magenta bias so the palette gate can't pass on teal alone.
             if i % 2 == 0 {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.55
+                sign.colorBlendFactor = 0.35
                 sign.blendMode = .add
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.3
+                sign.colorBlendFactor = 0.25
                 sign.blendMode = .add
             }
             root.addChild(sign)
@@ -652,81 +653,82 @@ public enum ArtCatalog {
         return root
     }
 
-    /// World-layer storefront crops along the play corridor (visible in midrun stills, not only parallax).
+    /// World-layer storefront crops along the play corridor (real sign art + soft glow; no solid pink plates).
     public static func worldStorefrontSigns(mapWidth: CGFloat, tile: CGFloat) -> SKNode {
         let root = SKNode()
         root.name = "worldStorefronts"
         root.zPosition = 2.8
         let textures = loadStorefrontSignTextures()
         let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
-        // Neon Docks street deck sits near tile y≈7. Signs MUST hang ABOVE that deck
-        // (y≈9–12) so the midrun crop (screen 18–62% / storefront 12–48%) sees opaque
-        // magenta — earlier y≈3.6 buried plates inside the ground slab.
-        let count = max(16, textures.count + 6)
+        // Neon Docks street deck sits near tile y≈7. Hang a handful of real signs above it.
+        // Never paint opaque hot-pink slabs to chase a CI magenta threshold.
+        let count = min(6, max(4, textures.isEmpty ? 4 : textures.count))
+        let span = mapWidth * 0.45
+        let startX = tile * 16
         for i in 0..<count {
-            // Pack denser through the pre-midrun patrol band (worldTX ~18–36 → x≈tile*18…36).
-            let x = tile * 12 + CGFloat(i) * (tile * 3.2)
-            guard x < mapWidth * 0.72 else { break }
-            let w = tile * (3.2 + CGFloat(i % 3) * 0.55)
-            let h = tile * (1.35 + CGFloat(i % 2) * 0.4)
+            let x = startX + CGFloat(i) * (span / CGFloat(max(count - 1, 1)))
+            guard x < mapWidth * 0.7 else { break }
+            let w = tile * (2.4 + CGFloat(i % 3) * 0.35)
+            let h = tile * (1.05 + CGFloat(i % 2) * 0.25)
             let accent = accents[i % accents.count]
-            let y = tile * (9.2 + CGFloat(i % 4) * 0.65)
+            let y = tile * (9.4 + CGFloat(i % 3) * 0.45)
 
-            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.7, height: h * 2.2))
+            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.55, height: h * 2.0))
             glow.name = "storefrontGlow"
             glow.position = CGPoint(x: x, y: y)
             glow.color = accent
             glow.colorBlendFactor = 1
-            glow.alpha = 0.85
+            glow.alpha = 0.5
             glow.blendMode = .add
             glow.zPosition = 0
             root.addChild(glow)
 
-            // Opaque neon plate so midrun palette still reads on dark brick (add-blend alone washes out).
-            // Bias magenta: every sign gets a solid pink plate (CI crop needs ≥0.3%).
-            let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 1.2, height: h * 1.1))
-            plate.name = "storefrontPlate"
-            plate.position = CGPoint(x: x, y: y)
-            plate.alpha = 1.0
-            plate.blendMode = .alpha
-            plate.zPosition = 0.5
-            root.addChild(plate)
+            // Subtle dark plate behind the crop — not a flat magenta fill.
+            let backing = SKSpriteNode(
+                color: SKColor(red: 0.07, green: 0.04, blue: 0.11, alpha: 1),
+                size: CGSize(width: w * 1.05, height: h * 1.08)
+            )
+            backing.name = "storefrontBacking"
+            backing.position = CGPoint(x: x, y: y)
+            backing.alpha = 0.9
+            backing.zPosition = 0.4
+            root.addChild(backing)
 
             let sign: SKSpriteNode
             if !textures.isEmpty {
                 sign = SKSpriteNode(texture: textures[i % textures.count], size: CGSize(width: w, height: h))
             } else {
-                sign = SKSpriteNode(color: accent, size: CGSize(width: w, height: h))
+                // Fallback: thin neon rim only (not a solid slab).
+                sign = SKSpriteNode(color: accent.withAlphaComponent(0.55), size: CGSize(width: w, height: h * 0.35))
             }
             sign.name = "storefrontSign"
             sign.position = CGPoint(x: x, y: y)
             sign.zPosition = 1
             if i % 2 == 0 {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.55
+                sign.colorBlendFactor = 0.28
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.3
+                sign.colorBlendFactor = 0.22
             }
             sign.blendMode = .add
             root.addChild(sign)
 
-            // Wet-floor reflection puddle on the street deck under the sign.
-            let puddle = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.1, height: tile * 0.4))
+            let puddle = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 0.9, height: tile * 0.32))
             puddle.name = "storefrontWet"
             puddle.position = CGPoint(x: x, y: tile * 7.35)
             puddle.color = accent
             puddle.colorBlendFactor = 1
-            puddle.alpha = 0.4
+            puddle.alpha = 0.28
             puddle.blendMode = .add
             puddle.zPosition = -1
             root.addChild(puddle)
 
-            if i % 3 == 0 {
+            if i % 2 == 0 {
                 sign.run(SKAction.repeatForever(SKAction.sequence([
-                    SKAction.fadeAlpha(to: 0.55, duration: 0.1),
-                    SKAction.fadeAlpha(to: 1.0, duration: 0.14),
-                    SKAction.wait(forDuration: 2.4 + Double(i) * 0.3),
+                    SKAction.fadeAlpha(to: 0.65, duration: 0.12),
+                    SKAction.fadeAlpha(to: 1.0, duration: 0.16),
+                    SKAction.wait(forDuration: 2.6 + Double(i) * 0.35),
                 ])))
             }
         }
@@ -895,7 +897,7 @@ public enum TitleArt {
     public static let displayTitle = "The Neon City Bandit"
     public static let fallbackWordmark = "THE NEON CITY\nBANDIT"
     /// In-game credits. Spriterrific steampunk-neon bandit / MOP sheets owned by Cinder & Crown.
-    public static let assetCredits = "Art: Spriterrific (Cinder & Crown) · Logo: B1 Holo Glass"
+    public static let assetCredits = "Art: Spriterrific (Cinder & Crown)"
 }
 
 /// Bandit raccoon — Spriterrific sheets (west-facing); feet sit IN the ground art.

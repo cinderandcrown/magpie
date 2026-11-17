@@ -2,6 +2,15 @@
 
 Every choice that changes the plan, with the reason. Newest first.
 
+## 2026-11-16 — Cinder & Crown publisher splash
+
+| Decision | Reason |
+| --- | --- |
+| Cold-launch studio ident before the cyberpunk title: mute logo + **"Cinder & Crown Creative Presents"** | Nicholas: publisher splash (studio ident). |
+| ~2 s, tap-to-skip, Reduce Motion, mute-respecting ember whoosh; preload continues behind it | Must not delay first frame or cheat freeze budgets. |
+| Smoke artifact `00-publisher-ident.png` | Proof the still ships in CI. |
+
+
 ## 2026-11-16 — Product name: The Neon City Bandit
 
 | Decision | Reason |

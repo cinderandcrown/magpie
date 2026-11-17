@@ -5,7 +5,7 @@ import Foundation
 /// Written to the app Documents directory so `simulator_smoke.sh` can assert aliveness / FPS / milestones.
 public struct SmokeStatus: Equatable, Sendable {
     public var phase: String
-    /// `loading` while atlases warm; `ready` once title chrome is on screen.
+    /// `loading` while atlases warm; `ident` during publisher splash; `ready` once title chrome is on screen.
     public var boot: String
     public var fpsAvg: Double
     public var fpsSamples: Int
@@ -47,6 +47,8 @@ public struct SmokeStatus: Equatable, Sendable {
     public var titleOk: Bool
     /// Bandit is on the rooftop route (above street deck).
     public var roof: Bool
+    /// Seconds of live play with unchanged worldTX (soft-lock detector).
+    public var stallSec: Double
 
     public init(
         phase: String = "title",
@@ -75,7 +77,8 @@ public struct SmokeStatus: Equatable, Sendable {
         worldTY: Int = 0,
         worldTXMax: Int = 0,
         titleOk: Bool = false,
-        roof: Bool = false
+        roof: Bool = false,
+        stallSec: Double = 0
     ) {
         self.phase = phase
         self.boot = boot
@@ -104,15 +107,16 @@ public struct SmokeStatus: Equatable, Sendable {
         self.worldTXMax = worldTXMax
         self.titleOk = titleOk
         self.roof = roof
+        self.stallSec = stallSec
     }
 
     public var line: String {
         String(
-            format: "phase=%@ boot=%@ fps=%.1f samples=%d maxFrameMs=%.0f stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d paused=%d heroX=%.3f heroXMin=%.3f heroXMax=%.3f worldTX=%d worldTY=%d worldTXMax=%d titleOk=%d roof=%d",
+            format: "phase=%@ boot=%@ fps=%.1f samples=%d maxFrameMs=%.0f stomps=%d shinies=%d mask=%d maskOn=%d died=%d won=%d elapsed=%.1f wallElapsed=%.1f debugLabels=%d combo=%d medals=%d map=%d daily=%d paused=%d heroX=%.3f heroXMin=%.3f heroXMax=%.3f worldTX=%d worldTY=%d worldTXMax=%d titleOk=%d roof=%d stallSec=%.1f",
             phase, boot, fpsAvg, fpsSamples, maxFrameMs, stomps, shinies,
             mask ? 1 : 0, maskOn ? 1 : 0, died ? 1 : 0, won ? 1 : 0, elapsed, wallElapsed, debugLabels,
             combo, medals, map ? 1 : 0, daily ? 1 : 0, paused ? 1 : 0,
-            heroX, heroXMin, heroXMax, worldTX, worldTY, worldTXMax, titleOk ? 1 : 0, roof ? 1 : 0
+            heroX, heroXMin, heroXMax, worldTX, worldTY, worldTXMax, titleOk ? 1 : 0, roof ? 1 : 0, stallSec
         )
     }
 

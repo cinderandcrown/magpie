@@ -12,4 +12,7 @@ enum ProductIdentity {
 
     /// Home-screen label (`CFBundleDisplayName`) — shorter so iOS does not truncate.
     static let homeScreenTitle = "Neon City Bandit"
+
+    /// Publisher splash line (studio ident). Exact wording — ampersand required.
+    static let publisherPresents = "Cinder & Crown Creative Presents"
 }

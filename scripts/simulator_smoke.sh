@@ -20,6 +20,9 @@ MIN_VIDEO_SECS="${SMOKE_MIN_VIDEO_SECS:-60}"
 # Harness force counters — forced paths unblock CI but never count as feature proof.
 FORCED_MASK=0
 FORCED_FAIL=0
+# Live-play stall tracker (worldTX unchanged >8s → fail).
+STALL_LAST_TX=""
+STALL_LAST_CHANGE_EPOCH=0
 
 mkdir -p "$OUT_DIR"
 
@@ -35,8 +38,86 @@ arm_force() {
   write_flag "$flag"
 }
 
+# Ask the app to flush smoke_status.txt now (screenshot-moment status).
+snap_status() {
+  write_flag "smoke_snap_status.txt" || true
+  sleep 0.12
+}
+
+# Fail if live play has made no worldTX progress for >8s (outside pause/title).
+check_no_progress() {
+  local status="$1"
+  [[ "$status" == *"phase=playing"* ]] || return 0
+  [[ "$status" == *"paused=1"* ]] && return 0
+  local tx
+  tx="$(STATUS_LINE="$status" python3 -c 'import os,re; m=re.search(r"worldTX=([0-9-]+)", os.environ["STATUS_LINE"]); print(m.group(1) if m else "")')"
+  [[ -n "$tx" ]] || return 0
+  local now
+  now="$(date +%s)"
+  if [[ "$tx" != "$STALL_LAST_TX" ]]; then
+    STALL_LAST_TX="$tx"
+    STALL_LAST_CHANGE_EPOCH="$now"
+    return 0
+  fi
+  if [[ "$STALL_LAST_CHANGE_EPOCH" -gt 0 ]] && (( now - STALL_LAST_CHANGE_EPOCH > 8 )); then
+    echo "FAIL: no worldTX progress for >8s (stuck at worldTX=$tx status=$status)" >&2
+    shot "$OUT_DIR/fail-no-progress.png" || true
+    exit 1
+  fi
+}
+
+ensure_pillow() {
+  if [[ -n "${PALETTE_PY:-}" ]] && "$PALETTE_PY" -c 'import PIL' 2>/dev/null; then
+    return 0
+  fi
+  PALETTE_PY="$(command -v python3)"
+  PALETTE_VENV="${TMPDIR:-/tmp}/magpie-smoke-palette-venv"
+  if ! "$PALETTE_PY" -c 'import PIL' 2>/dev/null; then
+    if "$PALETTE_PY" -m pip install -q --user --break-system-packages pillow 2>/tmp/magpie-pillow.err; then
+      :
+    elif python3 -m venv "$PALETTE_VENV" 2>/tmp/magpie-venv.err; then
+      "$PALETTE_VENV/bin/pip" install -q pillow
+      PALETTE_PY="$PALETTE_VENV/bin/python"
+    else
+      echo "FAIL: could not install Pillow for $($PALETTE_PY -V 2>&1)" >&2
+      cat /tmp/magpie-pillow.err /tmp/magpie-venv.err 2>/dev/null || true
+      exit 1
+    fi
+  fi
+  if ! "$PALETTE_PY" -c 'import PIL' 2>/dev/null; then
+    echo "FAIL: Pillow still missing for $PALETTE_PY" >&2
+    exit 1
+  fi
+  export PALETTE_PY
+  echo "OK Pillow via $PALETTE_PY ($("$PALETTE_PY" -V 2>&1))"
+}
+
+# Mean absolute pixel difference (0–255). Exit 0 if near-identical (mean < 5).
+near_identical() {
+  local a="$1" b="$2"
+  ensure_pillow
+  "$PALETTE_PY" - "$a" "$b" <<'PY'
+import sys
+from PIL import Image, ImageChops
+a = Image.open(sys.argv[1]).convert("RGB")
+b = Image.open(sys.argv[2]).convert("RGB")
+if a.size != b.size:
+    b = b.resize(a.size)
+w, h = a.size
+box = (int(w*0.12), int(h*0.18), int(w*0.88), int(h*0.82))
+a, b = a.crop(box), b.crop(box)
+diff = ImageChops.difference(a, b)
+hist = diff.convert("L").histogram()
+n = sum(hist) or 1
+mean = sum(i * hist[i] for i in range(256)) / n
+print(f"near_identical mean={mean:.2f}/255")
+sys.exit(0 if mean < 5.0 else 1)
+PY
+}
+
 shot() {
   local out="$1"
+  snap_status
   if xcrun simctl io "$DEVICE" screenshot --display="$DISPLAY_ID" "$out" 2>/tmp/sim-shot.err; then
     return 0
   fi
@@ -102,6 +183,7 @@ wait_status() {
   while true; do
     require_app "$label"
     status="$(read_status)"
+    check_no_progress "$status"
     if STATUS_LINE="$status" python3 -c "$pypred"; then
       echo "ready@$label: $status"
       return 0
@@ -171,21 +253,37 @@ launch_smoke() {
       "$docs/smoke_show_map.txt" \
       "$docs/smoke_map_ok.txt" \
       "$docs/smoke_show_daily.txt" \
-      "$docs/smoke_daily_ok.txt"
+      "$docs/smoke_daily_ok.txt" \
+      "$docs/smoke_prefer_roof.txt" \
+      "$docs/smoke_force_mask.txt" \
+      "$docs/smoke_force_fail.txt" \
+      "$docs/smoke_capture_mask.txt" \
+      "$docs/smoke_snap_status.txt" \
+      "$docs/smoke_forced_detail.txt"
   fi
   xcrun simctl launch "$DEVICE" "$BUNDLE_ID" -SmokeAutoplay
 }
 
-# Capture 01-title when phase=title AND boot=ready (title chrome on screen).
+# Capture 00-publisher-ident during boot=ident, then 01-title when boot=ready.
 # Early boot=loading status lets us attach during atlas warm; snap only when ready.
 # Relaunch once if we somehow attach after autoplay already advanced.
 TITLE_SHOT=0
+IDENT_SHOT=0
 for attempt in 1 2; do
   launch_smoke
   for _ in $(seq 1 900); do
     status="$(read_status)"
     if [[ -z "$status" ]]; then
       sleep 0.2
+      continue
+    fi
+    if [[ "$IDENT_SHOT" -eq 0 && "$status" == *"boot=ident"* ]]; then
+      require_app "launch"
+      # Hold so logo + "Cinder & Crown Creative Presents" are on screen.
+      sleep 0.55
+      shot "$OUT_DIR/00-publisher-ident.png"
+      IDENT_SHOT=1
+      echo "ready@ident: $status"
       continue
     fi
     if [[ "$status" == *"phase=title"* && "$status" == *"boot=ready"* && "$status" == *"titleOk=1"* ]]; then
@@ -213,9 +311,9 @@ for attempt in 1 2; do
       write_flag "smoke_proceed.txt"
       break 2
     fi
-    if [[ "$status" == *"phase=title"* && "$status" == *"boot=loading"* ]]; then
-      # Still warming atlases — keep waiting.
-      sleep 0.25
+    if [[ "$status" == *"phase=title"* && ( "$status" == *"boot=loading"* || "$status" == *"boot=ident"* ) ]]; then
+      # Still warming atlases or playing publisher ident — keep waiting.
+      sleep 0.15
       continue
     fi
     # Attached after autoplay already advanced — relaunch for a clean title beat.
@@ -227,6 +325,11 @@ if [[ "$TITLE_SHOT" -eq 0 ]]; then
   echo "FAIL: could not capture phase=title boot=ready titleOk=1 after relaunch" >&2
   shot "$OUT_DIR/fail-title-timeout.png" || true
   read_status >&2 || true
+  exit 1
+fi
+if [[ "$IDENT_SHOT" -eq 0 ]]; then
+  echo "FAIL: missed publisher ident still (boot=ident)" >&2
+  shot "$OUT_DIR/fail-ident-missed.png" || true
   exit 1
 fi
 require_app "launch"
@@ -277,25 +380,33 @@ shot "$OUT_DIR/02r-rooftop-route.png" || true
 sleep 3
 rm -f "$(data_container)/Documents/smoke_prefer_roof.txt" 2>/dev/null || true
 
-# 03 — real MOP stomp (before pause/bg so Mask Mode still has timer headroom for 04).
-# Accept mask/combo as proof when early stomps happened before midrun_ok started counting.
-wait_status_strict "stomp" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); c=re.search(r"combo=([0-9]+)", s); ok_st=(m and int(m.group(1))>=1); ok_mask=("mask=1" in s and c and int(c.group(1))>=1); sys.exit(0 if (ok_st or ok_mask) else 1)' 120
+# 03 — real MOP stomp: require NEW stomps during this beat (not sticky combo).
+STOMP_BASE="$(STATUS_LINE="$(read_status)" python3 -c 'import os,re; m=re.search(r"stomps=([0-9]+)", os.environ["STATUS_LINE"]); print(int(m.group(1)) if m else 0)')"
+export STOMP_BASE
+wait_status_strict "stomp" "import os,re,sys; s=os.environ['STATUS_LINE']; m=re.search(r'stomps=([0-9]+)', s); base=int(os.environ.get('STOMP_BASE','0')); sys.exit(0 if (m and int(m.group(1))>=base+1 and 'phase=playing' in s) else 1)" 120
 shot "$OUT_DIR/03-mop-stomp.png"
 
-# 03b — three consecutive chained stomps (Nick feel pass).
-# Midrun hold ignores pre-hunt stomps in the stomps= counter, so accept combo>=3
-# (Mask threshold) as proof of a 3-chain even when stomps= only shows post-midrun hits.
-wait_status_strict "stomp-chain" 'import os,re,sys; s=os.environ["STATUS_LINE"]; m=re.search(r"stomps=([0-9]+)", s); c=re.search(r"combo=([0-9]+)", s); ok_st=(m and int(m.group(1))>=3); ok_combo=(c and int(c.group(1))>=3); sys.exit(0 if ("phase=playing" in s and (ok_st or ok_combo)) else 1)' 120
+# 03b — three NEW stomps during this beat (not sticky combo high-water).
+CHAIN_BASE="$(STATUS_LINE="$(read_status)" python3 -c 'import os,re; m=re.search(r"stomps=([0-9]+)", os.environ["STATUS_LINE"]); print(int(m.group(1)) if m else 0)')"
+export CHAIN_BASE
+wait_status_strict "stomp-chain" "import os,re,sys; s=os.environ['STATUS_LINE']; m=re.search(r'stomps=([0-9]+)', s); base=int(os.environ.get('CHAIN_BASE','0')); sys.exit(0 if ('phase=playing' in s and m and int(m.group(1))>=base+3) else 1)" 120
 shot "$OUT_DIR/03b-stomp-chain.png"
+# Fail if 03b is near-identical to 03 (stuck hero / no chain).
+if near_identical "$OUT_DIR/03-mop-stomp.png" "$OUT_DIR/03b-stomp-chain.png"; then
+  echo "FAIL: 03b-stomp-chain near-identical to 03-mop-stomp (no fresh chain)" >&2
+  exit 1
+fi
+echo "OK stomp-chain differs from single stomp"
 
 # 04 — Mask Mode while still playing (requires live maskOn=1, not sticky mask=).
-# Capture BEFORE pause/bg beats — those burn wall-clock while the sim keeps draining maskTimer.
-# Soft path: if the bot can't re-chain after midrun/rooftop, arm smoke_force_mask.txt.
+# Only pin Mask while capturing (smoke_capture_mask.txt) — not during stomp-chain.
+write_flag "smoke_capture_mask.txt"
 MASK_WAIT_START="$(date +%s)"
 MASK_FORCED=0
 while true; do
   require_app "mask"
   status="$(read_status)"
+  check_no_progress "$status"
   if [[ "$status" == *"maskOn=1"* && "$status" == *"phase=playing"* ]]; then
     echo "ready@mask: $status"
     break
@@ -322,6 +433,7 @@ for _try in $(seq 1 40); do
   fi
   sleep 0.2
   shot "$OUT_DIR/04-mask-mode.png"
+  snap_status
   status="$(read_status)"
   if [[ "$status" == *"maskOn=1"* && "$status" == *"phase=playing"* ]]; then
     echo "ready@mask-shot: $status"
@@ -339,18 +451,18 @@ if [[ "$MASK_SHOT_OK" -ne 1 ]]; then
   exit 1
 fi
 write_flag "smoke_mask_ok.txt"
-rm -f "$(data_container)/Documents/smoke_force_mask.txt" 2>/dev/null || true
+rm -f "$(data_container)/Documents/smoke_force_mask.txt" "$(data_container)/Documents/smoke_capture_mask.txt" 2>/dev/null || true
 
-# 04b — Second Mask entry (re-entry sting + visuals after first Mask ends).
-# Soft-timeout: first Mask already proved the beat; do not hard-fail the whole smoke on re-entry lag
-# (Bandit can get stuck briefly on latch-tower one-ways above street MOPs).
-wait_status "mask-off" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=0" in s and "phase=playing" in s) else 1)' 90 || true
+# 04b — Second Mask entry after natural drop (no force-off). Snap status at shot time.
+wait_status_strict "mask-off" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("maskOn=0" in s and "phase=playing" in s) else 1)' 90
+write_flag "smoke_capture_mask.txt"
 MASK2_OK=0
 MASK2_FORCED=0
 MASK2_WAIT_START="$(date +%s)"
 while true; do
   require_app "mask-2"
   status="$(read_status)"
+  check_no_progress "$status"
   if [[ "$status" == *"maskOn=1"* && "$status" == *"phase=playing"* ]]; then
     echo "ready@mask-2: $status"
     MASK2_OK=1
@@ -363,20 +475,15 @@ while true; do
     MASK2_FORCED=1
   fi
   if (( now - MASK2_WAIT_START >= 55 )); then
-    echo "WARN: mask-2 gave up (status=$status) — first Mask already captured; continuing" >&2
+    echo "FAIL: mask-2 timeout (status=$status) — no placeholder still" >&2
     shot "$OUT_DIR/fail-mask-2.png" || true
-    break
+    exit 1
   fi
   sleep 0.35
 done
-if [[ "$MASK2_OK" -eq 1 ]]; then
-  shot "$OUT_DIR/04b-mask-mode-2.png"
-else
-  # Keep a placeholder still so the artifact set stays complete for the report.
-  shot "$OUT_DIR/04b-mask-mode-2.png" || true
-fi
+shot "$OUT_DIR/04b-mask-mode-2.png"
 write_flag "smoke_mask2_ok.txt"
-rm -f "$(data_container)/Documents/smoke_force_mask.txt" 2>/dev/null || true
+rm -f "$(data_container)/Documents/smoke_force_mask.txt" "$(data_container)/Documents/smoke_capture_mask.txt" 2>/dev/null || true
 
 # 02b — Pause menu (after Mask shot so the LED beat is not racing the timer)
 write_flag "smoke_show_pause.txt"
@@ -709,49 +816,58 @@ if size > limit:
 print(f"OK video size {size/1024/1024:.1f} MB + 540p copy")
 PY
 
-# Palette gate: midrun must contain bright magenta + teal neon (not dim gray placeholders).
-# Install Pillow into the same python3 that runs smoke checks (intro panels, gates, predicates).
-PALETTE_PY="$(command -v python3)"
-PALETTE_VENV="${TMPDIR:-/tmp}/magpie-smoke-palette-venv"
-if ! "$PALETTE_PY" -c 'import PIL' 2>/dev/null; then
-  if "$PALETTE_PY" -m pip install -q --user --break-system-packages pillow 2>/tmp/magpie-pillow.err; then
-    :
-  elif python3 -m venv "$PALETTE_VENV" 2>/tmp/magpie-venv.err; then
-    "$PALETTE_VENV/bin/pip" install -q pillow
-    PALETTE_PY="$PALETTE_VENV/bin/python"
-  else
-    echo "FAIL: could not install Pillow for $($PALETTE_PY -V 2>&1)" >&2
-    cat /tmp/magpie-pillow.err /tmp/magpie-venv.err 2>/dev/null || true
-    exit 1
-  fi
-fi
-if ! "$PALETTE_PY" -c 'import PIL' 2>/dev/null; then
-  echo "FAIL: Pillow still missing for $PALETTE_PY" >&2
-  exit 1
-fi
-echo "OK Pillow via $PALETTE_PY ($("$PALETTE_PY" -V 2>&1))"
+# Palette / art gates — real neon, not flat hot-pink slabs chasing a threshold.
+ensure_pillow
 "$PALETTE_PY" - "$OUT_DIR/02-midrun.png" "Assets/Generated/backgrounds/mid_buildings.png" "$OUT_DIR/palette-side-by-side.png" "$OUT_DIR/03-mop-stomp.png" "$OUT_DIR/04-mask-mode.png" <<'PY'
 import sys
+from collections import Counter
 from PIL import Image
 
 midrun = Image.open(sys.argv[1]).convert("RGB")
 ref = Image.open(sys.argv[2]).convert("RGB")
 stomp = Image.open(sys.argv[4]).convert("RGB")
 mask = Image.open(sys.argv[5]).convert("RGB")
-# Sample center crop of gameplay (skip HUD/controls)
+# Full-frame art honesty (not a tuned crop).
 w, h = midrun.size
+full = list(midrun.getdata())
+n_full = max(1, len(full))
+
+def is_mag(p):
+    r, g, b = p
+    return r > 160 and b > 100 and r > g + 30
+
+def is_teal(p):
+    r, g, b = p
+    return b > 140 and g > 120 and b > r + 20
+
+mag_full = sum(1 for p in full if is_mag(p))
+teal_full = sum(1 for p in full if is_teal(p))
+print(f"palette midrun magenta={mag_full/n_full:.3%} teal={teal_full/n_full:.3%} neon={(mag_full+teal_full)/n_full:.3%}")
+if mag_full / n_full < 0.003:
+    raise SystemExit(f"FAIL: midrun magenta={mag_full/n_full:.3%} < 0.3%")
+if mag_full / n_full > 0.06:
+    raise SystemExit(f"FAIL: midrun magenta={mag_full/n_full:.3%} > 6% (art overtuned / flat slabs?)")
+if teal_full / n_full < 0.005:
+    raise SystemExit(f"FAIL: midrun teal={teal_full/n_full:.3%} < 0.5%")
+
+# Flat / slab magenta: solid untextured plates (quantize to 8-level bins).
+mag_px = [p for p in full if is_mag(p)]
+bins = Counter((r // 8 * 8, g // 8 * 8, b // 8 * 8) for r, g, b in mag_px)
+largest_slab = bins.most_common(1)[0][1] if bins else 0
+# Flat = sum of oversized near-uniform bins (each >0.15% of frame).
+flat = sum(cnt for _, cnt in bins.items() if cnt / n_full > 0.0015)
+print(f"art flat_magenta={flat/n_full:.3%} largest_slab={largest_slab/n_full:.3%}")
+if flat / n_full >= 0.005:
+    raise SystemExit(f"FAIL: flat magenta={flat/n_full:.3%} >= 0.5% of screen (solid plates?)")
+if largest_slab / n_full >= 0.003:
+    raise SystemExit(f"FAIL: single magenta slab={largest_slab/n_full:.3%} >= 0.3% of screen")
+
+# Center crop still used for readability checks below.
 crop = midrun.crop((int(w*0.1), int(h*0.18), int(w*0.9), int(h*0.62)))
 pixels = list(crop.getdata())
 n = len(pixels)
-# Some neon must be present (not a flat grey alley) — not a brightness % quota.
-mag = sum(1 for r,g,b in pixels if r > 160 and b > 100 and r > g + 30)
-teal = sum(1 for r,g,b in pixels if b > 140 and g > 120 and b > r + 20)
-neon = mag + teal
-print(f"palette midrun magenta={mag/n:.3%} teal={teal/n:.3%} neon={neon/n:.3%}")
-if mag / n < 0.003:
-    raise SystemExit(f"FAIL: midrun magenta={mag/n:.3%} < 0.3% (teal-only alley?)")
-if teal / n < 0.005:
-    raise SystemExit(f"FAIL: midrun teal={teal/n:.3%} < 0.5%")
+mag = sum(1 for r,g,b in pixels if is_mag((r,g,b)))
+teal = sum(1 for r,g,b in pixels if is_teal((r,g,b)))
 
 # Readability: sprites must pop against the local playfield — not mean(sky) vs mean(char),
 # which both sit in the same dark alley mid-tones after neon lift.
@@ -854,6 +970,7 @@ print(f"OK monotonic wallElapsed samples={len(vals)} last={vals[-1]:.1f}s")
 PY
 
 rm -f "$OUT_DIR/smoke-30s.mp4"
+cp -f "$OUT_DIR/00-publisher-ident.png" "$OUT_DIR/00-ident.png"
 cp -f "$OUT_DIR/01-title.png" "$OUT_DIR/01-launch.png"
 cp -f "$OUT_DIR/02-midrun.png" "$OUT_DIR/02-mid.png"
 cp -f "$OUT_DIR/06-results.png" "$OUT_DIR/03-end.png"
@@ -889,6 +1006,8 @@ if [[ -f "$EVENTS_SRC" ]]; then
 fi
 
 REQUIRED=(
+  00-publisher-ident.png
+  00-ident.png
   01-title.png
   02-midrun.png
   02b-pause-menu.png
@@ -946,12 +1065,13 @@ if (( MEDALS < 1 || MAP < 1 || DAILY < 1 || COMBO < 1 )); then
   exit 1
 fi
 
-# Land SFX must only fire on air→ground (not every grounded frame). Fail if >3/s over live play.
-# Use audio-log live-play span (not wall timer which includes menus / holds).
+# Land rate over live play only; double-land on raw Sim events (before audible debounce).
 python3 - "$OUT_DIR/smoke_audio_events.txt" <<'PY'
 import sys
 events_path = sys.argv[1]
-lands = []
+raw_lands = []
+sfx_lands = []
+play_spans = []  # (t0, t1) inferred from gameplay sfx clusters
 t_min = None
 t_max = None
 with open(events_path, encoding="utf-8", errors="replace") as f:
@@ -963,27 +1083,32 @@ with open(events_path, encoding="utf-8", errors="replace") as f:
             t = float(parts[0])
         except ValueError:
             continue
-        t_min = t if t_min is None else min(t_min, t)
-        t_max = t if t_max is None else max(t_max, t)
-        if "sfx" in parts and "land" in line.lower():
-            lands.append(t)
+        low = line.lower()
+        # Live-play markers: gameplay sfx (not music/ui/ident).
+        if any(k in low for k in ("sim land", "sfx land", "sfx jump", "sfx stomp", "sfx pounce", "mask_mode")):
+            t_min = t if t_min is None else min(t_min, t)
+            t_max = t if t_max is None else max(t_max, t)
+        if "sim land" in low:
+            raw_lands.append(t)
+        if "sfx" in parts and "land" in low and "sim land" not in low:
+            sfx_lands.append(t)
 play_s = max(1.0, (t_max - t_min) if t_min is not None and t_max is not None else 60.0)
-rate = len(lands) / play_s
-print(f"land_sfx count={len(lands)} play_s={play_s:.1f} rate={rate:.2f}/s")
+rate = len(sfx_lands) / play_s
+print(f"land_sfx count={len(sfx_lands)} play_s={play_s:.1f} rate={rate:.2f}/s raw_sim_lands={len(raw_lands)}")
 if rate > 3.0:
     raise SystemExit(f"FAIL: land SFX {rate:.2f}/s > 3/s (land-every-frame regression?)")
-# Double-land detector: two lands < 100 ms apart fail (pounce whoosh→land→land).
+# Double-land on RAW sim events (debounce must not hide a real double emit).
 dupes = 0
-for i in range(1, len(lands)):
-    if lands[i] - lands[i - 1] < 0.100:
+for i in range(1, len(raw_lands)):
+    if raw_lands[i] - raw_lands[i - 1] < 0.100:
         dupes += 1
-print(f"land_sfx doubles_lt_100ms={dupes}")
+print(f"sim_land doubles_lt_100ms={dupes}")
 if dupes > 0:
-    raise SystemExit(f"FAIL: {dupes} land SFX pairs < 100 ms apart (one airborne beat ≠ one landing)")
+    raise SystemExit(f"FAIL: {dupes} raw sim land pairs < 100 ms apart (one airborne beat ≠ one landing)")
 print("OK land SFX rate")
 PY
 
-# Hero framing: while facing right, screen-x must stay in 20–45% during live play.
+# Hero framing: every live frame sample must stay in 20–45%.
 HERO_STATUS="$(read_status)"
 STATUS_LINE="$HERO_STATUS" python3 - <<'PY'
 import os, re, sys
@@ -1071,10 +1196,34 @@ if bright < 0.05:
 print("OK 04 differs from 05")
 PY
 
-echo "SMOKE_FORCED forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL"
+# Merge app-side smoke-only state edits into the forced-fallback report.
+DETAIL_SRC="$(data_container)/Documents/smoke_forced_detail.txt"
+MASK_PIN_S=0
+MASK_FORCE_OFF_N=0
+MASK_FORCE_OFF_S=0
+SOFT_REVIVE_N=0
+PRE_MID_CANCEL=0
+INVULN_TOPUP=0
+if [[ -f "$DETAIL_SRC" ]]; then
+  cp -f "$DETAIL_SRC" "$OUT_DIR/smoke_forced_detail.txt" || true
+  MASK_PIN_S="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"mask_pin_seconds=([0-9.]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
+  MASK_FORCE_OFF_N="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"mask_force_off_count=([0-9]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
+  MASK_FORCE_OFF_S="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"mask_force_off_seconds=([0-9.]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
+  SOFT_REVIVE_N="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"soft_revive_count=([0-9]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
+  PRE_MID_CANCEL="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"pre_midrun_mask_cancel=([0-9]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
+  INVULN_TOPUP="$(python3 -c 'import re,sys; t=open(sys.argv[1]).read(); m=re.search(r"invuln_topup_count=([0-9]+)", t); print(m.group(1) if m else 0)' "$DETAIL_SRC")"
+fi
+echo "SMOKE_FORCED forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL mask_pin_s=$MASK_PIN_S force_off=$MASK_FORCE_OFF_N soft_revive=$SOFT_REVIVE_N"
 if (( FORCED_MASK + FORCED_FAIL > 0 )); then
   echo "WARN: smoke used $((FORCED_MASK + FORCED_FAIL)) forced harness fallback(s) (forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL) — NOT proof the feature works" >&2
 fi
 echo "Smoke passed (phase=$PHASE stomps=$STOMPS mask=$MASK died=$DIED won=$WON medals=$MEDALS map=$MAP daily=$DAILY combo=$COMBO forced_mask=$FORCED_MASK forced_fail=$FORCED_FAIL)"
-# Persist force counts for CI artifact / report.
-printf 'forced_mask=%s\nforced_fail=%s\n' "$FORCED_MASK" "$FORCED_FAIL" > "$OUT_DIR/smoke_forced.txt"
+{
+  printf 'forced_mask=%s\nforced_fail=%s\n' "$FORCED_MASK" "$FORCED_FAIL"
+  printf 'mask_pin_seconds=%s\n' "$MASK_PIN_S"
+  printf 'mask_force_off_count=%s\n' "$MASK_FORCE_OFF_N"
+  printf 'mask_force_off_seconds=%s\n' "$MASK_FORCE_OFF_S"
+  printf 'soft_revive_count=%s\n' "$SOFT_REVIVE_N"
+  printf 'pre_midrun_mask_cancel=%s\n' "$PRE_MID_CANCEL"
+  printf 'invuln_topup_count=%s\n' "$INVULN_TOPUP"
+} > "$OUT_DIR/smoke_forced.txt"

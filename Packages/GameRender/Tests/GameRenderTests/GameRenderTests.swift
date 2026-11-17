@@ -33,6 +33,12 @@ final class GameRenderTests: XCTestCase {
         XCTAssertTrue(TitleArt.assetCredits.localizedCaseInsensitiveContains("Cinder"))
     }
 
+    func testPublisherIdentCopy() {
+        XCTAssertEqual(PublisherIdent.presentsLine, "Cinder & Crown Creative Presents")
+        XCTAssertTrue(PublisherIdent.logoCredit.contains("used by permission"))
+        XCTAssertFalse(PublisherIdent.presentsLine.contains("Asset"))
+    }
+
     func testTitleButtonFramesNonOverlappingHelper() {
         let a = CGRect(x: 0, y: 0, width: 40, height: 20)
         let b = CGRect(x: 50, y: 0, width: 40, height: 20)

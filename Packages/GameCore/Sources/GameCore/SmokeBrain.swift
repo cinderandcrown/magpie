@@ -29,6 +29,10 @@ public struct SmokeBrain: Equatable, Sendable {
     /// Frames spent on the same world tile during mask hunt / street run (unstick).
     public var huntIdleFrames: Int = 0
     public var huntIdleTX: Int = -1
+    /// Live-play stall tracker (worldTX unchanged) — harness fails after ~8s.
+    public var progressIdleFrames: Int = 0
+    public var progressIdleTX: Int = -1
+    public var progressStallSeconds: Double = 0
 
     public init() {}
 
@@ -60,6 +64,7 @@ public struct SmokeBrain: Equatable, Sendable {
             "smoke_background.txt", "smoke_foreground.txt",
             "smoke_show_map.txt", "smoke_map_ok.txt", "smoke_show_daily.txt", "smoke_daily_ok.txt",
             "smoke_prefer_roof.txt", "smoke_force_mask.txt", "smoke_force_fail.txt",
+            "smoke_capture_mask.txt", "smoke_snap_status.txt",
         ] {
             setSmokeFlag(name, present: false)
         }
@@ -195,9 +200,16 @@ public struct SmokeBrain: Equatable, Sendable {
             return showcaseRunInput(sim: sim, tx: tx, ty: ty, midrunOk: false)
         }
 
+        // Track live-play stalls for the harness 8s no-progress gate.
+        noteProgress(tx: tx, dt: sim.tuning.dt, playing: true)
+
         // Harness rooftop clip: climb while prefer_roof is set (even during showcaseMask).
+        // After ~4s on the same latch column, bail to street so the video isn't dead air.
         if Self.smokeFlagExists("smoke_prefer_roof.txt"),
            act != .seekDeath, act != .finishPush {
+            if progressStallSeconds > 4.0 {
+                return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
+            }
             return preferRoofClimbInput(sim: sim, tx: tx, ty: ty)
         }
 
@@ -209,6 +221,15 @@ public struct SmokeBrain: Equatable, Sendable {
         if act == .showcaseMask {
             let maskOk = Self.smokeFlagExists("smoke_mask_ok.txt")
             let mask2Ok = Self.smokeFlagExists("smoke_mask2_ok.txt")
+            // Never freeze on the latch-tower ledge — drop to street first, then hold for the shot.
+            let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? b.position.y
+            let elevated = b.position.y > streetY + tile * 1.2
+            let onLatch = sim.map.tile(atX: tx, y: ty) == .latch
+                || sim.map.tile(atX: tx + 1, y: ty) == .latch
+                || sim.map.tile(atX: tx - 1, y: ty) == .latch
+            if elevated || onLatch {
+                return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
+            }
             // Hunt whenever Mask is off and a Mask still (04 / 04b) is still pending.
             if !b.maskMode, (!maskOk || !mask2Ok) {
                 return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
@@ -221,6 +242,10 @@ public struct SmokeBrain: Equatable, Sendable {
                 moveX = b.onWallRight ? -0.5 : 0.4
             }
             if b.maskMode { moveX = min(abs(moveX), 0.12) * (moveX < 0 ? -1 : 1) }
+            // Global unstick if the hold somehow parks progress.
+            if progressStallSeconds > 3.5 {
+                return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
+            }
             return steerFromExit(InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false), sim: sim, tx: tx)
         }
 
@@ -542,6 +567,18 @@ public struct SmokeBrain: Equatable, Sendable {
     private func floorSupport(sim: Sim, tx: Int, ty: Int) -> Bool {
         let below = sim.map.tile(atX: tx, y: ty - 1)
         return sim.map.isStandable(below)
+    }
+
+    private mutating func noteProgress(tx: Int, dt: Double, playing: Bool) {
+        guard playing else { return }
+        if tx == progressIdleTX {
+            progressIdleFrames += 1
+            progressStallSeconds = Double(progressIdleFrames) * dt
+        } else {
+            progressIdleTX = tx
+            progressIdleFrames = 0
+            progressStallSeconds = 0
+        }
     }
 
     /// Drive toward latch / one-way climb for the rooftop-route smoke still + clip.

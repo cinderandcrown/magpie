@@ -457,6 +457,18 @@
       "channels": 2,
       "lufs": -12.5,
       "target_lufs": -14
+    },
+    {
+      "name": "publisher_ident_whoosh",
+      "file": "publisher_ident_whoosh.wav",
+      "duration": 1.15,
+      "intended_use": "Soft ember/whoosh for Cinder & Crown publisher splash",
+      "loop": false,
+      "sample_rate": 44100,
+      "channels": 1,
+      "lufs": null,
+      "target_lufs": -18,
+      "notes": "Procedural soft whoosh (optional ElevenLabs replacement welcome). Respects mute."
     }
   ]
 }

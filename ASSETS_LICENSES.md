@@ -2,6 +2,10 @@
 
 Every third-party asset used in The Neon City Bandit must be logged here: file, source URL, license, date added.
 
+| File | Source | License / credit | Date |
+| --- | --- | --- | --- |
+| `Assets/Branding/cinder-crown/CinderCrown-MuteLogo.png` (+ xcassets `@1x/@2x/@3x`) | Cinder and Crown LLC mute logo (phoenix + crown) | Cinder & Crown logo, © Cinder and Crown LLC, used by permission. md5 `f4a3ffce2b58ddd4f12c010427782ac8` | 2026-11-16 |
+
 Mission 0 ships **no** third-party art, audio, or fonts. Placeholder visuals are drawn in code.
 
 | File | Source URL | License | Date |
