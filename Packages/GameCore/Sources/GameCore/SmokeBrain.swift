@@ -347,24 +347,30 @@ public struct SmokeBrain: Equatable, Sendable {
             }
         }
 
-        // Pre-midrun: patrol the early street only — leave MOPs alive for post-midrun stomps,
-        // and never race past the canal to EXIT (CI a678ec7: worldTXMax=98 → phase=won).
+        // Pre-midrun: patrol the neon corridor (not the spawn lip) so midrun stills see
+        // storefront magenta; leave MOPs alive; never race past the canal to EXIT.
         if !midrunOk {
             let canalX = sim.map.findAll(.water).map(\.0).min() ?? 45
-            let rightCap = max(22, canalX - 6)
+            let leftCap = 18
+            let rightCap = max(32, min(40, canalX - 8))
             if tx >= rightCap {
-                moveX = -0.9
+                moveX = -0.85
                 jumpPressed = false
                 jumpHeld = false
+            } else if tx <= leftCap {
+                // Prefer right-facing run into the neon band (framing + storefronts).
+                moveX = 0.95
+                jumpPressed = b.onGround && (phase == 170 || phase == 190)
+                jumpHeld = jumpPressed || (!b.onGround && b.velocity.y > 0)
             } else if let mop = nearestMop(sim: sim) {
                 let dx = mop.position.x - b.position.x
                 // Soft reverse instead of hop-stomp — keep packs for the stomp-chain beat.
                 if dx > 0, dx < tile * 3.5 {
-                    moveX = -0.55
+                    moveX = -0.45
                     jumpPressed = false
                     jumpHeld = false
                 } else if dx < 0, dx > -tile * 2.5 {
-                    moveX = 0.85
+                    moveX = 0.9
                 }
             }
         } else if let mop = nearestMop(sim: sim) {

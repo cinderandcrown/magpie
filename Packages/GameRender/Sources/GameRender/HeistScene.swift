@@ -2362,9 +2362,10 @@ public final class HeistScene: SKScene {
                         let holdSecond = midrunOk && mask2Pending && smokeSawMaskDropAfterFirst
                         if holdFirst || holdSecond {
                             sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
-                        } else if midrunOk, !mask1Pending, mask2Pending, !smokeSawMaskDropAfterFirst {
-                            // After 04 shot: let Mask expire even if stomps keep trying to refresh it.
-                            sim.state.bandit.maskTimer = min(sim.state.bandit.maskTimer, 1.2)
+                        } else if midrunOk, !mask1Pending, !smokeSawMaskDropAfterFirst {
+                            // After 04 shot: expire Mask even when stomps refresh timer every frame
+                            // (CI mask-off hung at maskOn=1 with stomps climbing past 70).
+                            sim.state.bandit.maskTimer = 0
                         }
                     }
                 }

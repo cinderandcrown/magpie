@@ -659,15 +659,15 @@ public enum ArtCatalog {
         root.zPosition = 2.8
         let textures = loadStorefrontSignTextures()
         let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
-        // Place 6 signs across the first ~half of the map at wall height above the deck.
-        let count = max(4, textures.count)
+        // Dense early-corridor signs so midrun stills (worldTX ~18–36) hit magenta ≥0.3%.
+        let count = max(8, textures.count + 2)
         for i in 0..<count {
-            let x = tile * 6 + CGFloat(i) * (mapWidth * 0.12)
-            guard x < mapWidth * 0.85 else { break }
-            let w = tile * (2.2 + CGFloat(i % 3) * 0.4)
-            let h = tile * (0.85 + CGFloat(i % 2) * 0.25)
+            let x = tile * 8 + CGFloat(i) * (mapWidth * 0.08)
+            guard x < mapWidth * 0.75 else { break }
+            let w = tile * (2.4 + CGFloat(i % 3) * 0.45)
+            let h = tile * (0.95 + CGFloat(i % 2) * 0.3)
             let accent = accents[i % accents.count]
-            let y = tile * (4.2 + CGFloat(i % 3) * 0.6)
+            let y = tile * (3.8 + CGFloat(i % 3) * 0.55)
 
             let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.7, height: h * 2.2))
             glow.name = "storefrontGlow"
@@ -680,15 +680,14 @@ public enum ArtCatalog {
             root.addChild(glow)
 
             // Opaque neon plate so midrun palette still reads on dark brick (add-blend alone washes out).
-            if i % 2 == 0 {
-                let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 0.95, height: h * 0.8))
-                plate.name = "storefrontPlate"
-                plate.position = CGPoint(x: x, y: y)
-                plate.alpha = 0.92
-                plate.blendMode = .alpha
-                plate.zPosition = 0.5
-                root.addChild(plate)
-            }
+            // Bias magenta: every sign gets a pink plate (teal accents stay on the glow/texture).
+            let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 1.05, height: h * 0.9))
+            plate.name = "storefrontPlate"
+            plate.position = CGPoint(x: x, y: y)
+            plate.alpha = i % 2 == 0 ? 0.95 : 0.72
+            plate.blendMode = .alpha
+            plate.zPosition = 0.5
+            root.addChild(plate)
 
             let sign: SKSpriteNode
             if !textures.isEmpty {
