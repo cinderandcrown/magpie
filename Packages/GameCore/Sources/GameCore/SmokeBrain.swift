@@ -115,6 +115,15 @@ public struct SmokeBrain: Equatable, Sendable {
             return (input, start, retry)
 
         case .won:
+            // Premature EXIT before the death beat strands the harness on phase=won
+            // (stomp-chain requires phase=playing). Bounce back into the street run.
+            if !diedOnce {
+                retry = true
+                act = .play
+                maskShowcaseFrames = 0
+                seekDeathFrames = 0
+                return (input, start, retry)
+            }
             act = .done
             return (input, start, retry)
 
@@ -173,11 +182,17 @@ public struct SmokeBrain: Equatable, Sendable {
         let ty = Int(floor(b.position.y / tile))
 
         let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
+        let exitX = sim.map.findFirst(.exit)?.0 ?? (sim.map.width - 2)
 
-        // Beat 1 — street run until midrun still lands (palette needs magenta neon, not Mask/roof).
+        // Never touch EXIT until the post-death finishPush clear.
+        if act != .finishPush, tx >= exitX - 7 {
+            return InputFrame(moveX: -1.0, jumpPressed: false, jumpHeld: false)
+        }
+
+        // Beat 1 — street patrol until midrun still lands (palette needs magenta neon, not Mask/roof).
         // Prefer_roof is armed only AFTER midrun_ok by the harness.
         if !midrunOk, sim.state.elapsed < 90, act != .seekDeath, act != .finishPush {
-            return showcaseRunInput(sim: sim, tx: tx, ty: ty)
+            return showcaseRunInput(sim: sim, tx: tx, ty: ty, midrunOk: false)
         }
 
         // Harness rooftop clip: climb while prefer_roof is set (even during showcaseMask).
@@ -196,7 +211,7 @@ public struct SmokeBrain: Equatable, Sendable {
             let mask2Ok = Self.smokeFlagExists("smoke_mask2_ok.txt")
             // Hunt whenever Mask is off and a Mask still (04 / 04b) is still pending.
             if !b.maskMode, (!maskOk || !mask2Ok) {
-                return maskReentryHuntInput(sim: sim, tx: tx, ty: ty)
+                return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
             }
             // Hold on deck for Mask screenshot — maskTimer keeps maskOn=1 while we wait.
             var moveX: Double = 0.08
@@ -206,7 +221,7 @@ public struct SmokeBrain: Equatable, Sendable {
                 moveX = b.onWallRight ? -0.5 : 0.4
             }
             if b.maskMode { moveX = min(abs(moveX), 0.12) * (moveX < 0 ? -1 : 1) }
-            return InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false)
+            return steerFromExit(InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false), sim: sim, tx: tx)
         }
 
         if act == .finishPush {
@@ -216,10 +231,29 @@ public struct SmokeBrain: Equatable, Sendable {
         // Beat 2 — drop mid ledges / one-ways, then stomp-hunt street MOPs into Mask.
         // (Plain jump-at-mop used to bounce forever on pink one-ways above the street pack.)
         if !sawMask {
-            return maskReentryHuntInput(sim: sim, tx: tx, ty: ty)
+            return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
         }
 
-        return showcaseRunInput(sim: sim, tx: tx, ty: ty)
+        return showcaseRunInput(sim: sim, tx: tx, ty: ty, midrunOk: midrunOk)
+    }
+
+    /// Keep the bot ≥8 tiles left of EXIT until finishPush (CI: early win → stomp-chain hang).
+    private func steerFromExit(_ input: InputFrame, sim: Sim, tx: Int) -> InputFrame {
+        guard act != .finishPush else { return input }
+        guard let exitX = sim.map.findFirst(.exit)?.0 else { return input }
+        if tx >= exitX - 8 {
+            return InputFrame(moveX: -1.0, jumpPressed: false, jumpHeld: false)
+        }
+        if tx >= exitX - 12, input.moveX > 0 {
+            return InputFrame(
+                moveX: min(input.moveX, 0.15),
+                moveY: input.moveY,
+                jumpPressed: input.jumpPressed,
+                jumpHeld: input.jumpHeld,
+                pouncePressed: input.pouncePressed
+            )
+        }
+        return input
     }
 
     /// Clear Neon Docks after the death beat: stay on the street deck to EXIT.
@@ -250,14 +284,14 @@ public struct SmokeBrain: Equatable, Sendable {
         var jumpHeld = false
         var pouncePressed = false
 
-        let gapNear = gapAhead(sim: sim, tx: tx, ty: ty) || gapWithin(sim: sim, tx: tx, ty: ty, reach: 4)
+        let gapNear = gapAhead(sim: sim, tx: tx, ty: ty) || gapWithin(sim: sim, tx: tx, ty: ty, reach: 5)
         let hazard = hazardAhead(sim: sim, tx: tx, ty: ty, reach: 6)
         let solidAhead = sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty))
 
-        // Hop crates / 3-tile canal. Hold through apex so we clear water, then cut so we stay low.
+        // Hop crates / canal pit. Full hold through apex so we clear water, then cut so we stay low.
         if solidAhead || gapNear || hazard {
             jumpPressed = b.onGround || b.coyote > 0
-            jumpHeld = !b.onGround && b.velocity.y > 0
+            jumpHeld = !b.onGround && b.velocity.y > -2
             moveX = 1.0
         }
         if b.onWallLeft || b.onWallRight, !b.onGround {
@@ -290,7 +324,7 @@ public struct SmokeBrain: Equatable, Sendable {
         )
     }
 
-    private func showcaseRunInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
+    private func showcaseRunInput(sim: Sim, tx: Int, ty: Int, midrunOk: Bool) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
         // Midrun beat: keep moving so the screenshot shows a running ship build (no wall-idle).
@@ -312,8 +346,28 @@ public struct SmokeBrain: Equatable, Sendable {
                 jumpHeld = b.velocity.y > 0
             }
         }
-        // Before midrun: hop past street MOPs — do NOT crawl at 0.15 (that pinned CI at pack x≈17).
-        if let mop = nearestMop(sim: sim) {
+
+        // Pre-midrun: patrol the early street only — leave MOPs alive for post-midrun stomps,
+        // and never race past the canal to EXIT (CI a678ec7: worldTXMax=98 → phase=won).
+        if !midrunOk {
+            let canalX = sim.map.findAll(.water).map(\.0).min() ?? 45
+            let rightCap = max(22, canalX - 6)
+            if tx >= rightCap {
+                moveX = -0.9
+                jumpPressed = false
+                jumpHeld = false
+            } else if let mop = nearestMop(sim: sim) {
+                let dx = mop.position.x - b.position.x
+                // Soft reverse instead of hop-stomp — keep packs for the stomp-chain beat.
+                if dx > 0, dx < tile * 3.5 {
+                    moveX = -0.55
+                    jumpPressed = false
+                    jumpHeld = false
+                } else if dx < 0, dx > -tile * 2.5 {
+                    moveX = 0.85
+                }
+            }
+        } else if let mop = nearestMop(sim: sim) {
             let dx = mop.position.x - b.position.x
             if dx > 0, dx < tile * 4.0, b.onGround || b.coyote > 0 {
                 jumpPressed = true
@@ -321,6 +375,7 @@ public struct SmokeBrain: Equatable, Sendable {
                 moveX = max(moveX, 0.95)
             }
         }
+
         if gapAhead(sim: sim, tx: tx, ty: ty), !hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
             jumpPressed = b.onGround || b.coyote > 0
             jumpHeld = true
@@ -336,7 +391,6 @@ public struct SmokeBrain: Equatable, Sendable {
             moveX = max(moveX, 0.9)
         }
         // Before midrun still: never climb latch towers — street magenta needs a ground camera.
-        let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
         let latchNear = sim.map.tile(atX: tx, y: ty) == .latch
             || sim.map.tile(atX: tx + 1, y: ty) == .latch
             || sim.map.tile(atX: tx - 1, y: ty) == .latch
@@ -351,7 +405,11 @@ public struct SmokeBrain: Equatable, Sendable {
             jumpHeld = true
             moveX = b.onWallRight ? -0.55 : 0.85
         }
-        return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed)
+        return steerFromExit(
+            InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed),
+            sim: sim,
+            tx: tx
+        )
     }
 
     /// Drop from rooftops / mid ledges, then stomp-hunt street MOPs for Mask re-entry.
@@ -525,7 +583,12 @@ public struct SmokeBrain: Equatable, Sendable {
             }
         }
         if tx <= 5 { moveX = max(moveX, 0.9) }
-        return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed)
+        // Rooftop clip must not walk into EXIT (latch is mid-map; EXIT is far right).
+        return steerFromExit(
+            InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed),
+            sim: sim,
+            tx: tx
+        )
     }
 
     private func seekDeathInput(sim: Sim, tx: Int, ty: Int) -> InputFrame {
