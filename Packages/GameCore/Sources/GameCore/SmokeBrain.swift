@@ -230,6 +230,15 @@ public struct SmokeBrain: Equatable, Sendable {
             if elevated || onLatch {
                 return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
             }
+            // After 04 is snapped, do NOT stomp-hunt while Mask is still on — stomps refresh
+            // maskTimer and mask-off never arrives. Stand still until the timer expires.
+            if maskOk, !mask2Ok, b.maskMode {
+                return steerFromExit(
+                    InputFrame(moveX: 0.05, jumpPressed: false, jumpHeld: false),
+                    sim: sim,
+                    tx: tx
+                )
+            }
             // Hunt whenever Mask is off and a Mask still (04 / 04b) is still pending.
             if !b.maskMode, (!maskOk || !mask2Ok) {
                 return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
@@ -243,7 +252,7 @@ public struct SmokeBrain: Equatable, Sendable {
             }
             if b.maskMode { moveX = min(abs(moveX), 0.12) * (moveX < 0 ? -1 : 1) }
             // Global unstick if the hold somehow parks progress.
-            if progressStallSeconds > 3.5 {
+            if progressStallSeconds > 3.5, !b.maskMode {
                 return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
             }
             return steerFromExit(InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false), sim: sim, tx: tx)

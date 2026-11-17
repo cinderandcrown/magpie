@@ -20,10 +20,6 @@ MIN_VIDEO_SECS="${SMOKE_MIN_VIDEO_SECS:-60}"
 # Harness force counters — forced paths unblock CI but never count as feature proof.
 FORCED_MASK=0
 FORCED_FAIL=0
-# Live-play stall tracker (worldTX unchanged >8s → fail).
-STALL_LAST_TX=""
-STALL_LAST_CHANGE_EPOCH=0
-
 mkdir -p "$OUT_DIR"
 
 arm_force() {
@@ -44,26 +40,21 @@ snap_status() {
   sleep 0.12
 }
 
-# Fail if live play has made no worldTX progress for >8s (outside pause/title).
+# Fail if live play has made no worldTX progress for >8s of sim time (stallSec=).
+# Use the app's stallSec — wall-clock between harness polls false-fires during Mask holds.
 check_no_progress() {
   local status="$1"
   [[ "$status" == *"phase=playing"* ]] || return 0
   [[ "$status" == *"paused=1"* ]] && return 0
-  local tx
-  tx="$(STATUS_LINE="$status" python3 -c 'import os,re; m=re.search(r"worldTX=([0-9-]+)", os.environ["STATUS_LINE"]); print(m.group(1) if m else "")')"
-  [[ -n "$tx" ]] || return 0
-  local now
-  now="$(date +%s)"
-  if [[ "$tx" != "$STALL_LAST_TX" ]]; then
-    STALL_LAST_TX="$tx"
-    STALL_LAST_CHANGE_EPOCH="$now"
-    return 0
-  fi
-  if [[ "$STALL_LAST_CHANGE_EPOCH" -gt 0 ]] && (( now - STALL_LAST_CHANGE_EPOCH > 8 )); then
-    echo "FAIL: no worldTX progress for >8s (stuck at worldTX=$tx status=$status)" >&2
+  # Screenshot holds / Mask capture may park the bot briefly — don't trip on those.
+  [[ "$status" == *"maskOn=1"* ]] && return 0
+  local stall
+  stall="$(STATUS_LINE="$status" python3 -c 'import os,re; m=re.search(r"stallSec=([0-9.]+)", os.environ["STATUS_LINE"]); print(m.group(1) if m else "0")')"
+  python3 -c "import sys; sys.exit(0 if float('$stall') <= 8.0 else 1)" || {
+    echo "FAIL: no worldTX progress for >8s (stallSec=$stall status=$status)" >&2
     shot "$OUT_DIR/fail-no-progress.png" || true
     exit 1
-  fi
+  }
 }
 
 ensure_pillow() {

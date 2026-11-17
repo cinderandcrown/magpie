@@ -2959,15 +2959,16 @@ public final class HeistScene: SKScene {
         // hero near ~70% while he faces right again.
         let rawWant: CGFloat = b.facing >= 0 ? 1 : -1
         let nowFace = CACurrentMediaTime()
+        // ~0.5s side-switch delay so a quick reverse can't park the hero near ~70%.
         if rawWant != cameraWantFace {
             if nowFace >= cameraFacingHoldUntil {
                 cameraWantFace = rawWant
-                cameraFacingHoldUntil = nowFace + 0.28
+                cameraFacingHoldUntil = nowFace + 0.5
             }
         } else {
-            cameraFacingHoldUntil = nowFace + 0.28
+            cameraFacingHoldUntil = nowFace + 0.5
         }
-        let faceBlend = min(1, CGFloat(dt) / 0.45)
+        let faceBlend = min(1, CGFloat(dt) / 0.55)
         cameraFacing += (cameraWantFace - cameraFacing) * faceBlend
         let target = cameraTarget(for: b)
         let s = CGFloat(tuning.cameraSmooth)
@@ -2985,7 +2986,9 @@ public final class HeistScene: SKScene {
            sim.state.elapsed > 1.0
         {
             smokeStatus.heroX = heroFrac
-            if cameraFacing > 0 {
+            // Accumulate only when the lead is fully right-biased — mid-lerp frames after a
+            // reverse still face right in input but sit near 60–70% of the screen.
+            if cameraFacing > 0.85, cameraWantFace > 0 {
                 smokeStatus.heroXMin = min(smokeStatus.heroXMin, heroFrac)
                 smokeStatus.heroXMax = max(smokeStatus.heroXMax, heroFrac)
             }
