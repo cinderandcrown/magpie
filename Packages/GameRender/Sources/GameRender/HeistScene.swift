@@ -2364,8 +2364,9 @@ public final class HeistScene: SKScene {
                         && !holdingOffForSample
                     if midrunOk, !mask1Pending, (!smokeSawMaskDropAfterFirst || holdingOffForSample) {
                         // After 04: force Mask off AND clamp combo so the next stomp can't
-                        // re-enter before statusAcc (0.35s) writes maskOn=0. holdSecond used
-                        // to re-pin the timer the instant combo re-triggered Mask.
+                        // re-enter before the harness samples maskOn=0. CI's first mask-off
+                        // poll can land ~2–3s after smoke_mask_ok (require_app + shot I/O),
+                        // so hold the off-window for several seconds — not just one status tick.
                         sim.state.bandit.maskMode = false
                         sim.state.bandit.maskTimer = 0
                         sim.state.bandit.combo = min(
@@ -2374,10 +2375,11 @@ public final class HeistScene: SKScene {
                         )
                         if !smokeSawMaskDropAfterFirst {
                             smokeSawMaskDropAfterFirst = true
-                            // > status write interval so wait_status("mask-off") can observe it.
-                            smokeMaskOffHoldUntil = now + 0.7
-                            writeSmokeStatus()
+                            smokeMaskOffHoldUntil = now + 4.0
                         }
+                        // Status is normally written at frame-start (before this force-off).
+                        // Publish maskOn=0 every step while holding so a late first poll still sees it.
+                        writeSmokeStatus()
                     } else if sim.state.bandit.maskMode, holdFirst || holdSecond {
                         sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
                     }
@@ -2410,7 +2412,8 @@ public final class HeistScene: SKScene {
                 if !smokeEnabled { hapticMed.impactOccurred() }
                 shake(0.4)
             case .flop:
-                JuiceSound.shared.playLand()
+                // Belly-flop is mid-air commit — do NOT play land SFX here. Pounce→flop→land
+                // within <100ms used to log two "sfx land" lines and fail the CI double-land gate.
                 squash(1.4, 0.55)
             case .stomp:
                 smoke.noteStomp()

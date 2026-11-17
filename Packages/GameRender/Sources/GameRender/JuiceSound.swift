@@ -18,6 +18,9 @@ public final class JuiceSound: @unchecked Sendable {
     private var smokeLogURL: URL?
     private var smokeLogAnchor: TimeInterval?
     private let logLock = NSLock()
+    /// Wall-clock debounce so flop thud + real land (or double collide) can't log two
+    /// "sfx land" lines within the CI <100ms double-land gate.
+    private var lastLandLogUptime: TimeInterval = -1
 
     private let musicVolumeKey = "neon_bandit.musicVolume"
     private let muteKey = "neon_bandit.audioMuted"
@@ -171,6 +174,12 @@ public final class JuiceSound: @unchecked Sendable {
 
     public func playLand() {
         prepare()
+        let now = ProcessInfo.processInfo.systemUptime
+        // Match Sim.landCooldown (0.10s): one audible land per airborne beat.
+        if lastLandLogUptime >= 0, now - lastLandLogUptime < 0.10 {
+            return
+        }
+        lastLandLogUptime = now
         logSmoke("sfx land")
         SFXManager.shared.playLand()
     }
