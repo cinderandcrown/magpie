@@ -630,12 +630,12 @@ public enum ArtCatalog {
             let isPink = i % 2 == 0
             if isPink {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.5
+                sign.colorBlendFactor = 0.4
                 sign.blendMode = .add
-                glow.alpha = 0.72
+                glow.alpha = 0.4
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.3
+                sign.colorBlendFactor = 0.28
                 sign.blendMode = .add
             }
             root.addChild(sign)
@@ -645,9 +645,9 @@ public enum ArtCatalog {
             rim.position = glow.position
             rim.fillColor = .clear
             rim.strokeColor = accent
-            rim.lineWidth = isPink ? 2.0 : 1.4
-            rim.glowWidth = isPink ? 3.5 : 1.5
-            rim.alpha = isPink ? 0.92 : 0.65
+            rim.lineWidth = isPink ? 1.4 : 1.1
+            rim.glowWidth = isPink ? 1.8 : 1.0
+            rim.alpha = isPink ? 0.7 : 0.5
             rim.zPosition = 1.5
             root.addChild(rim)
 
@@ -690,12 +690,13 @@ public enum ArtCatalog {
             // Hang above camera (hero+56 ≈ tile*8–9) so midrun upper-band (12–48% screen) catches neon.
             let y = tile * (12.8 + CGFloat(i % 3) * 0.55)
 
-            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.85, height: h * 2.4))
+            // Soft corona — keep alpha modest so CI flat-magenta/slab gates stay honest.
+            let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.55, height: h * 2.0))
             glow.name = "storefrontGlow"
             glow.position = CGPoint(x: x, y: y)
             glow.color = accent
             glow.colorBlendFactor = 1
-            glow.alpha = isPink ? 0.78 : 0.55
+            glow.alpha = isPink ? 0.42 : 0.35
             glow.blendMode = .add
             glow.zPosition = 0
             root.addChild(glow)
@@ -723,23 +724,23 @@ public enum ArtCatalog {
             sign.zPosition = 1
             if isPink {
                 sign.color = neonPink
-                sign.colorBlendFactor = 0.55
+                sign.colorBlendFactor = 0.38
             } else {
                 sign.color = neonCyan
-                sign.colorBlendFactor = 0.32
+                sign.colorBlendFactor = 0.28
             }
             sign.blendMode = .add
             root.addChild(sign)
 
-            // Thin neon tube rim (stroke, not a filled slab) so pink signs read as magenta pixels.
+            // Thin neon tube rim (stroke only — never a filled slab).
             let rim = SKShapeNode(rectOf: CGSize(width: w * 1.06, height: h * 1.1), cornerRadius: 3)
             rim.name = "storefrontRim"
             rim.position = CGPoint(x: x, y: y)
             rim.fillColor = .clear
             rim.strokeColor = accent
-            rim.lineWidth = isPink ? 2.4 : 1.6
-            rim.glowWidth = isPink ? 4 : 2
-            rim.alpha = isPink ? 0.95 : 0.7
+            rim.lineWidth = isPink ? 1.6 : 1.2
+            rim.glowWidth = isPink ? 2.0 : 1.2
+            rim.alpha = isPink ? 0.75 : 0.55
             rim.zPosition = 1.5
             root.addChild(rim)
 

@@ -15,9 +15,10 @@ public enum PublisherIdent {
     public static let charcoal = SKColor(red: 0.07, green: 0.06, blue: 0.055, alpha: 1)
 
     /// Total length target 1.8…2.2 s (Reduce Motion uses the short end).
-    /// Smoke holds longer so the harness can attach and snap 00-publisher-ident.
+    /// Smoke holds much longer: `simctl io screenshot` on CI often takes 10–15 s, so a
+    /// short hold finishes and reveals the title alley before the still is written.
     public static func duration(reduceMotion: Bool, smokeHold: Bool = false) -> TimeInterval {
-        if smokeHold { return 3.6 }
+        if smokeHold { return 18.0 }
         return reduceMotion ? 1.85 : 2.05
     }
 
@@ -157,8 +158,8 @@ public enum PublisherIdent {
         let sweep = logo.childNode(withName: "publisherSweep")
         let side = max(logo.frame.width, 1)
 
-        // Smoke / CI: show the full splash immediately so boot=ident stills are the
-        // charcoal Cinder & Crown card — not a mid-fade peek at the title alley.
+        // Smoke / CI: splash is fully visible for the whole hold so a slow screenshot
+        // still captures charcoal + logo (not the title alley after fade-out).
         if smokeHold {
             logo.alpha = 1
             logo.setScale(1)
@@ -168,8 +169,8 @@ public enum PublisherIdent {
             sweep?.alpha = 0
             root.alpha = 1
             root.run(SKAction.sequence([
-                SKAction.wait(forDuration: max(2.4, total - 0.5)),
-                SKAction.fadeOut(withDuration: 0.4),
+                SKAction.wait(forDuration: max(16.5, total - 0.6)),
+                SKAction.fadeOut(withDuration: 0.45),
                 SKAction.run(onFinished),
             ]), withKey: "publisherIdent")
             return

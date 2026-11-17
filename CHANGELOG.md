@@ -9,5 +9,5 @@
 
 ### Art / presentation
 - Storefront neon hangs above the street with real sign crops + pink/cyan rims (no flat hot-pink plates). Title alley uses the same storefront strips instead of solid neon blades.
-- Publisher ident: full-screen charcoal Cinder & Crown splash (scene-level, opaque) before title; smoke stills capture the real card.
+- Publisher ident: full-screen charcoal Cinder & Crown splash (scene-level, opaque) before title; smoke holds the card long enough for slow CI screenshots (players still see ~2 s).
 - Results card uses the run clock (`sim.elapsed`), with OmniClean PA flavor above the buttons.
