@@ -2,6 +2,13 @@
 
 Every choice that changes the plan, with the reason. Newest first.
 
+## 2026-11-17 — Mask Mode easier tuning APPROVED
+
+| Decision | Reason |
+| --- | --- |
+| Ship Mask at **3 stomps within a 12 s window** (`maskModeAtCombo = 3`, `comboGroundGrace = 12`) | Nicholas APPROVED the easier Mask tuning (replaces 5 stomps / 4.5 s). |
+| Do not change `maskDuration` or other combat numbers in that pass | Approval was only for the trigger threshold + chain window. |
+
 ## 2026-11-16 — Cinder & Crown publisher splash
 
 | Decision | Reason |
@@ -51,7 +58,7 @@ Every choice that changes the plan, with the reason. Newest first.
 | Decision | Reason |
 | --- | --- |
 | Product theme is raccoon neon-city heist per approved *Trash Panda Heist: Game Plan v1* | Nicholas approved the canvas design. Captured in `docs/DESIGN.md`; Part 3 missions 1–10 in `docs/PLAN.md` retargeted. |
-| Hero moves: Pounce, Belly Flop, Tail Swing (replaces glide; A/B in M1), Mask Mode at combo x5 | Design v1. Mask Mode is the shareable in-run moment. |
+| Hero moves: Pounce, Belly Flop, Tail Swing (replaces glide; A/B in M1), Mask Mode at combo threshold | Design v1. Mask Mode is the shareable in-run moment. Threshold superseded 2026-11-17: **x3 / 12 s** (was x5 / 4.5 s). |
 | Villain **MOP**; free the captured raccoon crew; rob robots/corp only | Design v1 story spine. |
 | Glossary: Shinies, Stash Chute, The Den, Bagged, Sweepbots…, Junk Gadgets, Neon Docks / Glow Market / Arcade Row / Spotless Tower, MOP Safe Rooms | Replaces bird/toy-city placeholder terms without renaming code modules. |
 | Keep hero visually distinct from Sony’s Sly Cooper; mascot needs attorney review | Legal / originality. No cane, no top-hat thief look, no blue/gold palette. |

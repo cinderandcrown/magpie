@@ -72,7 +72,7 @@ These are legal rules. No exceptions.
 - A Pounce clears a 1-tile gap and lands on anything up to 1 tile tall.
 - A Tail Swing lasts up to 1.2 seconds and crosses up to 4 tiles.
 - A Belly Flop that hits bounces the Bandit up, adds 1 to the combo and refreshes Tail Swing.
-- The combo breaks after 0.4 seconds on the ground. It caps at x10. **Mask Mode** at combo **x5** (double loot, neon mask, bots stagger).
+- The combo window is **12 s** on the ground (`comboGroundGrace`). It caps at x10. **Mask Mode** at combo **x3** (double loot, neon mask, bots stagger) — Nicholas APPROVED 2026-11-17 (was x5 / 4.5 s).
 - 3 hearts. A hit costs 1 heart and 10% of carried Shinies, then gives 1 second of safety.
 
 ### Vehicles

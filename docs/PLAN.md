@@ -16,7 +16,7 @@ If Grok is handed this whole file: read all of it, then do Mission 0 only and st
 Nicholas approved **Trash Panda Heist: Game Plan v1** ([canvas](https://cursor.com/canvas/store-f0dfaef1-646f-4cb3-b3a2-4edd43f95165/7412b08b-bc3e-4248-b762-a4a8b08a389d)). Full design: `docs/DESIGN.md`.
 
 - Hero: cocky masked raccoon (“the Bandit” until named). Villain: **MOP**. Goal: free the captured raccoon crew.
-- Moves: **Pounce**, **Belly Flop**, **Tail Swing** (replaces glide; A/B in Mission 1), **Mask Mode** at combo **x5** (shareable moment). Hijack Hop for vehicles.
+- Moves: **Pounce**, **Belly Flop**, **Tail Swing** (replaces glide; A/B in Mission 1), **Mask Mode** at combo **x3** within **12 s** (shareable moment; Nicholas APPROVED 2026-11-17, was x5 / 4.5 s). Hijack Hop for vehicles.
 - Glossary: Shinies · Stash Chute · The Den · Bagged · Sweepbot/Scrubber/Spotlight Drone/Barrier Bot · Junk Gadgets · Neon Docks / Glow Market / Arcade Row / Spotless Tower · MOP Safe Rooms.
 - Visual: distinct from Sony’s Sly Cooper (no cane, no top-hat thief look, no blue/gold). Mascot needs attorney review.
 - User-facing title: **The Neon City Bandit** via `ProductIdentity.displayTitle`. Engineering identifiers (bundle ID, Xcode target `Magpie`) stay unchanged.
@@ -63,14 +63,14 @@ What you give up without a Mac: each code change takes roughly 10 to 25 minutes 
 
 | Parent | The idea we take (never the IP) | In The Neon City Bandit |
 | --- | --- | --- |
-| Mario | Jumping that feels great | Pounce, Tail Swing, Belly Flop, bounce combos up to x10; Mask Mode at x5 |
+| Mario | Jumping that feels great | Pounce, Tail Swing, Belly Flop, bounce combos up to x10; Mask Mode at x3 / 12 s |
 | Zelda | Tools open the world; puzzle rooms; bosses | 4 Junk Gadgets, each opens a district; 12 MOP Safe Rooms; 4 bosses |
 | GTA | Open city; take any vehicle; heat escalates | Belly Flop a roof to hijack; Heat 0 to 5; Sweepbots give chase |
 
 - 2D top-down. Portrait. One thumb. 180-second runs.
 - Free to play: in-app purchases plus opt-in rewarded ads.
 - Rating target 9+: cartoon mischief, robot enemies, nobody gets hurt. Rob robots and corp vaults only — never people.
-- Every run ends in a 10-second Final Dash, and the game saves that clip to share. Mask Mode at x5 is the shareable in-run moment.
+- Every run ends in a 10-second Final Dash, and the game saves that clip to share. Mask Mode at x3 / 12 s is the shareable in-run moment.
 - One Daily Run: the same city for everyone, one ranked try a day.
 - Soft launch ships half of it: 2 districts (Neon Docks, Glow Market), 2 gadgets, 6 safe rooms, 1 boss.
 
@@ -228,7 +228,7 @@ These are legal rules. No exceptions.
 - A Tail Swing lasts up to 1.2 seconds and crosses up to 4 tiles (same tuning keys as the old glide until retuned).
 - A Belly Flop that hits bounces the Bandit up, adds 1 to the combo and refreshes Tail Swing.
 - The combo breaks after 0.4 seconds on the ground. It caps at x10.
-- At combo **x5**, **Mask Mode** turns on: mask lights neon, double loot while active, flourishes, bots stagger — the shareable moment.
+- At combo **x3** (within a **12 s** chain window), **Mask Mode** turns on: mask lights neon, double loot while active, flourishes, bots stagger — the shareable moment.
 - 3 hearts. A hit costs 1 heart and 10% of carried Shinies, then gives 1 second of safety.
 
 ### Vehicles
@@ -487,7 +487,7 @@ Build:
 
 1. The GameCore loop: fixed 60 Hz step, seeded random generator, input commands, state hash, replay record and playback.
 2. A map loader for text grids. One test block, 40 by 60 tiles: ground, 1-tile walls, canal gaps, ramps, crates, latch points for Tail Swing.
-3. The Bandit: run, coast, Pounce, Tail Swing (A/B vs glide behind debug toggle), Belly Flop, bounce, coyote time, input buffer, height and shadow. Mask Mode trigger stub at combo x5 (juice can be minimal).
+3. The Bandit: run, coast, Pounce, Tail Swing (A/B vs glide behind debug toggle), Belly Flop, bounce, coyote time, input buffer, height and shadow. Mask Mode trigger stub at combo x3 / 12 s (juice can be minimal).
 4. Collision: tiles plus boxes, height-aware, so the Bandit can land on anything up to 1 tile tall.
 5. Ten flop dummies that respawn, and a combo counter.
 6. The camera: follows with look-ahead, 12 tiles wide, with a shake hook.
@@ -500,7 +500,7 @@ Not in this mission: vehicles, Heat, Shinies, menus, sound.
 
 Checkpoint, all must be true:
 
-- At least 25 GameCore tests pass, including: a Pounce clears a 1-tile gap; a Tail Swing (or glide variant) crosses 4 tiles; Belly Flop bounces chain; coyote time works; a buffered Pounce fires; Mask Mode arms at x5.
+- At least 25 GameCore tests pass, including: a Pounce clears a 1-tile gap; a Tail Swing (or glide variant) crosses 4 tiles; Belly Flop bounces chain; coyote time works; a buffered Pounce fires; Mask Mode arms at x3 / 12 s.
 - One golden replay of 30 seconds reproduces the same final state hash 100 times in a row.
 - The Bandit responds within 2 frames of input.
 - Nicholas's perf report from his iPhone shows 60 fps average and no worse than 55 fps in the worst 1%.
@@ -519,7 +519,7 @@ Build:
 3. Sweepbots and Scrubbers. They spawn by Heat, chase with simple steering and line of sight, and cost hearts on a hit.
 4. Heat 0 to 3: sources, decay, cool-off spots (alleys, dumpsters) and a HUD meter.
 5. Eight breakable props, including a hydrant whose water launches the Bandit, and ramps that launch vehicles.
-6. The combo system with number pop-ups, plus Mask Mode at x5 (double loot stub, neon flash, bots stagger briefly).
+6. The combo system with number pop-ups, plus Mask Mode at x3 / 12 s (double loot stub, neon flash, bots stagger briefly).
 7. A test district, 64 by 96 tiles: neon roads, sidewalks, alleys, a canal and 2 ramps.
 8. Hearts, the Bagged state and an instant restart.
 9. Twelve placeholder sound effects, CC0 only, each logged in ASSETS_LICENSES.md.

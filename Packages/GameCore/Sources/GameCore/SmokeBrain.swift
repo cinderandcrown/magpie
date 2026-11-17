@@ -151,7 +151,7 @@ public struct SmokeBrain: Equatable, Sendable {
                         act = .showcaseMask
                         maskShowcaseFrames = 0
                     } else if sim.state.elapsed > 120 {
-                        // Ship Mask needs combo 5 on Neon Docks — give the hunt time.
+                        // Ship Mask needs combo 3 on Neon Docks — give the hunt time.
                         act = .seekDeath
                     }
                 case .showcaseMask:

@@ -11,10 +11,11 @@ public struct Tuning: Equatable, Sendable {
     public var feel: GameFeel = .default
 
     // Combat / meta (not pure “feel”, but shared with sim)
-    /// Window to chain stomps into Mask (must span gaps between Neon Docks patrol groups).
+    /// Window to chain stomps into Mask. Nicholas APPROVED 2026-11-17: **12 s**
+    /// (replaces the old 4.5 s / 0.4 s ground-break window).
     public var comboGroundGrace: Double = 12.0
     public var comboCap: Int = 10
-    /// 3 matches the opening Neon Docks pack so Mask reads as a reward for a clean chain.
+    /// Stomps to trigger Mask. Nicholas APPROVED 2026-11-17: **3** (replaces 5).
     public var maskModeAtCombo: Int = 3
     /// How long Mask Mode stays on after it's earned (screenshot + power fantasy window).
     /// Keep ≥20 so CI can snap 04 before pause/bg beats without racing the timer.

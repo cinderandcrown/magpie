@@ -28,7 +28,7 @@ Derived backlog (below) is gated until the **core slice passes review**. Do not 
 ### Core fun first (30-second loop)
 
 - **Tight controls:** coyote time, jump buffer, variable jump height, pounce dash with a satisfying arc. **Floating left stick** (appears where you touch); slight push = walk, full = run; JUMP/POUNCE on the right inside the safe area (`docs/VIBEGAMEDEV_METHODS.md` v2).
-- **Chain-stomps:** stomping MOPs without touching the ground builds combos with escalating pitch SFX and multipliers; Mask Mode at combo threshold. Stomp hitbox live on the contact / committed-fall frame only.
+- **Chain-stomps:** stomping MOPs without touching the ground builds combos with escalating pitch SFX and multipliers; Mask Mode at **3 stomps within 12 s** (Nicholas APPROVED 2026-11-17). Stomp hitbox live on the contact / committed-fall frame only.
 - **Medals (3 per level, shown up front):** (1) finish, (2) collect all Shinies, (3) beat par time. Stars/medals appear on **level clear only** — never on the death card.
 - **Crew:** 1 hidden crew member per level (“Free the crew”) in a secret spot.
 - **FTUE (pre-release):** teach move, jump, stomp, Mask in &lt;30s. Juicy vertical slice — no feature sprawl.
@@ -69,7 +69,7 @@ Smoke evidence for this increment: combos, medals on the results card, district 
 | --- | --- |
 | **Pounce** | Air dash with arc |
 | **Belly Flop** | Dive-stomp; combo +1 |
-| **Mask Mode** | At combo threshold — double loot, trails, shareable moment |
+| **Mask Mode** | At combo **x3** within **12 s** — double loot, trails, shareable moment |
 
 **Visual / legal:** keep the hero clearly apart from Sony’s Sly Cooper — no cane, no top-hat gentleman-thief look. Scruffy junk-gadget chaos. Mascot still needs attorney review. Neon look may evoke a Grid-like city (thin glowing grids, edge light, trails) but must stay **original** — no Tron logos, light cycles, identity discs, or its exact blue/orange palette. Magenta + teal stay canonical.
 

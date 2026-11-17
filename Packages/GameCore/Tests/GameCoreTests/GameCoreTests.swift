@@ -566,6 +566,12 @@ final class GameCoreTests: XCTestCase {
         XCTAssertEqual(Tuning.default.dt, 1.0 / 60.0, accuracy: 1e-9)
     }
 
+    /// Nicholas APPROVED 2026-11-17: ship Mask at 3 stomps / 12 s (not 5 / 4.5 s).
+    func testTuningMaskTriggerDefaults() {
+        XCTAssertEqual(Tuning.default.maskModeAtCombo, 3)
+        XCTAssertEqual(Tuning.default.comboGroundGrace, 12.0, accuracy: 1e-9)
+    }
+
     func testVec2Normalize() {
         XCTAssertEqual(Vec2(3, 0).normalized, Vec2(1, 0))
     }
