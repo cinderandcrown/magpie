@@ -660,14 +660,14 @@ public enum ArtCatalog {
         let textures = loadStorefrontSignTextures()
         let accents: [SKColor] = [neonPink, neonCyan, neonPink, neonCyan, neonPink, neonCyan]
         // Dense early-corridor signs so midrun stills (worldTX ~18–36) hit magenta ≥0.3%.
-        let count = max(8, textures.count + 2)
+        let count = max(12, textures.count + 4)
         for i in 0..<count {
-            let x = tile * 8 + CGFloat(i) * (mapWidth * 0.08)
-            guard x < mapWidth * 0.75 else { break }
-            let w = tile * (2.4 + CGFloat(i % 3) * 0.45)
-            let h = tile * (0.95 + CGFloat(i % 2) * 0.3)
+            let x = tile * 10 + CGFloat(i) * (mapWidth * 0.055)
+            guard x < mapWidth * 0.7 else { break }
+            let w = tile * (2.8 + CGFloat(i % 3) * 0.5)
+            let h = tile * (1.15 + CGFloat(i % 2) * 0.35)
             let accent = accents[i % accents.count]
-            let y = tile * (3.8 + CGFloat(i % 3) * 0.55)
+            let y = tile * (3.6 + CGFloat(i % 3) * 0.5)
 
             let glow = SKSpriteNode(texture: softCircleTexture(), size: CGSize(width: w * 1.7, height: h * 2.2))
             glow.name = "storefrontGlow"
@@ -680,11 +680,11 @@ public enum ArtCatalog {
             root.addChild(glow)
 
             // Opaque neon plate so midrun palette still reads on dark brick (add-blend alone washes out).
-            // Bias magenta: every sign gets a pink plate (teal accents stay on the glow/texture).
-            let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 1.05, height: h * 0.9))
+            // Bias magenta: every sign gets a solid pink plate (CI crop needs ≥0.3%).
+            let plate = SKSpriteNode(color: neonPink, size: CGSize(width: w * 1.15, height: h * 1.05))
             plate.name = "storefrontPlate"
             plate.position = CGPoint(x: x, y: y)
-            plate.alpha = i % 2 == 0 ? 0.95 : 0.72
+            plate.alpha = 0.98
             plate.blendMode = .alpha
             plate.zPosition = 0.5
             root.addChild(plate)

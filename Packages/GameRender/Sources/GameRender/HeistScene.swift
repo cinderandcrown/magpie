@@ -2319,9 +2319,6 @@ public final class HeistScene: SKScene {
                     if smoke.sawMask, !SmokeBrain.smokeFlagExists("smoke_foreground.txt") {
                         sim.state.bandit.invuln = max(sim.state.bandit.invuln, 0.35)
                     }
-                    if !sim.state.bandit.maskMode, !mask1Pending {
-                        smokeSawMaskDropAfterFirst = true
-                    }
                     let midrunOk = SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
                     // Cancel accidental Mask before midrun still — keeps palette + act machine honest.
                     if !midrunOk, sim.state.bandit.maskMode {
@@ -2356,17 +2353,22 @@ public final class HeistScene: SKScene {
                         sim.state.bandit.maskTimer = 0
                         smoke.act = .seekDeath
                     }
+                    // Don't pin Mask open before midrun still — street neon palette needs a clean alley.
+                    let holdFirst = midrunOk && mask1Pending
+                    let holdSecond = midrunOk && mask2Pending && smokeSawMaskDropAfterFirst
                     if sim.state.bandit.maskMode {
-                        // Don't pin Mask open before midrun still — street neon palette needs a clean alley.
-                        let holdFirst = midrunOk && mask1Pending
-                        let holdSecond = midrunOk && mask2Pending && smokeSawMaskDropAfterFirst
                         if holdFirst || holdSecond {
                             sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 3.0)
                         } else if midrunOk, !mask1Pending, !smokeSawMaskDropAfterFirst {
-                            // After 04 shot: expire Mask even when stomps refresh timer every frame
-                            // (CI mask-off hung at maskOn=1 with stomps climbing past 70).
+                            // After 04: force Mask off. Stomp refresh + combo re-entry used to
+                            // pin maskOn=1 through the entire mask-off wait.
+                            sim.state.bandit.maskMode = false
                             sim.state.bandit.maskTimer = 0
                         }
+                    }
+                    // Record drop AFTER the force-off so mask-2 can re-enter cleanly.
+                    if !sim.state.bandit.maskMode, !mask1Pending {
+                        smokeSawMaskDropAfterFirst = true
                     }
                 }
             }
