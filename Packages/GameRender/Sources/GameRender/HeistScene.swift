@@ -131,6 +131,12 @@ public final class HeistScene: SKScene {
     private let pauseRoot = SKNode()
     private var pauseBtn: SKShapeNode!
     private var pauseCountLabel: SKLabelNode?
+    /// First-minute pacing: objective banner, early win, mid-run surprise.
+    private var objectiveBanner: SKNode?
+    private var celebratedFirstStomp = false
+    private var celebratedEarlyWin = false
+    private var midSurpriseFired = false
+    private var exitBeacon: SKNode?
     /// Wall-clock play timer for smoke (monotonic across death/retry — review gate).
     private var smokeWallStart: TimeInterval = 0
     private var smokeWallElapsed: TimeInterval = 0
@@ -685,16 +691,20 @@ public final class HeistScene: SKScene {
                     door.fillColor = SKColor(red: 0.1, green: 0.12, blue: 0.22, alpha: 0.95)
                     door.strokeColor = ArtCatalog.neonLime
                     door.lineWidth = 2
-                    door.glowWidth = 1
+                    door.glowWidth = kind == .exit ? 3 : 1
                     door.position = pos
                     door.zPosition = 6
+                    door.name = kind == .exit ? "exitDoor" : "stashDoor"
                     world.addChild(door)
                     let t = SKLabelNode(fontNamed: "AvenirNext-Bold")
                     t.text = kind == .exit ? "EXIT" : "STASH"
-                    t.fontSize = 9
+                    t.fontSize = kind == .exit ? 11 : 9
                     t.fontColor = ArtCatalog.neonLime
                     t.verticalAlignmentMode = .center
                     door.addChild(t)
+                    if kind == .exit {
+                        placeExitBeacon(at: pos, tile: tile)
+                    }
                 case .oneWay:
                     let plank = SKShapeNode(rectOf: CGSize(width: tile * 0.98, height: tile * 0.18), cornerRadius: 2)
                     plank.fillColor = SKColor(red: 0.18, green: 0.22, blue: 0.32, alpha: 0.95)
@@ -1846,6 +1856,9 @@ public final class HeistScene: SKScene {
         // Gameplay bed: main_theme with alt rotation. District beds via startLevelMusic(district:).
         JuiceSound.shared.startLevelMusic()
         mopAlerted.removeAll()
+        celebratedFirstStomp = false
+        celebratedEarlyWin = false
+        midSurpriseFired = false
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
         // Keep the freeze sample — allow one ≤250ms title→play transition frame (preload should
@@ -1860,6 +1873,7 @@ public final class HeistScene: SKScene {
         layoutUI()
         snapCameraToHero()
         resetHeroFramingSamples()
+        showObjectiveBanner()
         writeSmokeStatus()
     }
 
@@ -2605,6 +2619,10 @@ public final class HeistScene: SKScene {
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
                 scorePop(at: e.position, text: "+\(max(1, sim.state.bandit.combo))", color: ArtCatalog.neonLime)
+                if !celebratedFirstStomp {
+                    celebratedFirstStomp = true
+                    showPlayToast("STOMPED!", color: ArtCatalog.neonLime, hold: 1.1)
+                }
             case .shiny:
                 let combo = sim.state.bandit.combo
                 JuiceSound.shared.playCollect(combo: max(1, combo), loot: false)
@@ -2633,6 +2651,13 @@ public final class HeistScene: SKScene {
                         }
                         if !self.smokeEnabled { self.hapticHeavy.impactOccurred() }
                         self.flashMask()
+                        // First-minute win: Mask Mode inside ~20 s is the early payoff.
+                        if !self.celebratedEarlyWin, self.sim.state.elapsed <= 22 {
+                            self.celebratedEarlyWin = true
+                            self.showPlayToast("MASK MODE — FIRST WIN!", color: ArtCatalog.neonCyan, hold: 1.8)
+                            self.shake(1.1)
+                            self.neonBurst(at: self.sim.state.bandit.position, color: ArtCatalog.neonCyan, count: 22)
+                        }
                     },
                 ]))
             case .hurt:
@@ -3049,6 +3074,13 @@ public final class HeistScene: SKScene {
             heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
         }
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
+        // Mid-level surprise once the player reaches the docks mid-street / ladder zone.
+        if case .playing = sim.state.phase, !runPaused, !midSurpriseFired {
+            let tx = Int(floor(b.position.x / tuning.tileSize))
+            if tx >= 42 {
+                fireMidLevelSurprise()
+            }
+        }
         // Hero screen-x every live frame. Min/max accumulate when the right lead is settled
         // (mid-lerp after a reverse is not a placement the framing gate should measure).
         // Skip post-death EXIT sprint (finishPush) — that intentionally rushes the camera.
@@ -3090,6 +3122,127 @@ public final class HeistScene: SKScene {
 
     private func squash(_ x: CGFloat, _ y: CGFloat) {
         bandit.squash(x: x, y: y)
+    }
+
+    /// Clear first-minute goal: stomp into Mask, then bank at EXIT.
+    private func showObjectiveBanner() {
+        objectiveBanner?.removeFromParent()
+        let root = SKNode()
+        root.name = "objectiveBanner"
+        root.zPosition = 280
+        let bg = SKShapeNode(rectOf: CGSize(width: min(size.width * 0.88, 340), height: 52), cornerRadius: 10)
+        bg.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.1, alpha: 0.88)
+        bg.strokeColor = ArtCatalog.neonCyan
+        bg.lineWidth = 1.5
+        bg.glowWidth = 1
+        root.addChild(bg)
+        let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        title.text = "STOMP 3 → MASK"
+        title.fontSize = 16
+        title.fontColor = ArtCatalog.neonLime
+        title.verticalAlignmentMode = .center
+        title.position = CGPoint(x: 0, y: 8)
+        root.addChild(title)
+        let sub = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
+        sub.text = "Then race the neon EXIT"
+        sub.fontSize = 11
+        sub.fontColor = SKColor(white: 0.9, alpha: 1)
+        sub.verticalAlignmentMode = .center
+        sub.position = CGPoint(x: 0, y: -10)
+        root.addChild(sub)
+        root.position = CGPoint(x: 0, y: size.height * 0.28)
+        root.alpha = 0
+        root.setScale(0.85)
+        overlay.addChild(root)
+        objectiveBanner = root
+        root.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.fadeIn(withDuration: 0.18),
+                SKAction.scale(to: 1.0, duration: 0.22),
+            ]),
+            SKAction.wait(forDuration: 3.2),
+            SKAction.group([
+                SKAction.fadeOut(withDuration: 0.35),
+                SKAction.moveBy(x: 0, y: 24, duration: 0.35),
+            ]),
+            SKAction.removeFromParent(),
+        ]))
+    }
+
+    private func showPlayToast(_ text: String, color: SKColor, hold: TimeInterval) {
+        let toast = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        toast.text = text
+        toast.fontSize = 18
+        toast.fontColor = color
+        toast.verticalAlignmentMode = .center
+        toast.horizontalAlignmentMode = .center
+        toast.zPosition = 290
+        toast.alpha = 0
+        toast.setScale(0.7)
+        toast.position = CGPoint(x: 0, y: size.height * 0.18)
+        overlay.addChild(toast)
+        toast.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.fadeIn(withDuration: 0.1),
+                SKAction.scale(to: 1.15, duration: 0.12),
+            ]),
+            SKAction.scale(to: 1.0, duration: 0.08),
+            SKAction.wait(forDuration: hold),
+            SKAction.fadeOut(withDuration: 0.25),
+            SKAction.removeFromParent(),
+        ]))
+    }
+
+    private func placeExitBeacon(at pos: CGPoint, tile: CGFloat) {
+        exitBeacon?.removeFromParent()
+        let root = SKNode()
+        root.name = "exitBeacon"
+        root.position = CGPoint(x: pos.x, y: pos.y + tile * 1.35)
+        root.zPosition = 8
+        let arrow = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        arrow.text = "▼ EXIT"
+        arrow.fontSize = 12
+        arrow.fontColor = ArtCatalog.neonLime
+        arrow.verticalAlignmentMode = .center
+        root.addChild(arrow)
+        let glow = SKSpriteNode(texture: ArtCatalog.softCircleTexture(), size: CGSize(width: tile * 2.2, height: tile * 1.2))
+        glow.color = ArtCatalog.neonLime
+        glow.colorBlendFactor = 1
+        glow.alpha = 0.35
+        glow.blendMode = .add
+        glow.zPosition = -1
+        root.addChild(glow)
+        root.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.group([
+                SKAction.moveBy(x: 0, y: 6, duration: 0.55),
+                SKAction.fadeAlpha(to: 1.0, duration: 0.55),
+            ]),
+            SKAction.group([
+                SKAction.moveBy(x: 0, y: -6, duration: 0.55),
+                SKAction.fadeAlpha(to: 0.55, duration: 0.55),
+            ]),
+        ])))
+        world.addChild(root)
+        exitBeacon = root
+    }
+
+    /// Mid-run beat: neon surge + rooftop tease so the middle of the docks feels alive.
+    private func fireMidLevelSurprise() {
+        midSurpriseFired = true
+        showPlayToast("ROOFTOP ROUTE — GO UP!", color: ArtCatalog.neonPink, hold: 1.6)
+        shake(0.9)
+        if !smokeEnabled { hapticMed.impactOccurred() }
+        // Brief city-wide neon pulse on parallax mid signs.
+        for node in [parallaxMid, parallaxNear, parallaxFar] {
+            node.run(SKAction.sequence([
+                SKAction.fadeAlpha(to: 1.0, duration: 0.08),
+                SKAction.fadeAlpha(to: 0.55, duration: 0.12),
+                SKAction.fadeAlpha(to: 1.0, duration: 0.18),
+            ]))
+        }
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonPink, count: 16)
+        neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: 12)
+        playSFX(.sfxCheckpoint)
     }
 
     private func ensureLandDustEmitter() {
