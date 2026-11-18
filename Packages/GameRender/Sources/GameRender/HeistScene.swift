@@ -407,6 +407,11 @@ public final class HeistScene: SKScene {
         grid.position = CGPoint(x: gridW * 0.28, y: midY)
         grid.alpha = 0.4
         parallaxFar.addChild(grid)
+        // Living far city: twinkling windows + a slow skyline transit.
+        let windows = ArtCatalog.livingWindowLights(width: min(mapW * 0.6, 1400), height: h * 0.35)
+        windows.position = CGPoint(x: mapW * 0.22, y: midY + 90)
+        parallaxFar.addChild(windows)
+        parallaxFar.addChild(ArtCatalog.skylineTransit(width: min(mapW * 0.7, 1600), y: midY + 40))
         if let mid = ArtCatalog.background(.midBuildings, height: h * 1.1, maxPixel: maxPx) {
             tileLayer(mid, into: parallaxMid, y: midY + 10, z: -20, neonBoost: true)
         }
@@ -419,9 +424,16 @@ public final class HeistScene: SKScene {
         signsLow.position = CGPoint(x: mapW * 0.4, y: midY + 52)
         signsLow.alpha = 0.9
         parallaxMid.addChild(signsLow)
+        // Sweeping searchlight + street steam so the mid band feels alive.
+        let light = ArtCatalog.neonSearchlight(height: h * 0.5)
+        light.position = CGPoint(x: mapW * 0.3, y: midY + 40)
+        parallaxMid.addChild(light)
         if let near = ArtCatalog.background(.nearRooftops, height: h * 0.9, maxPixel: maxPx) {
             tileLayer(near, into: parallaxNear, y: midY - 40, z: -10, neonBoost: false)
         }
+        let steam = ArtCatalog.streetSteamEmitter(width: size.width / Self.worldZoom)
+        steam.position = CGPoint(x: 0, y: -viewH * 0.12)
+        parallaxNear.addChild(steam)
 
         let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: size.width / Self.worldZoom, height: h))
         rainLayer.addChild(rain)

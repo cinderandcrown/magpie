@@ -56,6 +56,7 @@ Side views face WEST; ready frames are foot-baseline-normalized 256². `disco_da
 | `sprites/mop/*`, `sprites/shiny/*` | Original project art | Proprietary — Cinder and Crown LLC |
 | `ui/logo_neon_city_bandit*.png` | Original project art | Proprietary — Cinder and Crown LLC |
 | `audio/*` | Original project audio | Proprietary — Cinder and Crown LLC |
+| Living city runtime FX (window twinkle, street steam, skyline transit, neon searchlight, rain) | Original procedural SpriteKit nodes in `ArtCatalog` — no third-party textures | Proprietary — Cinder and Crown LLC |
 
 ## Policy (binding)
 

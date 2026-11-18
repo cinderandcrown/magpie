@@ -517,16 +517,16 @@ public enum ArtCatalog {
     public static func rainEmitter(sceneSize: CGSize) -> SKEmitterNode {
         let e = SKEmitterNode()
         // Keep rain readable without crushing simulator FPS (smoke gate ≥55).
-        e.particleBirthRate = 22
+        e.particleBirthRate = 28
         e.numParticlesToEmit = 0
         e.particleLifetime = 0.95
         e.particleSize = CGSize(width: 1.5, height: 9)
         e.particleColor = neonCyan.withAlphaComponent(0.5)
         e.particleColorBlendFactor = 1
-        e.particleAlpha = 0.5
-        e.particleAlphaRange = 0.2
-        e.particleSpeed = 260
-        e.particleSpeedRange = 60
+        e.particleAlpha = 0.55
+        e.particleAlphaRange = 0.25
+        e.particleSpeed = 280
+        e.particleSpeedRange = 70
         e.emissionAngle = -.pi / 2 - 0.25
         e.emissionAngleRange = 0.08
         e.particleRotation = -.pi / 2 - 0.25
@@ -534,6 +534,112 @@ public enum ArtCatalog {
         e.particlePositionRange = CGVector(dx: sceneSize.width * 1.1, dy: 16)
         e.zPosition = 70
         return e
+    }
+
+    /// Twinkling apartment windows on the far skyline (original procedural).
+    public static func livingWindowLights(width: CGFloat, height: CGFloat) -> SKNode {
+        let root = SKNode()
+        root.name = "livingWindows"
+        let cols = max(8, Int(width / 70))
+        let rows = 4
+        for c in 0..<cols {
+            for r in 0..<rows {
+                if (c + r) % 3 == 0 { continue }
+                let w = SKSpriteNode(
+                    color: (c + r) % 2 == 0 ? neonCyan : neonOrange,
+                    size: CGSize(width: 3.5, height: 4.5)
+                )
+                w.alpha = CGFloat.random(in: 0.25...0.7)
+                w.blendMode = .add
+                w.position = CGPoint(
+                    x: -width * 0.42 + CGFloat(c) * (width * 0.84 / CGFloat(max(cols - 1, 1))),
+                    y: -height * 0.08 + CGFloat(r) * (height * 0.18)
+                )
+                w.zPosition = 1
+                root.addChild(w)
+                w.run(SKAction.repeatForever(SKAction.sequence([
+                    SKAction.wait(forDuration: Double.random(in: 0.4...2.8)),
+                    SKAction.fadeAlpha(to: CGFloat.random(in: 0.15...0.95), duration: 0.12),
+                    SKAction.wait(forDuration: Double.random(in: 0.6...3.5)),
+                    SKAction.fadeAlpha(to: CGFloat.random(in: 0.2...0.55), duration: 0.18),
+                ])))
+            }
+        }
+        return root
+    }
+
+    /// Soft street steam drifting up from vents (original procedural).
+    public static func streetSteamEmitter(width: CGFloat) -> SKEmitterNode {
+        let e = SKEmitterNode()
+        e.name = "streetSteam"
+        e.particleTexture = softCircleTexture()
+        e.particleBirthRate = 6
+        e.numParticlesToEmit = 0
+        e.particleLifetime = 2.2
+        e.particleLifetimeRange = 0.6
+        e.particleSize = CGSize(width: 18, height: 18)
+        e.particleScale = 0.55
+        e.particleScaleRange = 0.35
+        e.particleScaleSpeed = 0.35
+        e.particleAlpha = 0.22
+        e.particleAlphaSpeed = -0.1
+        e.particleColor = SKColor(white: 0.75, alpha: 1)
+        e.particleColorBlendFactor = 1
+        e.particleBlendMode = .add
+        e.particleSpeed = 22
+        e.particleSpeedRange = 10
+        e.emissionAngle = .pi / 2
+        e.emissionAngleRange = 0.35
+        e.particlePositionRange = CGVector(dx: width * 0.55, dy: 4)
+        e.zPosition = 3
+        return e
+    }
+
+    /// Slow silhouette transit on the far skyline (original procedural — no external art).
+    public static func skylineTransit(width: CGFloat, y: CGFloat) -> SKNode {
+        let root = SKNode()
+        root.name = "skylineTransit"
+        root.zPosition = -28
+        let car = SKShapeNode(rectOf: CGSize(width: 28, height: 8), cornerRadius: 2)
+        car.fillColor = SKColor(red: 0.05, green: 0.08, blue: 0.14, alpha: 0.85)
+        car.strokeColor = neonCyan.withAlphaComponent(0.35)
+        car.lineWidth = 0.8
+        car.position = CGPoint(x: -width * 0.4, y: y)
+        root.addChild(car)
+        let light = SKSpriteNode(color: neonOrange, size: CGSize(width: 4, height: 3))
+        light.alpha = 0.7
+        light.blendMode = .add
+        light.position = CGPoint(x: 12, y: 0)
+        car.addChild(light)
+        let span = width * 0.95
+        car.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.moveBy(x: span, y: 0, duration: 18),
+            SKAction.run { car.position.x = -width * 0.45 },
+            SKAction.wait(forDuration: 2.5),
+        ])))
+        return root
+    }
+
+    /// Diagonal neon searchlight sweep across the mid band (original procedural).
+    public static func neonSearchlight(height: CGFloat) -> SKNode {
+        let root = SKNode()
+        root.name = "neonSearchlight"
+        let beam = SKSpriteNode(color: neonCyan.withAlphaComponent(0.08), size: CGSize(width: 36, height: height * 0.7))
+        beam.blendMode = .add
+        beam.zRotation = -0.35
+        beam.alpha = 0.55
+        root.addChild(beam)
+        beam.run(SKAction.repeatForever(SKAction.sequence([
+            SKAction.group([
+                SKAction.fadeAlpha(to: 0.85, duration: 1.4),
+                SKAction.rotate(byAngle: 0.25, duration: 1.4),
+            ]),
+            SKAction.group([
+                SKAction.fadeAlpha(to: 0.25, duration: 1.6),
+                SKAction.rotate(byAngle: -0.25, duration: 1.6),
+            ]),
+        ])))
+        return root
     }
 
     /// Storefront sign crops from mid_buildings.png (SPOTLESS / GLOW MART / FIZZ / etc.).
