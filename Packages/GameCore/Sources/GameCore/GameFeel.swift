@@ -34,9 +34,9 @@ public struct GameFeel: Equatable, Sendable {
     public var maxFall: Double = 26
     public var gravity: Double = 84
     /// Fall gravity = rise gravity × this (≈1.8×). Keep ≤1.85 so stomp timing stays readable.
-    public var fallGravityMul: Double = 1.65
+    public var fallGravityMul: Double = 1.72
     /// Near apex (|vy| below threshold), gravity × this for hang time.
-    public var apexHangMul: Double = 0.5
+    public var apexHangMul: Double = 0.42
     /// |vy| (tiles/s scaled later) under which apex hang applies.
     public var apexHangSpeed: Double = 2.2
     /// Peak jump impulse — scaled in Sim by `tileSize/2.2`.
@@ -77,8 +77,8 @@ public struct GameFeel: Equatable, Sendable {
     public var pounceMagnetTiles: Double = 2.0
     /// How hard the magnet pulls (tiles/s² scale via tileSize).
     public var pounceMagnetAccel: Double = 28
-    /// Hit-stop on stomp (seconds) — render consumes via events; also used as a feel note.
-    public var stompHitstop: Double = 0.07
+    /// Hit-stop on stomp (seconds) — ~55 ms punch; combo bumps in the render layer.
+    public var stompHitstop: Double = 0.055
     public var invulnSeconds: Double = 1.0
     /// Minimum bandit alpha while blinking during i-frames (≥ 50%).
     public var invulnMinAlpha: Double = 0.55

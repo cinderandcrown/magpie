@@ -3,8 +3,8 @@
 ## Unreleased
 
 ### Gameplay
+- **Punchy juice (feel pass):** every jump / land / stomp / pickup gets hit-stop (≈55–75 ms on stomps), harder screen shake, squash-stretch, dust/sparks/impact rings, and SFX. Jump arcs fall faster (less float); coyote 0.12 s + jump buffer 0.14 s kept.
 - **Mask Mode trigger (Nicholas APPROVED 2026-11-17):** ship default is **3 stomps within a 12 s window** (`maskModeAtCombo = 3`, `comboGroundGrace = 12`). Replaces the old 5 stomps / 4.5 s chain window. Mask duration and other combat numbers are unchanged.
-- Movement / stomp feel: snappier ground accel/turns, longer coyote (0.12 s) and jump buffer (0.14 s), slightly longer stomp hit-stop — reads as responsive without mush.
 - Camera: longer side-switch hold (~0.9 s) and softer facing blend so quick reverses don’t whip framing.
 
 ### Art / presentation

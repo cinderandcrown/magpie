@@ -2561,21 +2561,29 @@ public final class HeistScene: SKScene {
             case .jump:
                 JuiceSound.shared.playJump()
                 if !smokeEnabled { hapticLight.impactOccurred() }
-                squash(0.78, 1.28)
+                squash(0.72, 1.38)
+                shake(0.22)
+                dust(at: e.position, count: 5, color: ArtCatalog.neonCyan)
+                jumpSpark(at: e.position)
             case .land:
                 // Raw sim land for CI double-land gate (before audible debounce).
                 JuiceSound.shared.logRawLand()
                 JuiceSound.shared.playLand()
-                squash(1.35, 0.65)
-                dust(at: e.position)
+                squash(1.42, 0.58)
+                shake(0.38)
+                dust(at: e.position, count: 14, color: ArtCatalog.neonOrange)
+                landRing(at: e.position)
             case .pounce:
                 JuiceSound.shared.playPounce()
                 if !smokeEnabled { hapticMed.impactOccurred() }
-                shake(0.4)
+                shake(0.55)
+                squash(0.85, 1.2)
+                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 6)
             case .flop:
                 // Belly-flop is mid-air commit — do NOT play land SFX here. Pounce→flop→land
                 // within <100ms used to log two "sfx land" lines and fail the CI double-land gate.
-                squash(1.4, 0.55)
+                squash(1.48, 0.5)
+                shake(0.28)
             case .stomp:
                 smoke.noteStomp()
                 // Midrun hold: ignore accidental pre-hunt stomps in the smoke counter/wait gate.
@@ -2583,25 +2591,32 @@ public final class HeistScene: SKScene {
                 if midrunOk { smokeStatus.stomps += 1 }
                 JuiceSound.shared.playStomp()
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
-                // Hit-stop pop: 90ms normal, 150ms at combo ≥3 — then debris, not a sideways slide.
-                hitStop = max(tuning.feel.stompHitstop, sim.state.bandit.combo >= 3 ? 0.10 : tuning.feel.stompHitstop)
-                shake(0.95)
-                squash(1.42, 0.48)
-                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 14)
-                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 8)
-                dust(at: e.position)
+                // Hit-stop: ~55 ms base, ~75 ms at combo ≥3 (stays in the 40–80 ms punch band).
+                let stop = sim.state.bandit.combo >= 3
+                    ? max(tuning.feel.stompHitstop, 0.075)
+                    : tuning.feel.stompHitstop
+                hitStop = max(hitStop, stop)
+                shake(1.35)
+                squash(1.55, 0.42)
+                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 18)
+                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 10)
+                dust(at: e.position, count: 16, color: ArtCatalog.neonPink)
+                impactRing(at: e.position, color: ArtCatalog.neonPink)
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
                 scorePop(at: e.position, text: "+\(max(1, sim.state.bandit.combo))", color: ArtCatalog.neonLime)
             case .shiny:
                 let combo = sim.state.bandit.combo
                 JuiceSound.shared.playCollect(combo: max(1, combo), loot: false)
+                shake(0.18)
                 collectShinyJuice(at: e.position)
             case .bank:
                 let combo = max(1, sim.state.bandit.combo)
                 JuiceSound.shared.playCollect(combo: combo, loot: true)
+                shake(0.28)
                 shinySparkle(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonLime)
+                impactRing(at: e.position, color: ArtCatalog.neonLime)
             case .maskOn:
                 smoke.sawMask = true
                 smokeStatus.mask = true
@@ -3104,21 +3119,87 @@ public final class HeistScene: SKScene {
         landDustEmitter = e
     }
 
-    private func dust(at pos: Vec2) {
+    private func dust(at pos: Vec2, count: Int = 8, color: SKColor = ArtCatalog.neonOrange) {
         ensureLandDustEmitter()
         guard let e = landDustEmitter else { return }
         e.position = cg(pos)
+        e.particleColor = color
         e.particleBirthRate = 0
-        e.numParticlesToEmit = 8
-        e.particleBirthRate = 120
+        e.numParticlesToEmit = count
+        e.particleBirthRate = CGFloat(max(80, count * 12))
         e.resetSimulation()
         e.run(SKAction.sequence([
-            SKAction.wait(forDuration: 0.07),
+            SKAction.wait(forDuration: 0.08),
             SKAction.run { [weak e] in
                 e?.particleBirthRate = 0
                 e?.numParticlesToEmit = 0
             },
         ]), withKey: "dustBurst")
+    }
+
+    /// Tiny upward sparks on jump takeoff.
+    private func jumpSpark(at pos: Vec2) {
+        let origin = cg(pos)
+        for _ in 0..<5 {
+            let p = SKSpriteNode(
+                texture: ArtCatalog.softCircleTexture(),
+                size: CGSize(width: CGFloat.random(in: 3...6), height: CGFloat.random(in: 3...6))
+            )
+            p.color = ArtCatalog.neonCyan
+            p.colorBlendFactor = 1
+            p.blendMode = .add
+            p.alpha = 0.9
+            p.position = CGPoint(x: origin.x + CGFloat.random(in: -8...8), y: origin.y - 6)
+            p.zPosition = 48
+            world.addChild(p)
+            p.run(SKAction.sequence([
+                SKAction.group([
+                    SKAction.moveBy(x: CGFloat.random(in: -12...12), y: CGFloat.random(in: 12...28), duration: 0.18),
+                    SKAction.fadeOut(withDuration: 0.18),
+                    SKAction.scale(to: 0.2, duration: 0.18),
+                ]),
+                SKAction.removeFromParent(),
+            ]))
+        }
+    }
+
+    /// Soft landing ripple under the feet.
+    private func landRing(at pos: Vec2) {
+        let ring = SKShapeNode(circleOfRadius: 6)
+        ring.strokeColor = ArtCatalog.neonOrange.withAlphaComponent(0.85)
+        ring.fillColor = .clear
+        ring.lineWidth = 2
+        ring.glowWidth = 2
+        ring.position = cg(pos)
+        ring.zPosition = 42
+        world.addChild(ring)
+        ring.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.scale(to: 2.4, duration: 0.16),
+                SKAction.fadeOut(withDuration: 0.16),
+            ]),
+            SKAction.removeFromParent(),
+        ]))
+    }
+
+    /// Expanding impact ring on stomp / bank — reads as a hit.
+    private func impactRing(at pos: Vec2, color: SKColor) {
+        let ring = SKShapeNode(circleOfRadius: 8)
+        ring.strokeColor = color
+        ring.fillColor = color.withAlphaComponent(0.12)
+        ring.lineWidth = 2.5
+        ring.glowWidth = 3
+        ring.position = cg(pos)
+        ring.zPosition = 50
+        ring.setScale(0.4)
+        world.addChild(ring)
+        ring.run(SKAction.sequence([
+            SKAction.group([
+                SKAction.scale(to: 2.8, duration: 0.18),
+                SKAction.fadeOut(withDuration: 0.18),
+            ]),
+            SKAction.removeFromParent(),
+        ]))
     }
 
     private func shinySparkle(at pos: Vec2) {
@@ -3351,16 +3432,17 @@ public final class HeistScene: SKScene {
 
     private func shake(_ amount: CGFloat) {
         // Shake world (child of stage) so sync's stage.position rewrite does not cancel it.
-        let a = amount * 7.0
+        let a = amount * 8.5
         world.removeAction(forKey: "shake")
         world.position = .zero
-        // Light trauma decay (not a fixed 4-step wiggle).
+        // Punchy trauma: hard first kick, quick decay.
         let steps: [(CGFloat, CGFloat, TimeInterval)] = [
-            (1.0, 0.55, 0.03),
-            (-1.6, -0.9, 0.04),
-            (1.1, 0.6, 0.04),
-            (-0.7, -0.35, 0.035),
-            (0.35, 0.2, 0.03),
+            (1.35, 0.7, 0.025),
+            (-1.9, -1.05, 0.035),
+            (1.25, 0.7, 0.035),
+            (-0.85, -0.4, 0.03),
+            (0.4, 0.22, 0.025),
+            (-0.18, -0.1, 0.02),
         ]
         var actions: [SKAction] = steps.map { dx, dy, dur in
             SKAction.moveBy(x: a * dx, y: a * dy, duration: dur)
