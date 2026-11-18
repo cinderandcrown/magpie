@@ -642,6 +642,36 @@ public enum ArtCatalog {
         return root
     }
 
+    /// Short confetti burst for a perfect (3★) results card — original procedural.
+    public static func resultsConfettiEmitter() -> SKEmitterNode {
+        let e = SKEmitterNode()
+        e.particleTexture = softCircleTexture()
+        e.particleBirthRate = 90
+        e.numParticlesToEmit = 48
+        e.particleLifetime = 1.1
+        e.particleLifetimeRange = 0.35
+        e.particleSize = CGSize(width: 5, height: 5)
+        e.particleScale = 0.7
+        e.particleScaleRange = 0.45
+        e.particleAlpha = 0.95
+        e.particleAlphaSpeed = -0.7
+        e.particleColorSequence = SKKeyframeSequence(keyframeValues: [
+            neonLime, neonCyan, neonOrange, neonPink, neonLime,
+        ], times: [0, 0.25, 0.5, 0.75, 1.0])
+        e.particleColorBlendFactor = 1
+        e.particleBlendMode = .add
+        e.particleSpeed = 160
+        e.particleSpeedRange = 80
+        e.emissionAngle = .pi / 2
+        e.emissionAngleRange = .pi
+        e.yAcceleration = -220
+        e.particleRotationRange = .pi
+        e.particleRotationSpeed = 4
+        e.particlePositionRange = CGVector(dx: 120, dy: 8)
+        e.zPosition = 8
+        return e
+    }
+
     /// Storefront sign crops from mid_buildings.png (SPOTLESS / GLOW MART / FIZZ / etc.).
     private static var storefrontSignTextures: [SKTexture]?
 

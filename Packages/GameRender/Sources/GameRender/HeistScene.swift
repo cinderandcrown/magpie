@@ -1465,7 +1465,7 @@ public final class HeistScene: SKScene {
         wash.name = "outcomeWash"
         outcomeRoot.addChild(wash)
 
-        let card = SKShapeNode(rectOf: CGSize(width: 292, height: 340), cornerRadius: 14)
+        let card = SKShapeNode(rectOf: CGSize(width: 300, height: 368), cornerRadius: 14)
         card.fillColor = SKColor(red: 0.07, green: 0.05, blue: 0.16, alpha: 0.96)
         card.strokeColor = ArtCatalog.neonCyan
         card.lineWidth = 2.5
@@ -1475,32 +1475,40 @@ public final class HeistScene: SKScene {
 
         let compact = ArtCatalog.makeCompactLogoNode(maxWidth: 140)
         compact.name = "outcomeLogo"
-        compact.position = CGPoint(x: 0, y: 128)
+        compact.position = CGPoint(x: 0, y: 142)
         card.addChild(compact)
         let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         title.name = "outcomeTitle"
         title.fontSize = 24
         title.fontColor = ArtCatalog.neonLime
-        title.position = CGPoint(x: 0, y: 88)
+        title.position = CGPoint(x: 0, y: 102)
         card.addChild(title)
 
         let stars = SKNode()
         stars.name = "outcomeStars"
-        stars.position = CGPoint(x: 0, y: 52)
+        stars.position = CGPoint(x: 0, y: 64)
         card.addChild(stars)
         for i in 0..<3 {
             let star = SKLabelNode(fontNamed: "AvenirNext-Heavy")
             star.text = "★"
-            star.fontSize = 30
+            star.fontSize = 32
             star.fontColor = ArtCatalog.neonOrange.withAlphaComponent(0.25)
-            star.position = CGPoint(x: CGFloat(i - 1) * 40, y: 0)
+            star.position = CGPoint(x: CGFloat(i - 1) * 44, y: 0)
             star.name = "star\(i)"
             stars.addChild(star)
         }
 
+        let score = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        score.name = "outcomeScore"
+        score.fontSize = 20
+        score.fontColor = ArtCatalog.neonCyan
+        score.position = CGPoint(x: 0, y: 28)
+        score.text = "SCORE 0"
+        card.addChild(score)
+
         let shinyRow = SKNode()
         shinyRow.name = "outcomeShinies"
-        shinyRow.position = CGPoint(x: 0, y: 14)
+        shinyRow.position = CGPoint(x: 0, y: 4)
         card.addChild(shinyRow)
         let gear = SKLabelNode(fontNamed: "AvenirNext-Bold")
         gear.text = "⚙"
@@ -1520,21 +1528,33 @@ public final class HeistScene: SKScene {
 
         let meta = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
         meta.name = "outcomeMeta"
-        meta.fontSize = 15
+        meta.fontSize = 14
         meta.fontColor = SKColor(white: 0.92, alpha: 1)
-        meta.position = CGPoint(x: 0, y: -8)
+        meta.position = CGPoint(x: 0, y: -18)
         card.addChild(meta)
+
+        let hint = SKLabelNode(fontNamed: "AvenirNext-Bold")
+        hint.name = "outcomeHint"
+        hint.fontSize = 12
+        hint.fontColor = ArtCatalog.neonOrange
+        hint.preferredMaxLayoutWidth = 260
+        hint.numberOfLines = 2
+        hint.verticalAlignmentMode = .center
+        hint.horizontalAlignmentMode = .center
+        hint.position = CGPoint(x: 0, y: -40)
+        hint.text = ""
+        card.addChild(hint)
 
         let pa = SKLabelNode(fontNamed: "AvenirNext-Medium")
         pa.name = "outcomePA"
-        pa.fontSize = 11
+        pa.fontSize = 10
         pa.fontColor = ArtCatalog.neonPink
         pa.preferredMaxLayoutWidth = 240
         pa.numberOfLines = 2
         pa.verticalAlignmentMode = .top
         pa.horizontalAlignmentMode = .center
-        // Two lines of OmniClean PA flavor fully above NEXT/RETRY (was overlapping).
-        pa.position = CGPoint(x: 0, y: -18)
+        // Flavor line above NEXT/RETRY — keep clear of the replay hint.
+        pa.position = CGPoint(x: 0, y: -58)
         pa.isHidden = true
         card.addChild(pa)
 
@@ -1545,14 +1565,14 @@ public final class HeistScene: SKScene {
         card.addChild(stats)
 
         let primary = makeOutcomeButton(title: "RETRY", color: ArtCatalog.neonLime, name: "retryBtn", wide: true)
-        primary.position = CGPoint(x: 0, y: -78)
+        primary.position = CGPoint(x: 0, y: -98)
         card.addChild(primary)
         let next = makeOutcomeButton(title: "NEXT", color: ArtCatalog.neonLime, name: "nextBtn", wide: true)
-        next.position = CGPoint(x: 0, y: -78)
+        next.position = CGPoint(x: 0, y: -98)
         next.isHidden = true
         card.addChild(next)
         let home = makeOutcomeButton(title: "HOME", color: ArtCatalog.neonPink, name: "homeBtn", wide: false)
-        home.position = CGPoint(x: 0, y: -138)
+        home.position = CGPoint(x: 0, y: -154)
         card.addChild(home)
     }
 
@@ -2756,21 +2776,26 @@ public final class HeistScene: SKScene {
               let shinyCount = card.childNode(withName: "outcomeShinies")?.childNode(withName: "shinyCount") as? SKLabelNode,
               let meta = card.childNode(withName: "outcomeMeta") as? SKLabelNode,
               let starsNode = card.childNode(withName: "outcomeStars") else { return }
+        let scoreLabel = card.childNode(withName: "outcomeScore") as? SKLabelNode
+        let hintLabel = card.childNode(withName: "outcomeHint") as? SKLabelNode
 
         let shinies = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
+        let totalShiniesOnMap = max(1, sim.state.shinies.count)
         let isWin: Bool
         // Results always show the run clock (sim elapsed) — same number the player watched
         // on a normal clear. Smoke wall-clock is harness-only and must not inflate the card.
         let seconds: Double
         let combo: Int
         var clearResult: ProgressStore.ClearResult?
+        var finalShiniesForCount = shinies
         switch sim.state.phase {
         case .won(_, let shinyTotal, let c):
             isWin = true
             seconds = sim.state.elapsed
             combo = c
+            finalShiniesForCount = shinyTotal
             title.fontColor = ArtCatalog.neonLime
-            title.text = "RESULTS"
+            title.text = "HEIST CLEAR"
             shinyCount.text = "0"
             meta.text = String(format: "⏱ %.0fs    ✦ combo x%d", seconds, combo)
             if let pa = card.childNode(withName: "outcomePA") as? SKLabelNode {
@@ -2778,20 +2803,6 @@ public final class HeistScene: SKScene {
                 pa.text = story.paTaunt(index: max(0, idx))
                 pa.isHidden = pa.text?.isEmpty != false
             }
-            let finalShinies = shinyTotal
-            shinyCount.removeAction(forKey: "count")
-            if shinyCount.userData == nil { shinyCount.userData = NSMutableDictionary() }
-            shinyCount.userData?["n"] = 0
-            shinyCount.run(SKAction.repeat(SKAction.sequence([
-                SKAction.run { [weak shinyCount] in
-                    guard let shinyCount else { return }
-                    let n = min(finalShinies, ((shinyCount.userData?["n"] as? Int) ?? 0) + 1)
-                    shinyCount.userData?["n"] = n
-                    shinyCount.text = "\(n)"
-                    JuiceSound.shared.playTallyTick()
-                },
-                SKAction.wait(forDuration: 0.05),
-            ]), count: max(1, finalShinies)), withKey: "count")
         case .failed(let reason):
             isWin = false
             seconds = sim.state.elapsed
@@ -2824,6 +2835,80 @@ public final class HeistScene: SKScene {
             return earned.medals.count
         }()
 
+        // Score: shinies ×100 + combo ×50 + time bonus under par + star bonus.
+        let par = ProgressStore.defaultParSeconds
+        let timeBonus = isWin ? max(0, Int((par - seconds) * 12)) : 0
+        let finalScore = finalShiniesForCount * 100 + combo * 50 + timeBonus + starCount * 250
+        scoreLabel?.text = "SCORE 0"
+        scoreLabel?.fontColor = isWin ? ArtCatalog.neonCyan : ArtCatalog.neonPink.withAlphaComponent(0.85)
+        scoreLabel?.removeAction(forKey: "scoreCount")
+        if finalScore > 0 {
+            if scoreLabel?.userData == nil { scoreLabel?.userData = NSMutableDictionary() }
+            scoreLabel?.userData?["n"] = 0
+            let steps = min(28, max(8, finalScore / 40))
+            let step = max(1, finalScore / steps)
+            scoreLabel?.run(SKAction.repeat(SKAction.sequence([
+                SKAction.run { [weak scoreLabel] in
+                    guard let scoreLabel else { return }
+                    let n = min(finalScore, ((scoreLabel.userData?["n"] as? Int) ?? 0) + step)
+                    scoreLabel.userData?["n"] = n
+                    scoreLabel.text = "SCORE \(n)"
+                    scoreLabel.setScale(1.08)
+                    scoreLabel.run(SKAction.scale(to: 1.0, duration: 0.05))
+                    JuiceSound.shared.playTallyTick()
+                },
+                SKAction.wait(forDuration: 0.04),
+            ]), count: steps), withKey: "scoreCount")
+        }
+
+        if isWin {
+            shinyCount.removeAction(forKey: "count")
+            if shinyCount.userData == nil { shinyCount.userData = NSMutableDictionary() }
+            shinyCount.userData?["n"] = 0
+            let finalShinies = finalShiniesForCount
+            shinyCount.run(SKAction.repeat(SKAction.sequence([
+                SKAction.run { [weak shinyCount] in
+                    guard let shinyCount else { return }
+                    let n = min(finalShinies, ((shinyCount.userData?["n"] as? Int) ?? 0) + 1)
+                    shinyCount.userData?["n"] = n
+                    shinyCount.text = "\(n)"
+                    shinyCount.setScale(1.2)
+                    shinyCount.run(SKAction.scale(to: 1.0, duration: 0.06))
+                    JuiceSound.shared.playTallyTick()
+                },
+                SKAction.wait(forDuration: 0.05),
+            ]), count: max(1, finalShinies)), withKey: "count")
+        }
+
+        // Replay reason — always give the player a next itch.
+        if isWin, let medals = clearResult?.medals {
+            if medals.count >= 3 {
+                hintLabel?.text = "PERFECT HEIST — can you beat \(Int(seconds))s?"
+                hintLabel?.fontColor = ArtCatalog.neonLime
+            } else if !medals.allShinies {
+                let missing = max(0, totalShiniesOnMap - finalShiniesForCount)
+                hintLabel?.text = missing > 0
+                    ? "Replay: snag \(missing) more ⚙ for All Shinies ★"
+                    : "Replay: grab every ⚙ for All Shinies ★"
+                hintLabel?.fontColor = ArtCatalog.neonOrange
+            } else if !medals.parTime {
+                hintLabel?.text = "Replay: finish under \(Int(par))s for Par ★"
+                hintLabel?.fontColor = ArtCatalog.neonOrange
+            } else {
+                hintLabel?.text = "One more star waiting — go again!"
+                hintLabel?.fontColor = ArtCatalog.neonOrange
+            }
+        } else if !isWin {
+            if shinies > 0 {
+                hintLabel?.text = "You had \(shinies) ⚙ — stomp back in and finish!"
+            } else {
+                hintLabel?.text = "Stomp a MOP, grab ⚙, hit EXIT — you've got this"
+            }
+            hintLabel?.fontColor = ArtCatalog.neonOrange
+        } else {
+            hintLabel?.text = ""
+        }
+
         // Ease-out card (~250ms): scale 0.8 → 1, fade, dim backdrop, then stagger medals/buttons.
         card.removeAllActions()
         card.setScale(0.8)
@@ -2844,6 +2929,7 @@ public final class HeistScene: SKScene {
         starsNode.isHidden = false
         card.childNode(withName: "newBestStamp")?.removeFromParent()
         card.childNode(withName: "levelUpStamp")?.removeFromParent()
+        card.childNode(withName: "outcomeConfetti")?.removeFromParent()
         for i in 0..<3 {
             guard let star = starsNode.childNode(withName: "star\(i)") as? SKLabelNode else { continue }
             star.removeAllActions()
@@ -2852,11 +2938,11 @@ public final class HeistScene: SKScene {
             star.fontColor = ArtCatalog.neonOrange.withAlphaComponent(0.22)
             if isWin, i < starCount {
                 star.run(SKAction.sequence([
-                    SKAction.wait(forDuration: 0.28 + 0.14 * Double(i)),
+                    SKAction.wait(forDuration: 0.32 + 0.16 * Double(i)),
                     SKAction.group([
                         SKAction.run { JuiceSound.shared.playStar(i) },
-                        SKAction.fadeAlpha(to: 1, duration: 0.14),
-                        SKAction.scale(to: 1.25, duration: 0.14),
+                        SKAction.fadeAlpha(to: 1, duration: 0.12),
+                        SKAction.scale(to: 1.4, duration: 0.12),
                     ]),
                     SKAction.run { star.fontColor = ArtCatalog.neonLime },
                     SKAction.scale(to: 1.0, duration: 0.1),
@@ -2864,7 +2950,7 @@ public final class HeistScene: SKScene {
             } else if isWin {
                 // Empty medal slot (dim) after stagger.
                 star.run(SKAction.sequence([
-                    SKAction.wait(forDuration: 0.28 + 0.14 * Double(i)),
+                    SKAction.wait(forDuration: 0.32 + 0.16 * Double(i)),
                     SKAction.group([
                         SKAction.fadeAlpha(to: 1, duration: 0.12),
                         SKAction.scale(to: 1.0, duration: 0.12),
@@ -2888,6 +2974,19 @@ public final class HeistScene: SKScene {
             star.addChild(cap)
         }
 
+        if isWin, starCount >= 3 {
+            title.text = "PERFECT HEIST"
+            let confetti = ArtCatalog.resultsConfettiEmitter()
+            confetti.name = "outcomeConfetti"
+            confetti.position = CGPoint(x: 0, y: 80)
+            card.addChild(confetti)
+            confetti.run(SKAction.sequence([
+                SKAction.wait(forDuration: 2.4),
+                SKAction.fadeOut(withDuration: 0.4),
+                SKAction.removeFromParent(),
+            ]))
+        }
+
         if isWin, let result = clearResult {
             if result.isNewBest {
                 let stamp = SKLabelNode(fontNamed: "AvenirNext-Heavy")
@@ -2896,14 +2995,14 @@ public final class HeistScene: SKScene {
                 stamp.fontSize = 14
                 stamp.fontColor = ArtCatalog.neonOrange
                 // Clear of All Shinies label + gear count — slam beside the count, angled.
-                stamp.position = CGPoint(x: 78, y: 18)
+                stamp.position = CGPoint(x: 86, y: 8)
                 stamp.zRotation = -0.14
                 stamp.alpha = 0
                 stamp.setScale(1.4)
                 stamp.zPosition = 5
                 card.addChild(stamp)
                 stamp.run(SKAction.sequence([
-                    SKAction.wait(forDuration: 0.85),
+                    SKAction.wait(forDuration: 0.9),
                     SKAction.group([
                         SKAction.run { JuiceSound.shared.playNewBest() },
                         SKAction.fadeIn(withDuration: 0.12),
@@ -2911,15 +3010,27 @@ public final class HeistScene: SKScene {
                     ]),
                 ]))
             }
-            // level_up intentionally unused — no rank system yet.
         }
 
-        let retry = card.childNode(withName: "retryBtn")
-        let next = card.childNode(withName: "nextBtn")
+        let retry = card.childNode(withName: "retryBtn") as? SKShapeNode
+        let next = card.childNode(withName: "nextBtn") as? SKShapeNode
         let home = card.childNode(withName: "homeBtn")
         retry?.isHidden = isWin
         next?.isHidden = !isWin
-        for (idx, btn) in [retry, next, home].enumerated() {
+        // Button copy sells the next run.
+        if let label = retry?.children.compactMap({ $0 as? SKLabelNode }).first {
+            label.text = shinies > 0 ? "RETRY — FINISH IT" : "RETRY"
+        }
+        if let label = next?.children.compactMap({ $0 as? SKLabelNode }).first {
+            if starCount >= 3 {
+                label.text = "PLAY AGAIN"
+            } else if starCount == 2 {
+                label.text = "GO FOR 3★"
+            } else {
+                label.text = "GO FOR MORE ★"
+            }
+        }
+        for (idx, btn) in [retry as SKNode?, next as SKNode?, home].enumerated() {
             guard let btn, !btn.isHidden else { continue }
             btn.alpha = 0
             btn.setScale(0.85)
@@ -2930,7 +3041,7 @@ public final class HeistScene: SKScene {
             ])
             pop.timingMode = .easeOut
             btn.run(SKAction.sequence([
-                SKAction.wait(forDuration: 0.4 + 0.08 * Double(idx)),
+                SKAction.wait(forDuration: 0.55 + 0.08 * Double(idx)),
                 pop,
             ]))
         }
