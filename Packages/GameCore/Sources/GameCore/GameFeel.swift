@@ -8,18 +8,18 @@ public struct GameFeel: Equatable, Sendable {
     // MARK: Run / stick
 
     /// Slight stick deflection → walk; full deflection → run.
-    public var walkSpeed: Double = 3.6
-    public var runSpeed: Double = 7.4
+    public var walkSpeed: Double = 3.7
+    public var runSpeed: Double = 7.55
     /// Stick magnitude at/above this uses runSpeed; below blends toward walkSpeed.
     public var walkRunStickThreshold: Double = 0.55
-    /// Seconds from rest → top run speed on ground (≈0.1 s).
-    public var groundAccelTime: Double = 0.09
-    /// Seconds from top speed → stop on ground with stick released (≈0.08 s).
-    public var groundStopTime: Double = 0.075
+    /// Seconds from rest → top run speed on ground (snappier — less robotic ramp).
+    public var groundAccelTime: Double = 0.078
+    /// Seconds from top speed → stop on ground with stick released.
+    public var groundStopTime: Double = 0.068
     /// Extra accel multiplier when reversing against current velocity.
-    public var turnAccelMul: Double = 1.9
-    /// Air horizontal accel as a fraction of ground accel (≈65%).
-    public var airControlMul: Double = 0.65
+    public var turnAccelMul: Double = 2.05
+    /// Air horizontal accel as a fraction of ground accel.
+    public var airControlMul: Double = 0.7
     /// Radial stick dead zone (normalized 0…1).
     public var stickDeadZone: Double = 0.15
     /// Virtual stick max travel in points.
@@ -34,9 +34,9 @@ public struct GameFeel: Equatable, Sendable {
     public var maxFall: Double = 26
     public var gravity: Double = 84
     /// Fall gravity = rise gravity × this (≈1.8×). Keep ≤1.85 so stomp timing stays readable.
-    public var fallGravityMul: Double = 1.72
+    public var fallGravityMul: Double = 1.73
     /// Near apex (|vy| below threshold), gravity × this for hang time.
-    public var apexHangMul: Double = 0.42
+    public var apexHangMul: Double = 0.4
     /// |vy| (tiles/s scaled later) under which apex hang applies.
     public var apexHangSpeed: Double = 2.2
     /// Peak jump impulse — scaled in Sim by `tileSize/2.2`.
@@ -77,8 +77,8 @@ public struct GameFeel: Equatable, Sendable {
     public var pounceMagnetTiles: Double = 2.0
     /// How hard the magnet pulls (tiles/s² scale via tileSize).
     public var pounceMagnetAccel: Double = 28
-    /// Hit-stop on stomp (seconds) — ~55 ms punch; combo bumps in the render layer.
-    public var stompHitstop: Double = 0.055
+    /// Hit-stop on stomp (seconds) — ~65 ms punch; combo bumps in the render layer (cap ~80 ms).
+    public var stompHitstop: Double = 0.065
     public var invulnSeconds: Double = 1.0
     /// Minimum bandit alpha while blinking during i-frames (≥ 50%).
     public var invulnMinAlpha: Double = 0.55

@@ -2607,24 +2607,24 @@ public final class HeistScene: SKScene {
             case .jump:
                 JuiceSound.shared.playJump()
                 if !smokeEnabled { hapticLight.impactOccurred() }
-                squash(0.72, 1.38)
-                shake(0.22)
-                dust(at: e.position, count: 5, color: ArtCatalog.neonCyan)
+                squash(0.68, 1.48)
+                shake(0.32)
+                dust(at: e.position, count: 7, color: ArtCatalog.neonCyan)
                 jumpSpark(at: e.position)
             case .land:
                 // Raw sim land for CI double-land gate (before audible debounce).
                 JuiceSound.shared.logRawLand()
                 JuiceSound.shared.playLand()
-                squash(1.42, 0.58)
-                shake(0.38)
-                dust(at: e.position, count: 14, color: ArtCatalog.neonOrange)
+                squash(1.52, 0.52)
+                shake(0.48)
+                dust(at: e.position, count: 16, color: ArtCatalog.neonOrange)
                 landRing(at: e.position)
             case .pounce:
                 JuiceSound.shared.playPounce()
                 if !smokeEnabled { hapticMed.impactOccurred() }
-                shake(0.55)
-                squash(0.85, 1.2)
-                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 6)
+                shake(0.7)
+                squash(0.8, 1.28)
+                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 8)
             case .flop:
                 // Belly-flop is mid-air commit — do NOT play land SFX here. Pounce→flop→land
                 // within <100ms used to log two "sfx land" lines and fail the CI double-land gate.
@@ -2637,16 +2637,18 @@ public final class HeistScene: SKScene {
                 if midrunOk { smokeStatus.stomps += 1 }
                 JuiceSound.shared.playStomp()
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
-                // Hit-stop: ~55 ms base, ~75 ms at combo ≥3 (stays in the 40–80 ms punch band).
+                // Hit-stop: ~65 ms base, ~80 ms at combo ≥3 (stays in the 40–80 ms punch band).
                 let stop = sim.state.bandit.combo >= 3
-                    ? max(tuning.feel.stompHitstop, 0.075)
+                    ? max(tuning.feel.stompHitstop, 0.08)
                     : tuning.feel.stompHitstop
                 hitStop = max(hitStop, stop)
-                shake(1.35)
-                squash(1.55, 0.42)
-                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 18)
-                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 10)
-                dust(at: e.position, count: 16, color: ArtCatalog.neonPink)
+                shake(1.7)
+                squash(1.68, 0.36)
+                impactFlash(intensity: sim.state.bandit.combo >= 3 ? 0.55 : 0.38)
+                zoomPunch(1.045)
+                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 22)
+                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 14)
+                dust(at: e.position, count: 20, color: ArtCatalog.neonPink)
                 impactRing(at: e.position, color: ArtCatalog.neonPink)
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
@@ -2686,9 +2688,20 @@ public final class HeistScene: SKScene {
                         // First-minute win: Mask Mode inside ~20 s is the early payoff.
                         if !self.celebratedEarlyWin, self.sim.state.elapsed <= 22 {
                             self.celebratedEarlyWin = true
-                            self.showPlayToast("MASK MODE — FIRST WIN!", color: ArtCatalog.neonCyan, hold: 1.8)
-                            self.shake(1.1)
-                            self.neonBurst(at: self.sim.state.bandit.position, color: ArtCatalog.neonCyan, count: 22)
+                            self.showPlayToast("MASK MODE — FIRST WIN!", color: ArtCatalog.neonCyan, hold: 1.6)
+                            self.shake(1.25)
+                            self.impactFlash(intensity: 0.45)
+                            self.zoomPunch(1.06)
+                            self.neonBurst(at: self.sim.state.bandit.position, color: ArtCatalog.neonCyan, count: 26)
+                            // Kill the post-Mask lull: point at EXIT hard.
+                            self.run(SKAction.sequence([
+                                SKAction.wait(forDuration: 1.7),
+                                SKAction.run { [weak self] in
+                                    guard let self else { return }
+                                    self.showPlayToast("NOW → NEON EXIT", color: ArtCatalog.neonLime, hold: 1.7)
+                                    self.ampExitBeacon()
+                                },
+                            ]))
                         }
                     },
                 ]))
@@ -3177,11 +3190,12 @@ public final class HeistScene: SKScene {
         } else {
             cameraFacingHoldUntil = nowFace + 0.9
         }
-        let faceBlend = min(1, CGFloat(dt) / 0.45)
+        let faceBlend = min(1, CGFloat(dt) / 0.32)
         cameraFacing += (cameraWantFace - cameraFacing) * faceBlend
         var target = cameraTarget(for: b)
-        // Follow the lead without lagging a sprint into the right half.
-        let s = min(1, CGFloat(tuning.cameraSmooth) * 1.45)
+        // Speed-scaled follow: sprint locks on; idle eases. Stops the camera feeling sticky.
+        let speedFrac = min(1, CGFloat(abs(b.velocity.x)) / max(1, CGFloat(tuning.feel.runSpeed * tuning.tileSize)))
+        let s = min(1, CGFloat(tuning.cameraSmooth) * (1.45 + 0.9 * speedFrac))
         cameraFocus.x += (target.x - cameraFocus.x) * s
         cameraFocus.y += (target.y - cameraFocus.y) * s
         let z = Self.worldZoom
@@ -3192,15 +3206,15 @@ public final class HeistScene: SKScene {
             let desired = size.width * (0.30 - 0.5) // scene-x for 30% of width
             cameraFocus.x = CGFloat(b.position.x) - desired / z
             target = cameraTarget(for: b)
-            cameraFocus.x += (target.x - cameraFocus.x) * 0.45
+            cameraFocus.x += (target.x - cameraFocus.x) * 0.55
             banditSceneX = z * (CGFloat(b.position.x) - cameraFocus.x)
             heroFrac = Double((banditSceneX + size.width * 0.5) / max(size.width, 1))
         }
         stage.position = CGPoint(x: -cameraFocus.x * z, y: -cameraFocus.y * z)
-        // Mid-level surprise once the player reaches the docks mid-street / ladder zone.
+        // Mid-level surprise earlier so the first-minute lull after Mask still has a beat.
         if case .playing = sim.state.phase, !runPaused, !midSurpriseFired {
             let tx = Int(floor(b.position.x / tuning.tileSize))
-            if tx >= 42 {
+            if tx >= 28 || sim.state.elapsed >= 26 {
                 fireMidLevelSurprise()
             }
         }
@@ -3245,6 +3259,54 @@ public final class HeistScene: SKScene {
 
     private func squash(_ x: CGFloat, _ y: CGFloat) {
         bandit.squash(x: x, y: y)
+    }
+
+    /// Brief full-screen additive flash on heavy hits (stomp / Mask).
+    private func impactFlash(intensity: CGFloat) {
+        let flash = SKSpriteNode(color: .white, size: size)
+        flash.alpha = min(0.7, max(0.15, intensity))
+        flash.blendMode = .add
+        flash.zPosition = 500
+        flash.name = "impactFlash"
+        overlay.childNode(withName: "impactFlash")?.removeFromParent()
+        overlay.addChild(flash)
+        flash.run(SKAction.sequence([
+            SKAction.fadeOut(withDuration: 0.09),
+            SKAction.removeFromParent(),
+        ]))
+    }
+
+    /// Tiny FOV kick so stomps feel heavier than a flat shake.
+    private func zoomPunch(_ peak: CGFloat) {
+        stage.removeAction(forKey: "zoomPunch")
+        let base = Self.worldZoom
+        stage.setScale(base)
+        let up = SKAction.scale(to: base * peak, duration: 0.04)
+        up.timingMode = .easeOut
+        let down = SKAction.scale(to: base, duration: 0.12)
+        down.timingMode = .easeIn
+        stage.run(SKAction.sequence([up, down]), withKey: "zoomPunch")
+    }
+
+    /// After Mask, make the EXIT beacon impossible to miss.
+    private func ampExitBeacon() {
+        guard let beacon = exitBeacon else { return }
+        beacon.removeAction(forKey: "amp")
+        beacon.setScale(1)
+        beacon.run(SKAction.repeat(SKAction.sequence([
+            SKAction.group([
+                SKAction.scale(to: 1.35, duration: 0.18),
+                SKAction.fadeAlpha(to: 1, duration: 0.18),
+            ]),
+            SKAction.group([
+                SKAction.scale(to: 1.05, duration: 0.22),
+                SKAction.fadeAlpha(to: 0.85, duration: 0.22),
+            ]),
+        ]), count: 6), withKey: "amp")
+        if let arrow = beacon.children.compactMap({ $0 as? SKLabelNode }).first {
+            arrow.fontColor = ArtCatalog.neonLime
+            arrow.fontSize = 15
+        }
     }
 
     /// Clear first-minute goal: stomp into Mask, then bank at EXIT.

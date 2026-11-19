@@ -240,13 +240,13 @@ public final class SFXManager: @unchecked Sendable {
         }
     }
 
-    public func playJump() { play("jump") }
-    public func playLand() { play("land") }
+    public func playJump() { play("jump", gain: 1.15) }
+    public func playLand() { play("land", gain: 1.1) }
     public func playStomp() {
-        play("stomp_crunch")
-        play("mop_bot_break", gain: 0.9)
+        play("stomp_crunch", gain: 1.25)
+        play("mop_bot_break", gain: 1.05)
     }
-    public func playPounce() { play("pounce_whoosh") }
+    public func playPounce() { play("pounce_whoosh", gain: 1.12) }
     public func playHurt() { play("raccoon_hurt") }
     public func playKO() { play("raccoon_ko") }
 

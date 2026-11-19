@@ -1362,19 +1362,19 @@ public final class BanditVisual: SKNode {
         let face = bodyFaceScale()
         body.xScale = face
         body.yScale = 1
-        // Snappy squash-in / elastic settle — reads as impact, not a slow stretch.
+        // Harder impact pose, quicker rebound — reads on a phone screen.
         body.run(SKAction.sequence([
             SKAction.group([
-                SKAction.scaleX(to: x * face, duration: 0.035),
-                SKAction.scaleY(to: y, duration: 0.035),
+                SKAction.scaleX(to: x * face, duration: 0.028),
+                SKAction.scaleY(to: y, duration: 0.028),
             ]),
             SKAction.group([
-                SKAction.scaleX(to: 1.08 * face, duration: 0.05),
-                SKAction.scaleY(to: 0.92, duration: 0.05),
+                SKAction.scaleX(to: 1.12 * face, duration: 0.045),
+                SKAction.scaleY(to: 0.88, duration: 0.045),
             ]),
             SKAction.group([
-                SKAction.scaleX(to: face, duration: 0.07),
-                SKAction.scaleY(to: 1, duration: 0.07),
+                SKAction.scaleX(to: face, duration: 0.06),
+                SKAction.scaleY(to: 1, duration: 0.06),
             ]),
         ]), withKey: "sq")
     }
