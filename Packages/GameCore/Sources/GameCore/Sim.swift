@@ -279,7 +279,17 @@ public struct Sim: Equatable, Sendable {
     private mutating func integrate(input: InputFrame, bandit: inout BanditState, dt: Double) {
         let feel = tuning.feel
         let move = max(-1, min(1, input.moveX))
-        if abs(move) > feel.stickDeadZone { bandit.facing = move >= 0 ? 1 : -1 }
+        // Stick owns facing while held; otherwise face the direction of travel so knockback
+        // / coast never reads as moonwalking. Hurt pose locks facing to the knockback.
+        if bandit.animHold > 0, bandit.anim == .hurt {
+            if abs(bandit.velocity.x) > 4 {
+                bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
+            }
+        } else if abs(move) > feel.stickDeadZone {
+            bandit.facing = move >= 0 ? 1 : -1
+        } else if abs(bandit.velocity.x) > 10 {
+            bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
+        }
 
         // Accel from time-to-speed: reach runPx in groundAccelTime; stop in groundStopTime.
         let walkPx = feel.walkSpeed * tuning.tileSize
@@ -308,10 +318,12 @@ public struct Sim: Equatable, Sendable {
             } else if bandit.velocity.x > targetVx {
                 bandit.velocity.x = max(targetVx, bandit.velocity.x - accel * dt)
             }
-        } else if bandit.onGround {
-            let fr = groundDecel * dt
+        } else {
+            // Release stick → bleed horizontal on ground and in air (no forever skate / knockback).
+            let frMul = bandit.onGround ? 1.0 : feel.airControlMul * 0.85
+            let fr = groundDecel * frMul * dt
             if bandit.velocity.x > 0 { bandit.velocity.x = max(0, bandit.velocity.x - fr) }
-            else { bandit.velocity.x = min(0, bandit.velocity.x + fr) }
+            else if bandit.velocity.x < 0 { bandit.velocity.x = min(0, bandit.velocity.x + fr) }
         }
 
         // Jump
@@ -812,6 +824,8 @@ public struct Sim: Equatable, Sendable {
                 bandit.position.x = nx
                 bandit.velocity.y = feel.jumpVelocity * tile / 3
                 bandit.velocity.x = away * feel.runSpeed * tile * 0.85
+                // Face the knockback so the hurt pose never moonwalks away from the MOP.
+                bandit.facing = away
                 state.mops[i].position.x -= away * tile * 0.5
                 state.mops[i].home.x = state.mops[i].position.x
                 state.mops[i].stun = 0.5

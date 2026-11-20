@@ -1298,6 +1298,103 @@ final class GameCoreTests: XCTestCase {
         XCTAssertTrue(onStreet || sawStomp, "re-entry hunt should reach the street deck after dropping")
     }
 
+    /// P0: hold left then release — vx must settle to 0 and facing must match travel while moving.
+    func testHoldLeftThenReleaseStopsAndFacesTravel() throws {
+        let map = try TileMap.parse("""
+        ################
+        #..............#
+        #............@.#
+        #==============#
+        ################
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 1)
+        sim.state.phase = .playing
+        for _ in 0..<40 {
+            sim.step(InputFrame(moveX: -1))
+            if abs(sim.state.bandit.velocity.x) > 20 {
+                XCTAssertLessThan(sim.state.bandit.facing, 0, "facing must match left run")
+            }
+        }
+        XCTAssertLessThan(sim.state.bandit.velocity.x, -20, "should be running left")
+        for _ in 0..<90 {
+            sim.step(.idle)
+        }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 1.5, "release must stop horizontal motion")
+        XCTAssertEqual(sim.state.bandit.anim, .idle, "run anim must not keep playing at rest")
+    }
+
+    /// P0: reverse direction — facing flips with travel, then release stops.
+    func testLeftRightReversalFacingMatchesVelocity() throws {
+        let map = try TileMap.parse("""
+        ####################
+        #..................#
+        #.@................#
+        #==================#
+        ####################
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 2)
+        sim.state.phase = .playing
+        for _ in 0..<35 { sim.step(InputFrame(moveX: 1)) }
+        XCTAssertGreaterThan(sim.state.bandit.velocity.x, 20)
+        XCTAssertGreaterThan(sim.state.bandit.facing, 0)
+        for _ in 0..<40 { sim.step(InputFrame(moveX: -1)) }
+        XCTAssertLessThan(sim.state.bandit.velocity.x, -20)
+        XCTAssertLessThan(sim.state.bandit.facing, 0)
+        for _ in 0..<90 { sim.step(.idle) }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 1.5)
+    }
+
+    /// P0: take a hit while moving left — knockback facing matches travel; release stops.
+    func testHurtWhileMovingFacingMatchesKnockbackThenStops() throws {
+        let map = try TileMap.parse("""
+        ################
+        #..............#
+        #.@........M...#
+        #==============#
+        ################
+        """)
+        var tuning = Tuning.default
+        tuning.hearts = 3
+        var sim = Sim(map: map, tuning: tuning, seed: 3)
+        sim.state.phase = .playing
+        XCTAssertFalse(sim.state.mops.isEmpty)
+        // Sprint into the MOP from the left (ground contact = hurt, not stomp).
+        var hurt = false
+        for _ in 0..<120 {
+            sim.step(InputFrame(moveX: 1))
+            if sim.state.events.contains(where: { if case .hurt = $0.kind { return true }; return false }) {
+                hurt = true
+                break
+            }
+        }
+        XCTAssertTrue(hurt, "expected a side-bump hurt")
+        let vx = sim.state.bandit.velocity.x
+        XCTAssertNotEqual(vx, 0, accuracy: 1)
+        // Facing must match knockback travel (not the pre-hit run direction).
+        XCTAssertEqual(sim.state.bandit.facing < 0, vx < 0)
+        for _ in 0..<120 {
+            sim.step(.idle)
+        }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 2.0, "post-hurt release must stop")
+    }
+
+    /// Stick held at zero magnitude (drag back to dead zone) stops like a full release.
+    func testDeadZoneReleaseStops() throws {
+        let map = try TileMap.parse("""
+        ############
+        #..........#
+        #.@........#
+        #==========#
+        ############
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 4)
+        sim.state.phase = .playing
+        for _ in 0..<40 { sim.step(InputFrame(moveX: -1)) }
+        let dead = sim.tuning.feel.stickDeadZone * 0.5
+        for _ in 0..<90 { sim.step(InputFrame(moveX: dead)) }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 1.5)
+    }
+
 }
 
 struct SeededGenerator: RandomNumberGenerator {

@@ -392,13 +392,26 @@ public struct SmokeBrain: Equatable, Sendable {
         var moveX: Double
         var jumpPressed = false
         var jumpHeld = false
-        if phase < 90 {
-            moveX = 0.4 // walk
-        } else if phase < 170 {
-            moveX = 1.0 // run
-        } else {
+        // Explicit L/R reversals + brief releases so the smoke clip proves facing/stop.
+        if phase < 50 {
             moveX = 1.0
-            if b.onGround, phase == 170 || phase == 190 {
+        } else if phase < 70 {
+            moveX = 0 // release
+        } else if phase < 120 {
+            moveX = -1.0
+        } else if phase < 140 {
+            moveX = 0 // release
+        } else if phase < 180 {
+            moveX = 1.0
+            if b.onGround, phase == 150 || phase == 170 {
+                jumpPressed = true
+                jumpHeld = true
+            } else if !b.onGround {
+                jumpHeld = b.velocity.y > 0
+            }
+        } else {
+            moveX = 0.85
+            if b.onGround, phase == 190 {
                 jumpPressed = true
                 jumpHeld = true
             } else if !b.onGround {

@@ -1659,12 +1659,12 @@ public final class HeistScene: SKScene {
             skipFreezeSample = true
             pauseCountLabel?.alpha = 0
             pauseCountLabel?.text = ""
-            moveX = 0
+            releaseStickInput()
             jumpHeld = false
             jumpPressed = false
             pouncePressed = false
-            stickTouch = nil
             jumpTouch = nil
+            pounceTouch = nil
             pauseRoot.isHidden = false
             layoutUI()
             if smokeEnabled { writeSmokeStatus() }
@@ -1951,8 +1951,7 @@ public final class HeistScene: SKScene {
         hudPill.isHidden = !showPlayHUD
         pauseBtn?.isHidden = !showPlayHUD
         if !showPlayHUD || runPaused {
-            stickKnob.position = stickBase.position
-            moveX = 0
+            releaseStickInput()
         }
         if runPaused {
             for node in [stickBase, stickKnob, jumpBtn, pounceBtn, pauseBtn] as [SKNode?] {
@@ -2573,11 +2572,17 @@ public final class HeistScene: SKScene {
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if smokeEnabled || runPaused || resumeCountdown > 0 { return }
+        if smokeEnabled { return }
         for touch in touches {
             if touch === stickTouch {
+                // Drag-off / lifecycle pause must not leave moveX latched.
+                if runPaused || resumeCountdown > 0 {
+                    releaseStickInput()
+                    continue
+                }
                 updateStick(touch.location(in: hud))
             }
+            if runPaused || resumeCountdown > 0 { continue }
             // Sliding onto JUMP / POUNCE from a miss still counts (forgiving).
             let p = touch.location(in: hud)
             if jumpTouch == nil, touch !== stickTouch, touch !== pounceTouch,
@@ -2599,16 +2604,22 @@ public final class HeistScene: SKScene {
     }
 
     public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if smokeEnabled || runPaused || resumeCountdown > 0 { return }
+        // Always clear tracked fingers — never skip while paused/countdown or moveX latches
+        // after Control Center, JUMP multitouch, or background resign.
+        if smokeEnabled { return }
+        releaseEndedTouches(touches)
+    }
+
+    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if smokeEnabled { return }
+        releaseEndedTouches(touches)
+    }
+
+    /// Zero stick / face-button state for ended or cancelled fingers.
+    private func releaseEndedTouches(_ touches: Set<UITouch>) {
         for touch in touches {
             if touch === stickTouch {
-                stickTouch = nil
-                moveX = 0
-                moveY = 0
-                stickKnob.position = stickBase.position
-                stickBase.alpha = 0.38
-                stickKnob.alpha = 0.38
-                layoutUI()
+                releaseStickInput()
             }
             if touch === jumpTouch {
                 jumpTouch = nil
@@ -2620,8 +2631,62 @@ public final class HeistScene: SKScene {
         }
     }
 
-    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        touchesEnded(touches, with: event)
+    private func releaseStickInput() {
+        stickTouch = nil
+        moveX = 0
+        moveY = 0
+        if stickBase != nil, stickKnob != nil {
+            stickKnob.position = stickBase.position
+            stickBase.alpha = 0.38
+            stickKnob.alpha = 0.38
+        }
+    }
+
+    // MARK: - Input latch probes (MagpieTests / feel regression)
+
+    /// Current latched horizontal stick (−1…1).
+    public var debugMoveX: Double { moveX }
+    public var debugJumpHeld: Bool { jumpHeld }
+    public var debugHasStickTouch: Bool { stickTouch != nil }
+
+    /// Inject stick magnitude without a UITouch (unit tests).
+    public func debugSetMoveX(_ x: Double) {
+        moveX = max(-1, min(1, x))
+    }
+
+    /// Simulate JUMP held alongside stick (multitouch) then release stick only.
+    public func debugPressJumpAlongsideMove() {
+        jumpPressed = true
+        jumpHeld = true
+    }
+
+    public func debugReleaseJump() {
+        jumpHeld = false
+        jumpPressed = false
+        jumpTouch = nil
+    }
+
+    public func debugReleaseStick() {
+        releaseStickInput()
+    }
+
+    /// Background / Control Center path — must zero move even if a finger was down.
+    public func debugLifecyclePause() {
+        pauseFromAppLifecycle()
+    }
+
+    /// Drop latched fingers whose UITouch phase already ended/cancelled.
+    private func sanitizeTrackedTouches() {
+        if let t = stickTouch, t.phase == .ended || t.phase == .cancelled {
+            releaseStickInput()
+        }
+        if let t = jumpTouch, t.phase == .ended || t.phase == .cancelled {
+            jumpTouch = nil
+            jumpHeld = false
+        }
+        if let t = pounceTouch, t.phase == .ended || t.phase == .cancelled {
+            pounceTouch = nil
+        }
     }
 
     private func updateStick(_ p: CGPoint) {
@@ -2630,6 +2695,12 @@ public final class HeistScene: SKScene {
         let dead = tuning.feel.stickDeadZone
         var dx = delta.x, dy = delta.y
         let len = hypot(dx, dy)
+        // Finger slid far off the virtual stick origin → treat as release (no latched run).
+        let releaseR = maxR * 2.6
+        if len > releaseR {
+            releaseStickInput()
+            return
+        }
         if len > maxR {
             dx = dx / len * maxR
             dy = dy / len * maxR
@@ -2838,6 +2909,10 @@ public final class HeistScene: SKScene {
             if case .title = sim.state.phase { return 1 }
             return 2
         }()
+        // Safety net: if UIKit ended the stick finger without delivering touchesEnded
+        // (Control Center / call / rare multitouch races), drop the latch immediately.
+        sanitizeTrackedTouches()
+
         while accumulator >= tuning.dt && steps < maxSteps {
             var input = InputFrame(moveX: moveX, moveY: moveY, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
             jumpPressed = false

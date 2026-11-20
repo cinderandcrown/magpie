@@ -1431,6 +1431,18 @@ public final class BanditVisual: SKNode {
         body.xScale = bodyFaceScale()
     }
 
+    /// Keep west-sheet flip correct without clobbering an in-flight squash scaleX.
+    private func refreshFacingScalePreservingSquash() {
+        let face = bodyFaceScale()
+        if body.action(forKey: "sq") != nil {
+            if (body.xScale >= 0) != (face >= 0) {
+                body.xScale = -body.xScale
+            }
+        } else {
+            body.xScale = face
+        }
+    }
+
     public func squash(x: CGFloat, y: CGFloat) {
         body.removeAction(forKey: "sq")
         let face = bodyFaceScale()
@@ -1482,21 +1494,24 @@ public final class BanditVisual: SKNode {
         driveSpeed = speedRatio
         bobPhase += dt * speedRatio
         // Personality: idle breathe + locomotion bob (even on sheet-driven packs).
+        // Never call body.setScale — that resets xScale and wipes facing (moonwalk bug).
         if anim == .idle {
             sprite.position.y = sin(bobPhase * 2.4) * 1.6
             let breathe = 1.0 + sin(bobPhase * 2.1) * 0.018
-            body.setScale(breathe)
+            body.yScale = breathe
         } else if !sheetDriven, anim == .run || anim == .walk {
             let runLike = anim == .run
             sprite.position.y = sin(bobPhase * (runLike ? 15 : 3.2)) * (runLike ? 2.6 : 1.3)
-            body.setScale(1)
+            body.yScale = 1
         } else if sheetDriven, anim == .run || anim == .walk {
             sprite.position.y = sin(bobPhase * (anim == .run ? 18 : 12)) * (anim == .run ? 1.8 : 1.1)
-            body.setScale(1)
+            body.yScale = 1
         } else {
             sprite.position.y = 0
-            body.setScale(1)
+            body.yScale = 1
         }
+        // Re-assert facing every frame; preserve squash magnitude if an impact pose is running.
+        refreshFacingScalePreservingSquash()
         // Forward lean while moving — sells speed without needing a new sheet.
         if anim == .run || anim == .walk {
             let lean: CGFloat = anim == .run ? 0.11 : 0.06

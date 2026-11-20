@@ -124,4 +124,35 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(true)
         #endif
     }
+
+    /// P0 moonwalk / latch: stick release, JUMP multitouch, and lifecycle pause must zero moveX.
+    @MainActor
+    func testMoveInputDoesNotLatchAcrossReleaseJumpOrBackground() {
+        #if canImport(SpriteKit) && canImport(UIKit)
+        let scene = HeistScene(size: CGSize(width: 390, height: 844), smokeAutoplay: false)
+        scene.debugSetMoveX(-1)
+        XCTAssertEqual(scene.debugMoveX, -1, accuracy: 0.001)
+        scene.debugReleaseStick()
+        XCTAssertEqual(scene.debugMoveX, 0, accuracy: 0.001)
+        XCTAssertFalse(scene.debugHasStickTouch)
+
+        // Multitouch: hold move + JUMP, then release stick — JUMP may stay, move must not.
+        scene.debugSetMoveX(1)
+        scene.debugPressJumpAlongsideMove()
+        XCTAssertTrue(scene.debugJumpHeld)
+        scene.debugReleaseStick()
+        XCTAssertEqual(scene.debugMoveX, 0, accuracy: 0.001)
+        XCTAssertTrue(scene.debugJumpHeld)
+        scene.debugReleaseJump()
+        XCTAssertFalse(scene.debugJumpHeld)
+
+        // Lifecycle pause (Control Center / resign active) must clear a latched stick.
+        scene.debugSetMoveX(-0.8)
+        scene.debugLifecyclePause()
+        XCTAssertEqual(scene.debugMoveX, 0, accuracy: 0.001)
+        XCTAssertFalse(scene.debugHasStickTouch)
+        #else
+        XCTAssertTrue(true)
+        #endif
+    }
 }
