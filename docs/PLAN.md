@@ -1,4 +1,4 @@
-# iPhone Game Plan for Grok — Codename MAGPIE (full plan)
+# iPhone Game Plan — The Neon City Bandit (full plan)
 
 Nov 14, 2026 · Nicholas Will
 
@@ -16,10 +16,10 @@ If Grok is handed this whole file: read all of it, then do Mission 0 only and st
 Nicholas approved **Trash Panda Heist: Game Plan v1** ([canvas](https://cursor.com/canvas/store-f0dfaef1-646f-4cb3-b3a2-4edd43f95165/7412b08b-bc3e-4248-b762-a4a8b08a389d)). Full design: `docs/DESIGN.md`.
 
 - Hero: cocky masked raccoon (“the Bandit” until named). Villain: **MOP**. Goal: free the captured raccoon crew.
-- Moves: **Pounce**, **Belly Flop**, **Tail Swing** (replaces glide; A/B in Mission 1), **Mask Mode** at combo **x5** (shareable moment). Hijack Hop for vehicles.
+- Moves: **Pounce**, **Belly Flop**, **Tail Swing** (replaces glide; A/B in Mission 1), **Mask Mode** at combo **x3** within **12 s** (shareable moment; Nicholas APPROVED 2026-11-17, was x5 / 4.5 s). Hijack Hop for vehicles.
 - Glossary: Shinies · Stash Chute · The Den · Bagged · Sweepbot/Scrubber/Spotlight Drone/Barrier Bot · Junk Gadgets · Neon Docks / Glow Market / Arcade Row / Spotless Tower · MOP Safe Rooms.
 - Visual: distinct from Sony’s Sly Cooper (no cane, no top-hat thief look, no blue/gold). Mascot needs attorney review.
-- Codename **MAGPIE** stays in code identifiers. The game is **Trash Panda**; working title **Trash Panda Heist** until availability is confirmed. One user-facing title constant: `ProductIdentity.displayTitle`.
+- User-facing title: **The Neon City Bandit** via `ProductIdentity.displayTitle`. Engineering identifiers (bundle ID, Xcode target `Magpie`) stay unchanged.
 - Open questions for Nicholas: confirm “Trash Panda” availability; sell masks directly; no Shinies packs at soft launch; rename Golden Ticket → **Crew Pass**.
 
 **Missions 1–10 target this raccoon heist theme.** Mission 0 stays the follow-square loop. Gates, budgets, and process numbers are unchanged. Where older Part 1–2 sentences still say “bird / toy city / hop / glide / Shine / Nest,” treat them as superseded by this amendment and `docs/DESIGN.md`.
@@ -59,18 +59,18 @@ What you give up without a Mac: each code change takes roughly 10 to 25 minutes 
 
 ## The game
 
-Codename MAGPIE (engineering only). The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed) — a cocky masked raccoon loose in a neon night city: pounce, belly-flop bots, hijack rides, bank Shinies before a 3-minute timer runs out. Villain: **MOP**. Free the captured raccoon crew.
+**The Neon City Bandit** — a cocky masked raccoon loose in a neon night city: pounce, belly-flop bots, hijack rides, bank Shinies before a 3-minute timer runs out. Villain: **MOP**. Free the captured raccoon crew.
 
-| Parent | The idea we take (never the IP) | In MAGPIE |
+| Parent | The idea we take (never the IP) | In The Neon City Bandit |
 | --- | --- | --- |
-| Mario | Jumping that feels great | Pounce, Tail Swing, Belly Flop, bounce combos up to x10; Mask Mode at x5 |
+| Mario | Jumping that feels great | Pounce, Tail Swing, Belly Flop, bounce combos up to x10; Mask Mode at x3 / 12 s |
 | Zelda | Tools open the world; puzzle rooms; bosses | 4 Junk Gadgets, each opens a district; 12 MOP Safe Rooms; 4 bosses |
 | GTA | Open city; take any vehicle; heat escalates | Belly Flop a roof to hijack; Heat 0 to 5; Sweepbots give chase |
 
 - 2D top-down. Portrait. One thumb. 180-second runs.
 - Free to play: in-app purchases plus opt-in rewarded ads.
 - Rating target 9+: cartoon mischief, robot enemies, nobody gets hurt. Rob robots and corp vaults only — never people.
-- Every run ends in a 10-second Final Dash, and the game saves that clip to share. Mask Mode at x5 is the shareable in-run moment.
+- Every run ends in a 10-second Final Dash, and the game saves that clip to share. Mask Mode at x3 / 12 s is the shareable in-run moment.
 - One Daily Run: the same city for everyone, one ranked try a day.
 - Soft launch ships half of it: 2 districts (Neon Docks, Glow Market), 2 gadgets, 6 safe rooms, 1 boss.
 
@@ -78,11 +78,11 @@ Why 2D: a 3D open world takes a studio. One founder plus AI agents can finish 2D
 
 Why Swift and SpriteKit: the whole game is code, with no editor clicking, so an agent can build and test it end to end. Trade-offs: iPhone only at first, and Apple has not given SpriteKit a major update in years.
 
-Names and skin are product decisions (`docs/DESIGN.md`). Systems use MAGPIE identifiers; user-facing title is one constant. Keep the hero visually distinct from Sony’s Sly Cooper.
+Names and skin are product decisions (`docs/DESIGN.md`). Systems keep historical engineering identifiers; user-facing title is one constant. Keep the hero visually distinct from Sony’s Sly Cooper.
 
 ## Roadmap
 
-Three gates decide whether MAGPIE earns the next spend. Durations are estimates.
+Three gates decide whether The Neon City Bandit earns the next spend. Durations are estimates.
 
 | Phase | Missions | What | Time | Gate at the end |
 | --- | --- | --- | --- | --- |
@@ -101,7 +101,7 @@ What the market data says:
 
 - The top 1% of mobile games took about 92.5% of game revenue in 2025. Everyone else shared 7.5% ([Sensor Tower, via GameDev Reports](https://gamedevreports.substack.com/p/sensor-tower-the-state-of-the-mobile)).
 - The median game keeps about 22% of players on day 1 and 4% on day 7. The top 10% keep about 40% and 12% ([GameAnalytics 2026 highlights](https://investgame.net/wp-content/uploads/2026/01/2026-01-20-Mobile_retention_benchmarks_2026.pdf)). That sample leans toward small studios.
-- Hybrid-casual was the only segment whose purchase revenue grew in 2025 (same Sensor Tower report). Hybrid-casual means a simple core loop, deeper upgrades, and ads plus purchases. MAGPIE is built in that shape.
+- Hybrid-casual was the only segment whose purchase revenue grew in 2025 (same Sensor Tower report). Hybrid-casual means a simple core loop, deeper upgrades, and ads plus purchases. The Neon City Bandit is built in that shape.
 
 | Gate | After | Test | Go | Rework or stop |
 | --- | --- | --- | --- | --- |
@@ -142,7 +142,7 @@ Only you decide:
 Borrowing a genre is fine; borrowing anything recognizable is not. I am not a lawyer, so treat this as a checklist to take to one.
 
 - Take ideas, never IP. No Nintendo or Rockstar names, characters, art, music, sounds, maps or look-alike screens. The Master Brief makes this a hard rule for Grok.
-- Nintendo has also sued over game-mechanic patents. Its Palworld suit was filed in September 2024, and patent offices in the US and Japan later rejected related Nintendo claims ([Sports Litigation Alert](https://sportslitigationalert.com/patent-offices-in-u-s-japan-raise-questions-about-nintendos-palworld-lawsuit/)). A court view was due November 9, 2026; I found no report of the result. MAGPIE's mechanics are decades-old genre staples. That is my read, not a legal opinion.
+- Nintendo has also sued over game-mechanic patents. Its Palworld suit was filed in September 2024, and patent offices in the US and Japan later rejected related Nintendo claims ([Sports Litigation Alert](https://sportslitigationalert.com/patent-offices-in-u-s-japan-raise-questions-about-nintendos-palworld-lawsuit/)). A court view was due November 9, 2026; I found no report of the result. The Neon City Bandit's mechanics are decades-old genre staples. That is my read, not a legal opinion.
 - AI-only art gets no US copyright, so anyone could copy it ([PC Gamer](https://pcgamer.com/software/ai/ai-generated-images-still-cant-be-copyrighted-as-us-supreme-court-declines-to-hear-case)). Have a human draw or heavily rework the mascot, logo and key art, under a written IP assignment.
 - A public repo with no license file is still all rights reserved, but others can read and fork it on GitHub. That is one more reason to keep art, audio and levels private.
 - This is not a kids app. Keep it out of the Kids category. If you ever market to under-13s, COPPA applies; see a lawyer first.
@@ -181,7 +181,7 @@ You are lead engineer on a native iPhone game. Nicholas owns the product and app
 
 ## 2. The product
 
-- Codename: MAGPIE. The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed).
+- The game is **The Neon City Bandit** (`ProductIdentity.displayTitle`).
 - One line: a cocky masked raccoon in a neon night city. Pounce, belly-flop, hijack rides, bank Shinies before time runs out. Free the crew from MOP.
 - Genre: 2D top-down action sandbox, played in 180-second runs.
 - Device: iPhone only. Portrait only. One thumb. iOS 17.0 minimum.
@@ -228,7 +228,7 @@ These are legal rules. No exceptions.
 - A Tail Swing lasts up to 1.2 seconds and crosses up to 4 tiles (same tuning keys as the old glide until retuned).
 - A Belly Flop that hits bounces the Bandit up, adds 1 to the combo and refreshes Tail Swing.
 - The combo breaks after 0.4 seconds on the ground. It caps at x10.
-- At combo **x5**, **Mask Mode** turns on: mask lights neon, double loot while active, flourishes, bots stagger — the shareable moment.
+- At combo **x3** (within a **12 s** chain window), **Mask Mode** turns on: mask lights neon, double loot while active, flourishes, bots stagger — the shareable moment.
 - 3 hearts. A hit costs 1 heart and 10% of carried Shinies, then gives 1 second of safety.
 
 ### Vehicles
@@ -454,7 +454,7 @@ Each mission is written to Grok. Paste one, wait for its checkpoint report, chec
 
 ## Mission 0: Prove the loop
 
-Goal: a blank MAGPIE app travels from a push on this PC to Nicholas's iPhone through GitHub's hosted Macs, with no Mac on the desk.
+Goal: a blank Neon City Bandit app travels from a push on this PC to Nicholas's iPhone through GitHub's hosted Macs, with no Mac on the desk.
 
 Build:
 
@@ -487,7 +487,7 @@ Build:
 
 1. The GameCore loop: fixed 60 Hz step, seeded random generator, input commands, state hash, replay record and playback.
 2. A map loader for text grids. One test block, 40 by 60 tiles: ground, 1-tile walls, canal gaps, ramps, crates, latch points for Tail Swing.
-3. The Bandit: run, coast, Pounce, Tail Swing (A/B vs glide behind debug toggle), Belly Flop, bounce, coyote time, input buffer, height and shadow. Mask Mode trigger stub at combo x5 (juice can be minimal).
+3. The Bandit: run, coast, Pounce, Tail Swing (A/B vs glide behind debug toggle), Belly Flop, bounce, coyote time, input buffer, height and shadow. Mask Mode trigger stub at combo x3 / 12 s (juice can be minimal).
 4. Collision: tiles plus boxes, height-aware, so the Bandit can land on anything up to 1 tile tall.
 5. Ten flop dummies that respawn, and a combo counter.
 6. The camera: follows with look-ahead, 12 tiles wide, with a shake hook.
@@ -500,7 +500,7 @@ Not in this mission: vehicles, Heat, Shinies, menus, sound.
 
 Checkpoint, all must be true:
 
-- At least 25 GameCore tests pass, including: a Pounce clears a 1-tile gap; a Tail Swing (or glide variant) crosses 4 tiles; Belly Flop bounces chain; coyote time works; a buffered Pounce fires; Mask Mode arms at x5.
+- At least 25 GameCore tests pass, including: a Pounce clears a 1-tile gap; a Tail Swing (or glide variant) crosses 4 tiles; Belly Flop bounces chain; coyote time works; a buffered Pounce fires; Mask Mode arms at x3 / 12 s.
 - One golden replay of 30 seconds reproduces the same final state hash 100 times in a row.
 - The Bandit responds within 2 frames of input.
 - Nicholas's perf report from his iPhone shows 60 fps average and no worse than 55 fps in the worst 1%.
@@ -519,7 +519,7 @@ Build:
 3. Sweepbots and Scrubbers. They spawn by Heat, chase with simple steering and line of sight, and cost hearts on a hit.
 4. Heat 0 to 3: sources, decay, cool-off spots (alleys, dumpsters) and a HUD meter.
 5. Eight breakable props, including a hydrant whose water launches the Bandit, and ramps that launch vehicles.
-6. The combo system with number pop-ups, plus Mask Mode at x5 (double loot stub, neon flash, bots stagger briefly).
+6. The combo system with number pop-ups, plus Mask Mode at x3 / 12 s (double loot stub, neon flash, bots stagger briefly).
 7. A test district, 64 by 96 tiles: neon roads, sidewalks, alleys, a canal and 2 ramps.
 8. Hearts, the Bagged state and an instant restart.
 9. Twelve placeholder sound effects, CC0 only, each logged in ASSETS_LICENSES.md.
@@ -598,7 +598,7 @@ Send the checkpoint report. Then stop and wait for APPROVED M4.
 
 ## Mission 5: Juice and identity
 
-Goal: the game looks and sounds like Trash Panda (working title Trash Panda Heist until availability is confirmed) — neon night, masked raccoon, MOP menace — and still runs at 60 fps.
+Goal: the game looks and sounds like The Neon City Bandit — neon night, masked raccoon, MOP menace — and still runs at 60 fps.
 
 Build:
 
@@ -658,7 +658,7 @@ Build:
 4. Remote config for Tuning.json overrides, with safe offline defaults.
 5. Crash reporting.
 6. A funnel view: install, first control, first Belly Flop, first Mask Mode, first run finished, third run, day-1 return, day-7 return.
-7. The external TestFlight build: the What to Test text and the beta review answers, drafted for Nicholas to submit (raccoon heist framing; MAGPIE codename internal only).
+7. The external TestFlight build: the What to Test text and the beta review answers, drafted for Nicholas to submit (raccoon heist framing; engineering IDs internal only).
 
 Not in this mission: purchases, ads.
 
@@ -708,7 +708,7 @@ Goal: the raccoon heist is live in four small markets, and the numbers say go, f
 
 Build:
 
-1. Confirm **Trash Panda** availability (App Store search + USPTO). If blocked, keep working title **Trash Panda Heist** or Nicholas picks an alternate. Drop anything close to Sony’s Sly Cooper. Then set `ProductIdentity.displayTitle` only.
+1. Keep **The Neon City Bandit** as `ProductIdentity.displayTitle`. Drop anything close to Sony’s Sly Cooper. Sync ASC listing name when ready (bundle ID stays).
 2. The store listing draft: name, subtitle, keywords, description, promotional text (neon heist / Mask Mode / free the crew). Confirm Apple's current length limits and screenshot sizes before writing.
 3. Six screenshots and 2 preview videos, cut from real gameplay only — include at least one Mask Mode moment.
 4. Review prep: App Review notes, the content rights statement, the age rating, the privacy labels, export compliance, attorney note on mascot. All drafted for Nicholas to submit.
@@ -739,7 +739,7 @@ Goal: act on the Gate 3 result with no drift.
 
 If Go:
 
-1. Worldwide release as **Trash Panda** once availability is confirmed (`ProductIdentity.displayTitle` + ASC rename as needed; MAGPIE stays in code).
+1. Worldwide release as **The Neon City Bandit** (`ProductIdentity.displayTitle` + ASC listing rename as needed; bundle ID stays).
 2. Arcade Row and Spotless Tower, Magnet Glove and Leaf Blower, 6 more MOP Safe Rooms, 3 more bosses; finish freeing the raccoon crew.
 3. A season pass and a 28-day season calendar (masks / neon seasons).
 4. Localization, starting with Spanish.

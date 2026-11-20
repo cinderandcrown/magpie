@@ -2,6 +2,49 @@
 
 Every choice that changes the plan, with the reason. Newest first.
 
+## 2026-11-17 — Mask Mode easier tuning APPROVED
+
+| Decision | Reason |
+| --- | --- |
+| Ship Mask at **3 stomps within a 12 s window** (`maskModeAtCombo = 3`, `comboGroundGrace = 12`) | Nicholas APPROVED the easier Mask tuning (replaces 5 stomps / 4.5 s). |
+| Do not change `maskDuration` or other combat numbers in that pass | Approval was only for the trigger threshold + chain window. |
+
+## 2026-11-16 — Cinder & Crown publisher splash
+
+| Decision | Reason |
+| --- | --- |
+| Cold-launch studio ident before the cyberpunk title: mute logo + **"Cinder & Crown Creative Presents"** | Nicholas: publisher splash (studio ident). |
+| ~2 s, tap-to-skip, Reduce Motion, mute-respecting ember whoosh; preload continues behind it | Must not delay first frame or cheat freeze budgets. |
+| Smoke artifact `00-publisher-ident.png` | Proof the still ships in CI. |
+
+
+## 2026-11-16 — Product name: The Neon City Bandit
+
+| Decision | Reason |
+| --- | --- |
+| User-facing / docs name is **The Neon City Bandit** (home screen **Neon City Bandit**) | Nicholas: the game was never called MAGPIE. |
+| Repo renamed to `cinderandcrown/neon-city-bandit` | Match the product name; old `magpie` URL redirects. |
+| Bundle ID `com.cinderandcrown.magpie`, ASC app **Magpie Toy City** / SKU `magpie-001`, Xcode target `Magpie` stay | Signing and store identifiers must not change mid-pipeline. |
+
+## 2026-11-15 — Mission 1 bar raised (side-view + asset manifest)
+
+| Decision | Reason |
+| --- | --- |
+| Mission 1 is a **side-view** neon platformer (not top-down) | Nicholas asked for Celeste / Meat Boy / Dadish feel (variable jump, coyote, buffer, wall slide/jump, juice). |
+| `AssetKey` / `AssetManifest` with named keys; placeholders until `assets/mission-1` merges | Fire Fox generating ElevenLabs audio + art under `Assets/Generated/`; swap without rewiring gameplay. |
+| Title screen says **Trash Panda**; win shows time/Shinies/combo; fail → instant retry | Nicholas: play a real game, not a prototype. |
+| Procedural/placeholder art + keyed WAV stubs until Fire Fox assets land | Keep CI green; merge `assets/mission-1` when ready. |
+
+## 2026-11-15 — APPROVED M0; Mission 1 toy + home-screen name
+
+| Decision | Reason |
+| --- | --- |
+| Start Mission 1 on `cursor/mission-1-raccoon-toy-0c7d` | Fire Fox / Nicholas: APPROVED M0; build 12.1 on device. |
+| `CFBundleDisplayName` = **Trash Panda**; `ProductIdentity.displayTitle` = Trash Panda | Nicholas: home screen still said Magpie. |
+| `ITSAppUsesNonExemptEncryption` = false | Nicholas verified: no encryption/networking in the app. |
+| Mission 1 includes Shinies, stash win, water fail, and procedural sound (beyond strict PLAN “no goals/sound”) | Nicholas: “this isn’t a game” — next build must feel like a real fun game. PLAN M1 mechanics (Pounce, Tail Swing A/B, Belly Flop, coyote, buffer, Mask Mode) still required. |
+| Placeholder raccoon via SpriteKit shapes; no Sly Cooper cane/top-hat/blue-gold | DESIGN.md visual distinctness. |
+
 ## 2026-11-14 — Name: Trash Panda
 
 | Decision | Reason |
@@ -15,7 +58,7 @@ Every choice that changes the plan, with the reason. Newest first.
 | Decision | Reason |
 | --- | --- |
 | Product theme is raccoon neon-city heist per approved *Trash Panda Heist: Game Plan v1* | Nicholas approved the canvas design. Captured in `docs/DESIGN.md`; Part 3 missions 1–10 in `docs/PLAN.md` retargeted. |
-| Hero moves: Pounce, Belly Flop, Tail Swing (replaces glide; A/B in M1), Mask Mode at combo x5 | Design v1. Mask Mode is the shareable in-run moment. |
+| Hero moves: Pounce, Belly Flop, Tail Swing (replaces glide; A/B in M1), Mask Mode at combo threshold | Design v1. Mask Mode is the shareable in-run moment. Threshold superseded 2026-11-17: **x3 / 12 s** (was x5 / 4.5 s). |
 | Villain **MOP**; free the captured raccoon crew; rob robots/corp only | Design v1 story spine. |
 | Glossary: Shinies, Stash Chute, The Den, Bagged, Sweepbots…, Junk Gadgets, Neon Docks / Glow Market / Arcade Row / Spotless Tower, MOP Safe Rooms | Replaces bird/toy-city placeholder terms without renaming code modules. |
 | Keep hero visually distinct from Sony’s Sly Cooper; mascot needs attorney review | Legal / originality. No cane, no top-hat thief look, no blue/gold palette. |
@@ -42,7 +85,7 @@ Every choice that changes the plan, with the reason. Newest first.
 
 | Adaptation | Reason |
 | --- | --- |
-| Cursor **cloud agents on Linux VMs** are the engineers (not Grok on Nicholas’s Windows PC) | That is how Magpie is actually built; drop local-PC toolchain assumptions. |
+| Cursor **cloud agents on Linux VMs** are the engineers (not Grok on Nicholas’s Windows PC) | That is how The Neon City Bandit is actually built; drop local-PC toolchain assumptions. |
 | **Fire Fox** coordinates, merges PRs, and pushes TestFlight / approval tags | Nicholas plays builds and says APPROVED only; agents do not self-merge or self-tag. |
 | GameCore `swift test` on the **agent Linux VM** + CI Linux job (not “this PC”) | Agents have Swift on the VM; they cannot compile the iPhone app there. |
 | Signing: **ASC API key** path proven on `phoenix-fox`; **no fastlane match** unless cloud signing fails | Secrets already work; avoid a second cert pipeline until needed. |
@@ -65,3 +108,11 @@ Every choice that changes the plan, with the reason. Newest first.
 | `ITSAppUsesNonExemptEncryption` **not** written into Info.plist yet | Proposed `false` for Nicholas’s confirmation (export-compliance question). Not treated as approved. |
 | Linux GameCore job on **ubuntu-24.04** (not `ubuntu-latest`) | Swift 6.2 RELEASE tarball is built for Ubuntu 24.04; `ubuntu-latest` is 26.04 and failed with missing `libxml2.so.2`. |
 | Private content repo / deploy key deferred | Not needed until paid assets or district maps land; documented in OWNER_SETUP.md. |
+
+## 2026-11-15 — Mission 1 generated assets packaging
+
+| Decision | Reason |
+| --- | --- |
+| Ship Fire Fox pack under `Assets/Generated/` and **rsync** into `Magpie.app/Generated` via XcodeGen `postCompileScripts` | Adding the tree as an Xcode resource group flattens basenames (`raccoon/idle.png` vs `mop/idle.png`) and fails the build; a folder-ref of a symlink also failed to surface art in smoke. |
+| Resolve assets via `Bundle.main.resourceURL/.../Generated/...` in `AssetManifest` | More reliable than `url(forResource:subdirectory:)` alone once the tree is copied as a nested folder. |
+| Prefer `AVAudioPlayer` for SFX + looped music (no `AVAudioEngine` graph teardown in completion handlers) | Engine disconnect from a player completion queue crashed the test host (`dispatch_assert_queue_fail`). |

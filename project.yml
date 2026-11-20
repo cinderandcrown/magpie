@@ -41,9 +41,75 @@ targets:
         excludes:
           - "**/*.plist"
           - "**/*.xcprivacy"
+          - Generated
+          - Generated/**
     resources:
       - path: Magpie/Assets.xcassets
       - path: Magpie/PrivacyInfo.xcprivacy
+    # Do NOT add Assets/Generated as an Xcode resource group — identical basenames
+    # (raccoon/idle.png vs mop/idle.png) flatten and collide in the app bundle.
+    # Copy the tree into Magpie.app/Generated via script instead.
+    postCompileScripts:
+      - name: Copy Generated Assets into app
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          SRC="${SRCROOT}/Assets/Generated"
+          DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Generated"
+          mkdir -p "$DEST"
+          rsync -a --delete "${SRC}/" "${DEST}/"
+          test -f "${DEST}/ui/logo_b1_holo_glass.png"
+          test -f "${DEST}/ui/logo_b1_holo_glass@1024.png"
+          test -f "${DEST}/ui/logo_b1_holo_glass_compact.png"
+          test -f "${DEST}/ui/logo_neon_city_bandit.png"
+          test -f "${DEST}/ui/logo_neon_city_bandit@1024.png"
+          # Nicholas-approved B1 branding (also kept under Assets/Branding/logo/).
+          BRAND_SRC="${SRCROOT}/Assets/Branding"
+          BRAND_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Branding"
+          if [[ -d "$BRAND_SRC" ]]; then
+            mkdir -p "$BRAND_DEST"
+            rsync -a --delete "${BRAND_SRC}/" "${BRAND_DEST}/"
+            test -f "${BRAND_DEST}/logo/B1_holo_glass.png"
+            test -f "${BRAND_DEST}/logo/B1_holo_glass_icon.png"
+          fi
+          test -f "${DEST}/audio/level_loop.m4a"
+          test -f "${DEST}/sprites/spriterrific_ready/bandit/idle/01.png"
+          test -f "${DEST}/sprites/spriterrific_ready/bandit/idle_front/01.png"
+          test -f "${DEST}/sprites/spriterrific_ready/mop_bot/walk/01.png"
+          test -f "${DEST}/sprites/spriterrific_ready/mop_9000_boss/tread_roll/01.png"
+          test -f "${DEST}/sprites/spriterrific/bandit/idle/spritesheet.png"
+          # Juice SFX pack (separate from Generated — identical basenames collide if flattened).
+          SFX_SRC="${SRCROOT}/Assets/Audio/sfx"
+          SFX_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Audio/sfx"
+          mkdir -p "$SFX_DEST"
+          rsync -a --delete "${SFX_SRC}/" "${SFX_DEST}/"
+          test -f "${SFX_DEST}/sfx_manifest.json"
+          test -f "${SFX_DEST}/jump.wav"
+          test -f "${SFX_DEST}/startup_jingle.wav"
+          test -f "${SFX_DEST}/boss_tread_rumble.wav"
+          MUSIC_SRC="${SRCROOT}/Assets/Audio/music"
+          MUSIC_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Audio/music"
+          mkdir -p "$MUSIC_DEST"
+          rsync -a --delete "${MUSIC_SRC}/" "${MUSIC_DEST}/"
+          test -f "${MUSIC_DEST}/main_theme.m4a"
+          test -f "${MUSIC_DEST}/menu_theme.m4a"
+          test -f "${MUSIC_DEST}/boss_theme.m4a"
+          # Story + optional MOP voice lines (README lists ElevenLabs filenames).
+          STORY_SRC="${SRCROOT}/Assets/Story"
+          STORY_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Story"
+          mkdir -p "$STORY_DEST"
+          rsync -a --delete "${STORY_SRC}/" "${STORY_DEST}/"
+          test -f "${STORY_DEST}/Story.json"
+          VOICE_SRC="${SRCROOT}/Assets/Audio/voice"
+          VOICE_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Audio/voice"
+          if [[ -d "$VOICE_SRC" ]]; then
+            mkdir -p "$VOICE_DEST"
+            rsync -a --delete "${VOICE_SRC}/" "${VOICE_DEST}/"
+          fi
+          echo "Copied Generated -> $DEST"
+          echo "Copied SFX -> $SFX_DEST"
+          echo "Copied music -> $MUSIC_DEST"
+          echo "Copied Story -> $STORY_DEST"
     settings:
       base:
         INFOPLIST_FILE: Magpie/Info.plist
@@ -68,6 +134,7 @@ targets:
     dependencies:
       - target: Magpie
       - package: GameCore
+      - package: GameRender
       - package: Services
     settings:
       base:

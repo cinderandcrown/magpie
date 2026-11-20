@@ -1,8 +1,10 @@
-# MAGPIE — AGENTS.md (adapted Master Brief)
+# The Neon City Bandit — AGENTS.md (adapted Master Brief)
 
-This is the working agent brief for Magpie. Design, originality, pillars, feel bar, and mission quality standards come from `docs/PLAN.md` Part 2 (theme-amended) and `docs/DESIGN.md`. **`docs/PLAN.md` keeps process/gates;** product theme is the raccoon neon heist.
+This is the working agent brief for **The Neon City Bandit**. Design, originality, pillars, feel bar, and mission quality standards come from `docs/PLAN.md` Part 2 (theme-amended) and `docs/DESIGN.md`. **`docs/PLAN.md` keeps process/gates;** product theme is the raccoon neon heist.
 
 **How this file relates to the plan:** keep the plan’s rules and ambition; adapt only *who runs where* and *who merges/tags* to our real setup. Every adaptation is logged in `DECISIONS.md`. When an ad-hoc chat brief conflicts with this file or the plan’s design bar, **this file + the plan’s design win** — aim for a badass game; do not sandbag feel or juice.
+
+**Vibe Game Dev methods:** follow `docs/VIBEGAMEDEV_METHODS.md` for pass shape, gyms, Spriterrific art (anchor first — Fire Fox approves before animations; do not block other work while waiting), juice, audio, and smoke QA.
 
 ## 0. How we actually work
 
@@ -24,7 +26,7 @@ Fire Fox merges and tags. You do **not** push `testflight/*` or `mNN-approved` t
 
 ## 2. The product
 
-- Codename: MAGPIE. The game is **Trash Panda** (working title **Trash Panda Heist** until availability is confirmed). Title via `ProductIdentity.displayTitle` only.
+- The game is **The Neon City Bandit**. Title via `ProductIdentity.displayTitle` only. Engineering identifiers (bundle ID `com.cinderandcrown.magpie`, Xcode target `Magpie`) stay unchanged.
 - One line: a cocky masked raccoon in a neon night city. Pounce, belly-flop, hijack rides, bank Shinies before time runs out. Free the crew from MOP.
 - Genre: 2D top-down action sandbox, played in 180-second runs.
 - Device: iPhone only. Portrait only. One thumb. iOS 17.0 minimum.
@@ -70,7 +72,7 @@ These are legal rules. No exceptions.
 - A Pounce clears a 1-tile gap and lands on anything up to 1 tile tall.
 - A Tail Swing lasts up to 1.2 seconds and crosses up to 4 tiles.
 - A Belly Flop that hits bounces the Bandit up, adds 1 to the combo and refreshes Tail Swing.
-- The combo breaks after 0.4 seconds on the ground. It caps at x10. **Mask Mode** at combo **x5** (double loot, neon mask, bots stagger).
+- The combo window is **12 s** on the ground (`comboGroundGrace`). It caps at x10. **Mask Mode** at combo **x3** (double loot, neon mask, bots stagger) — Nicholas APPROVED 2026-11-17 (was x5 / 4.5 s).
 - 3 hearts. A hit costs 1 heart and 10% of carried Shinies, then gives 1 second of safety.
 
 ### Vehicles
@@ -163,8 +165,8 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 | Tail Swing max time | 1.2 s |
 | Stomp bounce airtime | 0.6 s |
 | Eject hop airtime | 0.7 s |
-| Coyote time | 0.10 s |
-| Input buffer | 0.12 s |
+| Coyote time | 0.12 s |
+| Input buffer | 0.14 s |
 | Tap threshold | 180 ms and 10 points |
 | Stomp target radius | 1.5 tiles |
 | Combo ground grace | 0.4 s |
@@ -184,7 +186,7 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 
 - **Cursor cloud agents** run on **Linux VMs**. Run GameCore (and other Foundation-only package) tests with `swift test` on the VM before every push. Never claim an iPhone build you did not run in Actions.
 - **All Apple builds** run in GitHub Actions on the standard **`xcode-27`** hosted runner. Never use `xlarge` or any larger runner.
-- The code repo is public (`cinderandcrown/magpie`). A second, private repo will hold art, audio, level data, economy tables and licensed assets; the build will pull it with a deploy key when that exists.
+- The code repo is public (`cinderandcrown/neon-city-bandit`). A second, private repo will hold art, audio, level data, economy tables and licensed assets; the build will pull it with a deploy key when that exists.
 - Signing and TestFlight upload use the **App Store Connect API key** already proven on `cinderandcrown/phoenix-fox` (secrets: `APPLE_TEAM_ID`, `ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_KEY_P8`). Prefer Xcode cloud-managed / automatic signing with that key. **Do not introduce fastlane match** unless cloud signing fails on the runner and Fire Fox / Nicholas approve the fallback.
 
 ### Stack
@@ -200,7 +202,7 @@ Every number lives in Tuning.json. No magic numbers in code. These are starting 
 | --- | --- | --- |
 | GameCore | All game rules and the simulation | Pure Swift, Foundation only. No UIKit, SpriteKit or SwiftUI. Must pass `swift test` on the Linux agent VM, in the Linux CI job, and on the Mac CI runner |
 | GameRender | Draws the state with SpriteKit | Reads state, never changes rules. Smooths between sim steps |
-| GameApp (Magpie target) | SwiftUI shell, menus, HUD, settings | No game rules |
+| GameApp (`Magpie` Xcode target) | SwiftUI shell, menus, HUD, settings | No game rules |
 | Services | Store, Game Center, clips, analytics, remote config, haptics, audio, save | Each behind a protocol, with a mock for tests |
 
 ### Determinism

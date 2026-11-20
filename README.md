@@ -1,14 +1,15 @@
-# MAGPIE
+# The Neon City Bandit
 
-Codename for an original iPhone game by Nicholas Will / Cinder and Crown LLC: a small bird loose in a big toy city.
+Original iPhone game by Nicholas Will / Cinder and Crown LLC: a cocky masked raccoon on neon-city heists.
 
 **All rights reserved** — see `NOTICE`. No reuse license is granted.
 
 - **Plan:** [`docs/PLAN.md`](docs/PLAN.md)
 - **Agent brief:** [`AGENTS.md`](AGENTS.md)
 - **Owner setup (remaining):** [`OWNER_SETUP.md`](OWNER_SETUP.md)
-- **Bundle ID:** `com.cinderandcrown.magpie` · **Team:** `GDNRT9DJ58`
+- **Bundle ID:** `com.cinderandcrown.magpie` · **Team:** `GDNRT9DJ58` (unchanged engineering identifiers)
 - **Stack:** Swift 6 · SpriteKit + SwiftUI · iPhone portrait · iOS 17+
+- **Repo:** `cinderandcrown/neon-city-bandit`
 
 ## Mission 0
 
@@ -23,7 +24,7 @@ Placeholder UI only: a yellow square that follows the finger, plus an FPS counte
 | `Packages/GameCore` | Pure Swift rules/sim (Foundation only) |
 | `Packages/GameRender` | SpriteKit drawing |
 | `Packages/Services` | Store, Game Center, clips, etc. (protocols) |
-| `Magpie/` | SwiftUI app shell |
+| `Magpie/` | SwiftUI app shell (Xcode target name unchanged) |
 | `project.yml` | XcodeGen source of truth |
 
 ```bash
