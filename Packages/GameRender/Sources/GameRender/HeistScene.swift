@@ -1285,7 +1285,7 @@ public final class HeistScene: SKScene {
         titleRoot.isHidden = true // Revealed after publisher ident (or immediately if skipped).
         overlay.addChild(titleRoot)
 
-        // Dedicated cyberpunk alley — never live level geometry or pickups.
+        // Dedicated title plate — official leap key art (aspect-fill), never live level geometry.
         let alley = SKNode()
         alley.name = "titleAlley"
         alley.zPosition = -20
@@ -1297,62 +1297,40 @@ public final class HeistScene: SKScene {
         wash.name = "titleWash"
         alley.addChild(wash)
 
-        if let far = ArtCatalog.background(.farSkyline, height: 920, maxPixel: 1024) {
+        // Official Higgsfield leap still — edge-to-edge hero behind chrome.
+        let keyTex: SKTexture? = {
+            for rel in TitleArt.titleKeyArtCandidates {
+                if let t = ArtCatalog.downsampledTexture(relative: rel, maxPixel: 1400) { return t }
+            }
+            return nil
+        }()
+        if let keyTex {
+            let hero = SKSpriteNode(texture: keyTex)
+            hero.name = "titleKeyArt"
+            hero.zPosition = 0
+            hero.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            alley.addChild(hero)
+        } else if let far = ArtCatalog.background(.farSkyline, height: 920, maxPixel: 1024) {
+            // Fallback only if key art is missing from the bundle.
             far.name = "titleFar"
             far.alpha = 0.55
             far.zPosition = 0
             alley.addChild(far)
         }
-        if let mid = ArtCatalog.background(.midBuildings, height: 780, maxPixel: 1100) {
-            mid.name = "titleMid"
-            mid.alpha = 0.92
-            mid.zPosition = 1
-            mid.color = SKColor(red: 1.2, green: 0.75, blue: 1.35, alpha: 1)
-            mid.colorBlendFactor = 0.28
-            alley.addChild(mid)
-            // Wet-floor reflection: flipped mid plate under the horizon.
-            let wet = mid.copy() as? SKSpriteNode ?? SKSpriteNode()
-            wet.name = "titleWetFloor"
-            wet.yScale = -0.42
-            wet.alpha = 0.28
-            wet.zPosition = 2
-            wet.position = CGPoint(x: 0, y: -210)
-            alley.addChild(wet)
-        }
 
-        // Real storefront crops as title neon (no flat pink/cyan/lime blade plates).
-        let titleSigns = ArtCatalog.neonSignageStrip(width: 420, height: 72)
-        titleSigns.name = "titleStorefrontSigns"
-        titleSigns.position = CGPoint(x: 0, y: 88)
-        titleSigns.zPosition = 3
-        titleSigns.alpha = 0.95
-        alley.addChild(titleSigns)
-        let titleSignsLow = ArtCatalog.neonSignageStrip(width: 280, height: 48)
-        titleSignsLow.name = "titleStorefrontSignsLow"
-        titleSignsLow.position = CGPoint(x: 24, y: 28)
-        titleSignsLow.zPosition = 3
-        titleSignsLow.alpha = 0.8
-        alley.addChild(titleSignsLow)
+        // Soft darken so B1 logo / TAP TO START / bottom bar stay readable over the hero.
+        let dim = SKShapeNode(rectOf: CGSize(width: 4000, height: 4000))
+        dim.name = "titleDim"
+        dim.fillColor = SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 0.42)
+        dim.strokeColor = .clear
+        dim.zPosition = 5
+        alley.addChild(dim)
 
         let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: 480, height: 900))
         rain.name = "titleRain"
         rain.zPosition = 8
         rain.position = CGPoint(x: 0, y: 220)
         alley.addChild(rain)
-
-        // Background MOPs (atmosphere only — not live sim pickups).
-        if let mopA = ArtCatalog.makeMopIdleSprite(size: CGSize(width: 54, height: 54)) {
-            mopA.name = "titleMopA"
-            mopA.alpha = 0.7
-            mopA.zPosition = 4
-            alley.addChild(mopA)
-        }
-        if let mopB = ArtCatalog.makeMopIdleSprite(size: CGSize(width: 48, height: 48)) {
-            mopB.name = "titleMopB"
-            mopB.alpha = 0.55
-            mopB.zPosition = 4
-            alley.addChild(mopB)
-        }
 
         let glow = SKShapeNode(circleOfRadius: 110)
         glow.name = "titleGlow"
@@ -1370,11 +1348,6 @@ public final class HeistScene: SKScene {
         logo.alpha = 0
         titleRoot.addChild(logo)
         runTitleLogoIntro(logo)
-
-        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 118, height: 118))
-        mascot.name = "titleBandit"
-        mascot.zPosition = 11
-        titleRoot.addChild(mascot)
 
         let play = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         play.name = "tapToStart"
@@ -1560,18 +1533,22 @@ public final class HeistScene: SKScene {
             glow.setScale(max(0.85, size.width * 0.72 / 220))
         }
         if let alley = titleRoot.childNode(withName: "titleAlley") {
+            // Aspect-fill leap key art to the full scene (edge-to-edge hero).
+            if let hero = alley.childNode(withName: "titleKeyArt") as? SKSpriteNode,
+               let tex = hero.texture
+            {
+                let tw = max(tex.size().width, 1)
+                let th = max(tex.size().height, 1)
+                let scale = max(size.width / tw, size.height / th)
+                hero.size = CGSize(width: tw * scale, height: th * scale)
+                hero.position = .zero
+            }
             alley.childNode(withName: "titleFar")?.position = CGPoint(x: 0, y: 40)
-            alley.childNode(withName: "titleMid")?.position = CGPoint(x: 0, y: -20)
-            alley.childNode(withName: "titleWetFloor")?.position = CGPoint(x: 0, y: -230)
-            alley.childNode(withName: "titleMopA")?.position = CGPoint(x: -118, y: -168)
-            alley.childNode(withName: "titleMopB")?.position = CGPoint(x: 132, y: -158)
         }
-        if let mascot = titleRoot.childNode(withName: "titleBandit") {
-            mascot.position = CGPoint(x: 0, y: safeBottom + safeH * 0.38)
-        }
+        // TAP sits mid-lower so it stays clear of the leap silhouette and bottom chrome.
         titleRoot.childNode(withName: "tapToStart")?.position = CGPoint(
             x: 0,
-            y: safeBottom + safeH * 0.26
+            y: safeBottom + safeH * 0.28
         )
 
         // Bottom bar: chrome buttons are 140pt wide — scale down and space centers by width+gap

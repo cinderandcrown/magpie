@@ -63,6 +63,7 @@ targets:
           test -f "${DEST}/ui/logo_b1_holo_glass_compact.png"
           test -f "${DEST}/ui/logo_neon_city_bandit.png"
           test -f "${DEST}/ui/logo_neon_city_bandit@1024.png"
+          test -f "${DEST}/ui/title_leap@1024.png"
           # Nicholas-approved B1 branding (also kept under Assets/Branding/logo/).
           BRAND_SRC="${SRCROOT}/Assets/Branding"
           BRAND_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Branding"
@@ -71,6 +72,9 @@ targets:
             rsync -a --delete "${BRAND_SRC}/" "${BRAND_DEST}/"
             test -f "${BRAND_DEST}/logo/B1_holo_glass.png"
             test -f "${BRAND_DEST}/logo/B1_holo_glass_icon.png"
+            test -f "${BRAND_DEST}/logo/ncb-icon-portrait-1024.png"
+            test -f "${BRAND_DEST}/logo/ncb-title-leap-1024.png"
+            test -f "${BRAND_DEST}/logo/LICENSE-ncb-icon.md"
           fi
           test -f "${DEST}/audio/level_loop.m4a"
           test -f "${DEST}/sprites/spriterrific_ready/bandit/idle/01.png"

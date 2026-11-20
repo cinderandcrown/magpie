@@ -1143,6 +1143,11 @@ public enum TitleArt {
         "ui/logo_b1_holo_glass_compact",
         "ui/logo_b1_holo_glass",
     ]
+    /// Official title/start key art (Higgsfield leap still) — aspect-fill behind chrome.
+    public static let titleKeyArtCandidates: [String] = [
+        "ui/title_leap@1024",
+        "ui/title_leap",
+    ]
     public static let displayTitle = "The Neon City Bandit"
     public static let fallbackWordmark = "THE NEON CITY\nBANDIT"
     /// In-game credits. Spriterrific steampunk-neon bandit / MOP sheets owned by Cinder & Crown.
