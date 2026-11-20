@@ -1039,7 +1039,8 @@ public enum ArtCatalog {
         return downsampledUIImage(url: url, maxPixel: 256)
     }
 
-    private static func downsampledTexture(relative: String, maxPixel: CGFloat) -> SKTexture? {
+    /// Public for ArtLibrary district / drop-in packs (still ImageIO downsampled).
+    public static func downsampledTexture(relative: String, maxPixel: CGFloat) -> SKTexture? {
         guard let url = AssetManifest.fileURLPublic(relative: relative, extensions: ["png"]),
               let img = downsampledUIImage(url: url, maxPixel: maxPixel) else { return nil }
         let tex = SKTexture(image: img)
@@ -1136,17 +1137,16 @@ public final class BanditVisual: SKNode {
 
     public override init() {
         ArtCatalog.warmAtlases()
-        func load(_ action: String) -> SpriteCycle? {
-            SpriteCycles.bandit(action)
-        }
-        let idleC = load("idle")
-        let walkC = load("walk")
-        let runC = load("run")
-        let jumpC = load("jump")
-        let attackC = load("attack")
-        let hurtC = load("hurt")
-        let deathC = load("death")
-        let pickC = load("pick_up")
+        // ArtLibrary prefers sprites/library/bandit (Higgsfield shared) then spriterrific.
+        let idleC = ArtLibrary.banditCycle(.idle)
+        let walkC = ArtLibrary.banditCycle(.walk)
+        let runC = ArtLibrary.banditCycle(.run)
+        let jumpC = ArtLibrary.banditCycle(.jump)
+        let attackC = ArtLibrary.banditCycle(.pounce) // pounce → attack fallback
+        let hurtC = ArtLibrary.banditCycle(.hurt)
+        let deathC = ArtLibrary.banditCycle(.death)
+        let pickC = ArtLibrary.banditCycle(.pickUp)
+        let victoryC = ArtLibrary.banditCycle(.victory)
         sheetDriven = (runC?.textures.count ?? 0) >= 6 && (idleC?.textures.count ?? 0) >= 2
         if let idleC {
             cycles["idle"] = idleC; idleTextures = idleC.textures; footAnchorY = idleC.footAnchorY
@@ -1182,6 +1182,9 @@ public final class BanditVisual: SKNode {
         if let pickC {
             cycles["pick_up"] = pickC; pickUpTextures = pickC.textures
             headAnchorsByAnim[.pickUp] = pickC.headAnchors
+        }
+        if let victoryC {
+            cycles["victory"] = victoryC
         }
         usesWestSheets = sheetDriven
 
@@ -1412,15 +1415,21 @@ public final class BanditVisual: SKNode {
         }()
         driveSpeed = speedRatio
         bobPhase += dt * speedRatio
-        // Sheet cycles already animate; skip extra bob when sheet-driven.
-        if !sheetDriven, anim == .idle || anim == .run || anim == .walk {
+        // Personality: idle breathe + locomotion bob (even on sheet-driven packs).
+        if anim == .idle {
+            sprite.position.y = sin(bobPhase * 2.4) * 1.6
+            let breathe = 1.0 + sin(bobPhase * 2.1) * 0.018
+            body.setScale(breathe)
+        } else if !sheetDriven, anim == .run || anim == .walk {
             let runLike = anim == .run
             sprite.position.y = sin(bobPhase * (runLike ? 15 : 3.2)) * (runLike ? 2.6 : 1.3)
+            body.setScale(1)
         } else if sheetDriven, anim == .run || anim == .walk {
-            // Tiny vertical bob so locomotion reads even when sheet deltas are subtle on phone.
             sprite.position.y = sin(bobPhase * (anim == .run ? 18 : 12)) * (anim == .run ? 1.8 : 1.1)
+            body.setScale(1)
         } else {
             sprite.position.y = 0
+            body.setScale(1)
         }
         // Forward lean while moving — sells speed without needing a new sheet.
         if anim == .run || anim == .walk {

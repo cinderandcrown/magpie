@@ -416,8 +416,11 @@ public final class HeistScene: SKScene {
         }
 
         // Raise skyline into the midrun sample band (y 18–62% of the frame).
+        // District plates: backgrounds/districts/<id>/{far,mid,near}.png when present,
+        // else classic skyline pack (ArtLibrary placeholders until Higgsfield districts land).
         let midY = viewH * 0.18
-        if let far = ArtCatalog.background(.farSkyline, height: h, maxPixel: maxPx) {
+        let district = pendingDistrict
+        if let far = ArtLibrary.districtLayer(district, layer: .far, height: h, maxPixel: maxPx) {
             tileLayer(far, into: parallaxFar, y: midY + 60, z: -30, neonBoost: false)
         }
         let gridW = min(max(mapW * 0.5, size.width / Self.worldZoom * 3), 1800)
@@ -430,7 +433,7 @@ public final class HeistScene: SKScene {
         windows.position = CGPoint(x: mapW * 0.22, y: midY + 90)
         parallaxFar.addChild(windows)
         parallaxFar.addChild(ArtCatalog.skylineTransit(width: min(mapW * 0.7, 1600), y: midY + 40))
-        if let mid = ArtCatalog.background(.midBuildings, height: h * 1.1, maxPixel: maxPx) {
+        if let mid = ArtLibrary.districtLayer(district, layer: .mid, height: h * 1.1, maxPixel: maxPx) {
             tileLayer(mid, into: parallaxMid, y: midY + 10, z: -20, neonBoost: true)
         }
         // Magenta + teal storefront signage in the mid band (readability + palette).
@@ -446,7 +449,7 @@ public final class HeistScene: SKScene {
         let light = ArtCatalog.neonSearchlight(height: h * 0.5)
         light.position = CGPoint(x: mapW * 0.3, y: midY + 40)
         parallaxMid.addChild(light)
-        if let near = ArtCatalog.background(.nearRooftops, height: h * 0.9, maxPixel: maxPx) {
+        if let near = ArtLibrary.districtLayer(district, layer: .near, height: h * 0.9, maxPixel: maxPx) {
             tileLayer(near, into: parallaxNear, y: midY - 40, z: -10, neonBoost: false)
         }
         let steam = ArtCatalog.streetSteamEmitter(width: size.width / Self.worldZoom)
@@ -776,27 +779,27 @@ public final class HeistScene: SKScene {
         // Neon stick: dark plate + crisp cyan ring. Dock hint visible; active stick follows finger.
         let stickR = CGFloat(max(58, tuning.feel.stickMaxRadius * 0.95))
         stickBase = SKShapeNode(circleOfRadius: stickR)
-        stickBase.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.12, alpha: 0.78)
+        stickBase.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.12, alpha: 0.82)
         stickBase.strokeColor = ArtCatalog.neonCyan
-        stickBase.lineWidth = 2.5
-        stickBase.glowWidth = 1.5
+        stickBase.lineWidth = 3
+        stickBase.glowWidth = 2
         stickBase.zPosition = 200
-        stickBase.alpha = 0.35
+        stickBase.alpha = 0.55
         playHUD.addChild(stickBase)
         let stickInner = SKShapeNode(circleOfRadius: stickR * 0.72)
         stickInner.fillColor = .clear
-        stickInner.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.25)
-        stickInner.lineWidth = 1
+        stickInner.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.4)
+        stickInner.lineWidth = 1.5
         stickInner.zPosition = 0.5
         stickBase.addChild(stickInner)
 
         stickKnob = SKShapeNode(circleOfRadius: stickR * 0.42)
-        stickKnob.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.55)
+        stickKnob.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.7)
         stickKnob.strokeColor = .white
-        stickKnob.lineWidth = 1.5
-        stickKnob.glowWidth = 1
+        stickKnob.lineWidth = 2
+        stickKnob.glowWidth = 1.5
         stickKnob.zPosition = 201
-        stickKnob.alpha = 0.35
+        stickKnob.alpha = 0.55
         playHUD.addChild(stickKnob)
 
         jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime, large: true, iconName: "jump")

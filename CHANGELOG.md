@@ -3,7 +3,8 @@
 ## Unreleased
 
 ### Gameplay
-- **Higgsfield juice (feel loop):** JUMP/POUNCE icons on the face buttons (same big hit pads + press squash); stomp-burst + mop-death on kills; foot-dust on jump/land; pickup-glow loop on shinies. FX are short one-shots, warmed at scene start. Jump buffer tuned to ~120 ms; play toasts sit at the top so they never cover the raccoon.
+- **Art library slots:** `ArtLibrary` + `sprites/library/` drop-in for the shared Higgsfield raccoon (Trash Stack) and NCB packs (MOP variants, bosses, loot, hideout, map, story). District parallax reads `backgrounds/districts/<id>/{far,mid,near}.png` with skyline fallbacks. Placeholders until Nicholas approves the remake.
+- **Higgsfield juice (feel loop):** JUMP/POUNCE icons on the face buttons (same big hit pads + press squash); stomp-burst + mop-death on kills; foot-dust on jump/land; pickup-glow loop on shinies. FX are short one-shots, warmed at scene start. Jump buffer tuned to ~120 ms; play toasts sit at the top so they never cover the raccoon. Idle breathe + clearer stick.
 - **Feedback-5 fixes (Nicholas iPhone):** JUMP/POUNCE hit boxes now match the drawn buttons (+ pad); move zone no longer steals right-side taps; debug touch overlay via `-ShowTouchZones`. Pounce/drop-through and ledge falls onto MOPs always stomp (land grace + invuln while diving). MASK MODE banner moved to the top, smaller, clear of +N popups.
 - **Phone feel (Nicholas):** thumb-sized JUMP/POUNCE (112 pt) + huge invisible hit zones (left ~38% move, right ~40% jump/pounce), multitouch on, press squash + haptic; coyote 100 ms / jump buffer 120 ms; stomp box 2.0× sprite wide with fall magnet + land-frame stomps; easy opening MOP pack + street shinies; combo shows from x1.
 - **Feel pass 3 (post-daaed6f):** MOPs no longer stack into one white blob (wider patrol + de-clump + gentle seek); walk/run reads on screen (faster sheets, lean, foot dust); quiet stretches get a “POUNCE A MOP!” nudge.

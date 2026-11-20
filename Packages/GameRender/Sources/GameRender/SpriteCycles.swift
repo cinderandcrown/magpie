@@ -45,18 +45,56 @@ public enum SpriteCycles {
     private static var indexFoot: [String: Double] = [:]
     private static var didLoadIndex = false
 
-    public static func cycle(character: String, action: String, maxFrames: Int = 64) -> SpriteCycle? {
-        let key = "\(character)/\(action)"
+    /// Load an action cycle. When `preferLibrary` is true, try
+    /// `sprites/library/<character>/` before `sprites/spriterrific_ready/`.
+    public static func cycle(
+        character: String,
+        action: String,
+        maxFrames: Int = 64,
+        preferLibrary: Bool = true
+    ) -> SpriteCycle? {
+        let key = "\(character)/\(action)#lib=\(preferLibrary)"
         if let cached = cache[key] { return cached }
         loadIndexIfNeeded()
-        let root = "sprites/spriterrific_ready/\(character)/\(action)"
+        let roots: [String]
+        if preferLibrary {
+            roots = [
+                "sprites/library/\(character)/\(action)",
+                "sprites/spriterrific_ready/\(character)/\(action)",
+            ]
+        } else {
+            roots = ["sprites/spriterrific_ready/\(character)/\(action)"]
+        }
+        for root in roots {
+            if let cycle = loadCycle(root: root, character: character, maxFrames: maxFrames) {
+                cache[key] = cycle
+                return cycle
+            }
+        }
+        return nil
+    }
+
+    private static func loadCycle(root: String, character: String, maxFrames: Int) -> SpriteCycle? {
         var textures: [SKTexture] = []
         var images: [UIImage] = []
+        // Accept 01.png or frame_01.png / 1.png naming from Higgsfield drops.
+        let patterns: [(Int) -> String] = [
+            { String(format: "%@/%02d", root, $0) },
+            { String(format: "%@/frame_%02d", root, $0) },
+            { String(format: "%@/%d", root, $0) },
+        ]
         for i in 1...maxFrames {
-            let rel = String(format: "%@/%02d", root, i)
-            guard let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["png"]),
-                  let data = try? Data(contentsOf: url),
-                  let img = UIImage(data: data) else { break }
+            var loaded: UIImage?
+            for pattern in patterns {
+                let rel = pattern(i)
+                if let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["png"]),
+                   let data = try? Data(contentsOf: url),
+                   let img = UIImage(data: data) {
+                    loaded = img
+                    break
+                }
+            }
+            guard let img = loaded else { break }
             let tex = SKTexture(image: img)
             tex.filteringMode = .linear
             textures.append(tex)
@@ -77,15 +115,13 @@ public enum SpriteCycles {
             }
         }
         let anchors = headAnchors(for: images, footY: footY)
-        let cycle = SpriteCycle(
+        return SpriteCycle(
             textures: textures,
             fps: fps,
             footY: footY,
             facesWest: true,
             headAnchors: anchors
         )
-        cache[key] = cycle
-        return cycle
     }
 
     /// Eye / head center per frame, expressed relative to the foot anchor.
@@ -183,14 +219,17 @@ public enum SpriteCycles {
     private static func loadIndexIfNeeded() {
         guard !didLoadIndex else { return }
         didLoadIndex = true
-        guard let url = AssetManifest.fileURLPublic(relative: "sprites/spriterrific_ready/index", extensions: ["json"]),
-              let data = try? Data(contentsOf: url),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let chars = obj["characters"] as? [String: Any] else { return }
-        for (name, raw) in chars {
-            guard let info = raw as? [String: Any] else { continue }
-            if let y = info["foot_y"] as? Double { indexFoot[name] = y }
-            else if let y = info["foot_y"] as? Int { indexFoot[name] = Double(y) }
+        // Library manifest first (Higgsfield shared), then spriterrific index.
+        for rel in ["sprites/library/index", "sprites/spriterrific_ready/index"] {
+            guard let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["json"]),
+                  let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let chars = obj["characters"] as? [String: Any] else { continue }
+            for (name, raw) in chars {
+                guard let info = raw as? [String: Any] else { continue }
+                if let y = info["foot_y"] as? Double { indexFoot[name] = y }
+                else if let y = info["foot_y"] as? Int { indexFoot[name] = Double(y) }
+            }
         }
     }
 }
