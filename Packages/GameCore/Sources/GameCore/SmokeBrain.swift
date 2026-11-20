@@ -518,9 +518,8 @@ public struct SmokeBrain: Equatable, Sendable {
             if b.interactTarget != .none, elapsed > 17.5, elapsed < 22.5, tick % 14 == 0 {
                 grabPressed = true
             }
-            // MASK button spend once charges exist and Mask is off (~24s street demo).
-            // (Full Mask Mode showcase still waits for midrun + combo; this proves the button.)
-            if !midrunOk, !b.maskMode, b.maskCharges > 0, elapsed > 23.5, elapsed < 26.0, tick % 20 == 0 {
+            // MASK button spend once the meter is full (fun-pass: stomps grant charges).
+            if !b.maskMode, b.maskCharges > 0, tick % 12 == 0 {
                 maskPressed = true
             }
         }

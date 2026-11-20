@@ -79,7 +79,7 @@ public struct BanditState: Equatable, Sendable {
             comboTimer: 0,
             maskMode: false,
             maskTimer: 0,
-            maskCharges: 2,
+            maskCharges: 0,
             hearts: hearts,
             invuln: 0,
             carriedShinies: 0,
