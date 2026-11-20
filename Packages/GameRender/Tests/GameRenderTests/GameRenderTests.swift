@@ -25,6 +25,7 @@ final class GameRenderTests: XCTestCase {
         XCTAssertFalse(TitleArt.logoCandidates.isEmpty)
         XCTAssertEqual(TitleArt.logoCandidates.first, "ui/logo_b1_holo_glass@1024")
         XCTAssertTrue(TitleArt.compactLogoCandidates.contains("ui/logo_b1_holo_glass_compact"))
+        XCTAssertTrue(TitleArt.titleKeyArtCandidates.contains("ui/title_leap@1024"))
         XCTAssertEqual(TitleArt.displayTitle, "The Neon City Bandit")
         XCTAssertTrue(TitleArt.fallbackWordmark.contains("BANDIT"))
         XCTAssertFalse(TitleArt.displayTitle.localizedCaseInsensitiveContains("Trash Panda"))

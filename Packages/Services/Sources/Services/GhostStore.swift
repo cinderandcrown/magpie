@@ -7,19 +7,40 @@ import CloudKit
 
 /// CloudKit public database ghost store.
 /// Record type `DailyGhost`: dayKey, playerID, displayName, score, seconds, samples (asset/data).
+///
+/// **Launch safety:** never constructs `CKContainer` in `init` / `shared`. The container is
+/// created lazily on first cloud use, and only when `FeatureFlags.cloudKitGhostsEnabled` is on
+/// and `FileManager.default.ubiquityIdentityToken != nil`. Otherwise all calls stay local.
 public final class CloudKitGhostStore: GhostStoreServing, @unchecked Sendable {
     public static let recordType = "DailyGhost"
     public static let shared = CloudKitGhostStore()
 
-    private let container: CKContainer
+    private let containerID: String
     private let local = MockGhostStore()
+    private let lock = NSLock()
+    private var container: CKContainer?
 
     public init(containerID: String = "iCloud.com.cinderandcrown.magpie") {
-        self.container = CKContainer(identifier: containerID)
+        self.containerID = containerID
+        // Intentionally no CKContainer here — eager construction crashes TestFlight when the
+        // App ID lacks the iCloud container / entitlement.
+    }
+
+    /// Resolve a CloudKit container only when the feature is on and iCloud is signed in.
+    private func cloudContainer() -> CKContainer? {
+        guard FeatureFlags.cloudKitGhostsEnabled else { return nil }
+        guard FileManager.default.ubiquityIdentityToken != nil else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        if let container { return container }
+        let created = CKContainer(identifier: containerID)
+        container = created
+        return created
     }
 
     public func saveOwnBest(_ run: GhostRun) async {
         await local.saveOwnBest(run)
+        guard let container = cloudContainer() else { return }
         do {
             let recordID = CKRecord.ID(recordName: "\(run.dayKey)_\(run.playerID)")
             let record = CKRecord(recordType: Self.recordType, recordID: recordID)
@@ -33,7 +54,7 @@ public final class CloudKitGhostStore: GhostStoreServing, @unchecked Sendable {
             }
             _ = try await container.publicCloudDatabase.save(record)
         } catch {
-            // Offline / unsigned — local mock already kept the best run.
+            // Offline / unsigned / misconfigured — local mock already kept the best run.
         }
     }
 
@@ -43,6 +64,9 @@ public final class CloudKitGhostStore: GhostStoreServing, @unchecked Sendable {
     }
 
     public func loadWorldBest(dayKey: String) async -> GhostRun? {
+        guard let container = cloudContainer() else {
+            return await local.loadWorldBest(dayKey: dayKey)
+        }
         do {
             let pred = NSPredicate(format: "dayKey == %@", dayKey)
             let query = CKQuery(recordType: Self.recordType, predicate: pred)
@@ -59,6 +83,9 @@ public final class CloudKitGhostStore: GhostStoreServing, @unchecked Sendable {
     }
 
     public func loadFriendBest(dayKey: String, friendID: String) async -> GhostRun? {
+        guard let container = cloudContainer() else {
+            return await local.loadFriendBest(dayKey: dayKey, friendID: friendID)
+        }
         do {
             let id = CKRecord.ID(recordName: "\(dayKey)_\(friendID)")
             let record = try await container.publicCloudDatabase.record(for: id)
@@ -104,3 +131,20 @@ public final class CloudKitGhostStore: GhostStoreServing, @unchecked Sendable {
     }
 }
 #endif
+
+/// Picks a ghost store that cannot crash launch when iCloud is unprovisioned.
+public enum GhostStoreFactory {
+    public static func make() -> GhostStoreServing {
+        if ProcessInfo.processInfo.underAutomatedHarness {
+            return MockGhostStore()
+        }
+        #if canImport(CloudKit)
+        if FeatureFlags.cloudKitGhostsEnabled,
+           FileManager.default.ubiquityIdentityToken != nil
+        {
+            return CloudKitGhostStore.shared
+        }
+        #endif
+        return MockGhostStore()
+    }
+}

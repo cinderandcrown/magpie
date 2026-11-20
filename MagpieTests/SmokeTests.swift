@@ -107,4 +107,38 @@ final class SmokeTests: XCTestCase {
         // TODO(nicholas): same as above — pauseFromAppLifecycle before didMove is a host-only probe.
         throw XCTSkip("TODO: needs presented HeistScene — do not block smoke clips")
     }
+
+    /// P0 launch smoke: constructing the scene (as ContentView does) must not touch CloudKit,
+    /// and presenting it must reach the title screen.
+    @MainActor
+    func testLaunchReachesTitleScreen() throws {
+        #if canImport(SpriteKit) && canImport(UIKit)
+        XCTAssertFalse(
+            FeatureFlags.cloudKitGhostsEnabled,
+            "CloudKit ghosts must default OFF until the iCloud container is verified"
+        )
+        let store = GhostStoreFactory.make()
+        XCTAssertTrue(
+            store is MockGhostStore,
+            "Launch must use MockGhostStore when CloudKit ghosts are disabled"
+        )
+
+        let scene = HeistScene(size: CGSize(width: 390, height: 844), smokeAutoplay: false)
+        let view = SKView(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        view.presentScene(scene)
+
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            if scene.debugSimReady, scene.debugSmokePhase == "title" {
+                return
+            }
+        }
+        XCTFail(
+            "Launch did not reach title within 5s (simReady=\(scene.debugSimReady) phase=\(scene.debugSmokePhase))"
+        )
+        #else
+        throw XCTSkip("SpriteKit/UIKit required")
+        #endif
+    }
 }
