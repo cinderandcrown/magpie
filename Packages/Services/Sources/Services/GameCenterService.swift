@@ -23,6 +23,14 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
     }
 
     public func authenticate(completion: (@Sendable (Bool) -> Void)?) {
+        // Unsigned CI simulators invalidate gamed — never arm the handler under harness.
+        if ProcessInfo.processInfo.underAutomatedHarness {
+            isAuthenticated = false
+            localPlayerID = nil
+            localDisplayName = nil
+            completion?(false)
+            return
+        }
         authCompletion = completion
         GKLocalPlayer.local.authenticateHandler = { [weak self] viewController, error in
             // Snapshot Sendable values only — never send GKLocalPlayer into a Task.

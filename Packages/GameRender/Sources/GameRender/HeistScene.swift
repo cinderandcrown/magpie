@@ -140,8 +140,16 @@ public final class HeistScene: SKScene {
     private var ghostVisual: SKSpriteNode?
     private var tookDamageThisRun = false
     private var sawMaskThisRun = false
-    private var gameCenter: GameCenterServing = GameCenterService.shared
-    private var ghostStore: GhostStoreServing = CloudKitGhostStore.shared
+    private var gameCenter: GameCenterServing = {
+        ProcessInfo.processInfo.underAutomatedHarness
+            ? MockGameCenter()
+            : GameCenterService.shared
+    }()
+    private var ghostStore: GhostStoreServing = {
+        ProcessInfo.processInfo.underAutomatedHarness
+            ? MockGhostStore()
+            : CloudKitGhostStore.shared
+    }()
     /// Gameplay pause (not SKScene.isPaused — that freezes the whole tree).
     private var runPaused = false
     private var pauseFromSystem = false
