@@ -309,7 +309,11 @@ public struct SmokeBrain: Equatable, Sendable {
                 moveY: input.moveY,
                 jumpPressed: input.jumpPressed,
                 jumpHeld: input.jumpHeld,
-                pouncePressed: input.pouncePressed
+                pouncePressed: input.pouncePressed,
+                dashPressed: input.dashPressed,
+                maskPressed: input.maskPressed,
+                grabPressed: input.grabPressed,
+                gadgetPressed: input.gadgetPressed
             )
         }
         return input
@@ -483,8 +487,54 @@ public struct SmokeBrain: Equatable, Sendable {
             jumpHeld = true
             moveX = b.onWallRight ? -0.55 : 0.85
         }
+
+        // First ~30s street beat: cycle the full right-thumb cluster for the smoke clip.
+        var dashPressed = false
+        var maskPressed = false
+        var grabPressed = false
+        var pouncePressed = false
+        let elapsed = sim.state.elapsed
+        if elapsed < 32, act != .seekDeath, act != .finishPush {
+            // DASH burst (~8s) — cooldown ring + i-frames through a MOP lane.
+            if b.dashCooldown <= 0, b.onGround, phase == 100 || (elapsed > 7.5 && elapsed < 8.2 && tick % 8 == 0) {
+                dashPressed = true
+            }
+            // Double jump (~12s): hop then mid-air JUMP again.
+            if !b.onGround, b.airJumpsRemaining > 0, b.coyote <= 0,
+               elapsed > 11.5, elapsed < 13.5, tick % 18 == 0 {
+                jumpPressed = true
+                jumpHeld = true
+            }
+            // POUNCE (~15s) while airborn near a MOP, else a short hop-pounce.
+            if elapsed > 14.5, elapsed < 17.0, !b.pouncing, !b.flopping, tick % 22 == 0 {
+                if !b.onGround {
+                    pouncePressed = true
+                } else {
+                    jumpPressed = true
+                    jumpHeld = true
+                }
+            }
+            // GRAB when loot/vent/door is in reach (~18–22s).
+            if b.interactTarget != .none, elapsed > 17.5, elapsed < 22.5, tick % 14 == 0 {
+                grabPressed = true
+            }
+            // MASK button spend once charges exist and Mask is off (~24s street demo).
+            // (Full Mask Mode showcase still waits for midrun + combo; this proves the button.)
+            if !midrunOk, !b.maskMode, b.maskCharges > 0, elapsed > 23.5, elapsed < 26.0, tick % 20 == 0 {
+                maskPressed = true
+            }
+        }
+
         return steerFromExit(
-            InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed),
+            InputFrame(
+                moveX: moveX,
+                jumpPressed: jumpPressed,
+                jumpHeld: jumpHeld || jumpPressed,
+                pouncePressed: pouncePressed,
+                dashPressed: dashPressed,
+                maskPressed: maskPressed,
+                grabPressed: grabPressed
+            ),
             sim: sim,
             tx: tx
         )

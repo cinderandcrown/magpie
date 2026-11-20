@@ -29,6 +29,9 @@ public enum JuiceFX {
         _ = textures(.pickupGlow, loopStart: 2)
         _ = buttonIcon("jump")
         _ = buttonIcon("pounce")
+        _ = buttonIcon("dash")
+        _ = buttonIcon("mask")
+        _ = buttonIcon("grab")
     }
 
     public static func buttonIcon(_ name: String) -> SKTexture? {

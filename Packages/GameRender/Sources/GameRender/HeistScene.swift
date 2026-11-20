@@ -37,18 +37,30 @@ public final class HeistScene: SKScene {
     private var jumpHeld = false
     private var jumpPressed = false
     private var pouncePressed = false
+    private var dashPressed = false
+    private var maskPressed = false
+    private var grabPressed = false
     private var stickTouch: UITouch?
     private var jumpTouch: UITouch?
     private var pounceTouch: UITouch?
+    private var dashTouch: UITouch?
+    private var maskTouch: UITouch?
+    private var grabTouch: UITouch?
     private var stickOrigin = CGPoint.zero
 
     private var stickBase: SKShapeNode!
     private var stickKnob: SKShapeNode!
     private var jumpBtn: SKShapeNode!
     private var pounceBtn: SKShapeNode!
+    private var dashBtn: SKShapeNode!
+    private var maskBtn: SKShapeNode!
+    private var grabBtn: SKShapeNode!
     /// Invisible forgiving hit plates (larger than the art).
     private var jumpHitZone: SKNode!
     private var pounceHitZone: SKNode!
+    private var dashHitZone: SKNode!
+    private var maskHitZone: SKNode!
+    private var grabHitZone: SKNode!
     private var moveHitZone: SKNode!
     /// Off by default — ProcessInfo `-ShowTouchZones` or UserDefaults `showTouchZones`.
     private var showTouchDebug = false
@@ -849,6 +861,47 @@ public final class HeistScene: SKScene {
         pounceBtn = makeFaceButton(title: "POUNCE", color: ArtCatalog.neonPink, large: true, iconName: "pounce")
         pounceBtn.name = "pounceBtn"
         playHUD.addChild(pounceBtn)
+        // Secondary arc: DASH / MASK / GRAB (thumb cluster, left of JUMP/POUNCE).
+        dashBtn = makeFaceButton(title: "DASH", color: ArtCatalog.neonCyan, large: false, iconName: "dash")
+        dashBtn.name = "dashBtn"
+        attachCooldownRing(to: dashBtn, name: "dashRing", color: ArtCatalog.neonCyan)
+        playHUD.addChild(dashBtn)
+        maskBtn = makeFaceButton(title: "MASK", color: ArtCatalog.neonCyan, large: false, iconName: "mask")
+        maskBtn.name = "maskBtn"
+        attachChargeBadge(to: maskBtn, name: "maskCharges")
+        playHUD.addChild(maskBtn)
+        grabBtn = makeFaceButton(title: "GRAB", color: ArtCatalog.neonOrange, large: false, iconName: "grab")
+        grabBtn.name = "grabBtn"
+        playHUD.addChild(grabBtn)
+
+        dashHitZone = SKNode(); dashHitZone.name = "dashHitZone"; dashHitZone.zPosition = 190; playHUD.addChild(dashHitZone)
+        maskHitZone = SKNode(); maskHitZone.name = "maskHitZone"; maskHitZone.zPosition = 190; playHUD.addChild(maskHitZone)
+        grabHitZone = SKNode(); grabHitZone.name = "grabHitZone"; grabHitZone.zPosition = 190; playHUD.addChild(grabHitZone)
+    }
+
+    private func attachCooldownRing(to btn: SKShapeNode, name: String, color: SKColor) {
+        let ring = SKShapeNode(circleOfRadius: 28)
+        ring.name = name
+        ring.strokeColor = color
+        ring.fillColor = .clear
+        ring.lineWidth = 4
+        ring.glowWidth = 1
+        ring.zPosition = 5
+        ring.position = .zero
+        ring.isHidden = true
+        btn.addChild(ring)
+    }
+
+    private func attachChargeBadge(to btn: SKShapeNode, name: String) {
+        let badge = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+        badge.name = name
+        badge.fontSize = 11
+        badge.fontColor = ArtCatalog.neonCyan
+        badge.horizontalAlignmentMode = .right
+        badge.verticalAlignmentMode = .top
+        badge.position = CGPoint(x: 34, y: 22)
+        badge.zPosition = 6
+        btn.addChild(badge)
     }
 
     private func makeFaceButton(
@@ -877,7 +930,7 @@ public final class HeistScene: SKScene {
         b.lineWidth = 3
         b.glowWidth = 2
         b.zPosition = 200
-        if large, let iconName, let tex = JuiceFX.buttonIcon(iconName) {
+        if let iconName, let tex = JuiceFX.buttonIcon(iconName) {
             let icon = SKSpriteNode(texture: tex, size: CGSize(width: edge * 0.42, height: edge * 0.42))
             icon.name = "btnIcon"
             icon.position = CGPoint(x: 0, y: h * 0.12)
@@ -903,16 +956,97 @@ public final class HeistScene: SKScene {
         return b
     }
 
+    private func secondaryButtonSize() -> CGSize {
+        CGSize(width: 92, height: 56)
+    }
+
+    private func paddedSecondaryHitRect(for btn: SKShapeNode) -> CGRect {
+        let vis = secondaryButtonSize()
+        let pad = CGFloat(max(28, tuning.feel.faceButtonHitPad * 0.7))
+        return CGRect(
+            x: btn.position.x - vis.width * 0.5 - pad,
+            y: btn.position.y - vis.height * 0.5 - pad,
+            width: vis.width + pad * 2,
+            height: vis.height + pad * 2
+        )
+    }
+
     private func pressFaceButton(_ btn: SKShapeNode) {
         btn.removeAction(forKey: "press")
-        btn.setScale(1)
+        // Never body.setScale on the bandit — buttons are fine; keep press scale symmetric.
+        btn.xScale = 1
+        btn.yScale = 1
         let down = SKAction.group([
-            SKAction.scale(to: 0.88, duration: 0.05),
+            SKAction.scaleX(to: 0.88, duration: 0.05),
+            SKAction.scaleY(to: 0.88, duration: 0.05),
             SKAction.fadeAlpha(to: 1, duration: 0.05),
         ])
-        let up = SKAction.scale(to: 1.0, duration: 0.1)
+        let up = SKAction.group([
+            SKAction.scaleX(to: 1.0, duration: 0.1),
+            SKAction.scaleY(to: 1.0, duration: 0.1),
+        ])
         up.timingMode = .easeOut
         btn.run(SKAction.sequence([down, up]), withKey: "press")
+    }
+
+    /// Smoke autoplay: flash the matching face button when the director taps an action.
+    private func flashSmokeFaceButtons(from input: InputFrame) {
+        if input.jumpPressed, jumpBtn != nil { pressFaceButton(jumpBtn) }
+        if input.pouncePressed, pounceBtn != nil { pressFaceButton(pounceBtn) }
+        if input.dashPressed, dashBtn != nil { pressFaceButton(dashBtn) }
+        if input.maskPressed, maskBtn != nil { pressFaceButton(maskBtn) }
+        if input.grabPressed, grabBtn != nil { pressFaceButton(grabBtn) }
+    }
+
+    /// Cooldown ring, MASK charges badge, GRAB dim/hide from live sim state.
+    private func refreshActionButtonChrome() {
+        guard dashBtn != nil, maskBtn != nil, grabBtn != nil else { return }
+        let b = sim.state.bandit
+        let feel = tuning.feel
+        // DASH cooldown ring (full → empty as cooldown drains).
+        if let ring = dashBtn.childNode(withName: "dashRing") as? SKShapeNode {
+            if b.dashCooldown > 0.02 {
+                let t = max(0, min(1, b.dashCooldown / max(0.05, feel.dashCooldown)))
+                ring.isHidden = false
+                ring.alpha = 0.85
+                ring.path = {
+                    let r: CGFloat = 28
+                    let start = CGFloat.pi / 2
+                    let end = start - CGFloat(t) * CGFloat.pi * 2
+                    let path = CGMutablePath()
+                    path.addArc(center: .zero, radius: r, startAngle: start, endAngle: end, clockwise: true)
+                    return path
+                }()
+                dashBtn.alpha = 0.55
+            } else {
+                ring.isHidden = true
+                dashBtn.alpha = 1
+            }
+        }
+        // MASK charges + grey when empty / already on.
+        if let badge = maskBtn.childNode(withName: "maskCharges") as? SKLabelNode {
+            badge.text = "×\(b.maskCharges)"
+            badge.isHidden = false
+        }
+        if b.maskMode {
+            maskBtn.alpha = 0.7
+            maskBtn.strokeColor = ArtCatalog.neonLime
+        } else if b.maskCharges <= 0 {
+            maskBtn.alpha = 0.35
+            maskBtn.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
+        } else {
+            maskBtn.alpha = 1
+            maskBtn.strokeColor = ArtCatalog.neonCyan
+        }
+        // GRAB: lit near loot/doors/vents; dim otherwise (never covers play when unused).
+        if b.interactTarget == .none {
+            grabBtn.alpha = 0.28
+            grabBtn.isHidden = false
+        } else {
+            grabBtn.alpha = 1
+            grabBtn.isHidden = false
+            grabBtn.strokeColor = ArtCatalog.neonOrange
+        }
     }
 
     /// Face-button visual size (matches `makeFaceButton(large:)`).
@@ -937,7 +1071,8 @@ public final class HeistScene: SKScene {
     /// Rebuild hit plates from the *drawn* buttons + pad. Move zone stays left of face hits.
     private func layoutControlHitZones() {
         guard moveHitZone != nil, jumpHitZone != nil, pounceHitZone != nil,
-              jumpBtn != nil, pounceBtn != nil else { return }
+              dashHitZone != nil, maskHitZone != nil, grabHitZone != nil,
+              jumpBtn != nil, pounceBtn != nil, dashBtn != nil, maskBtn != nil, grabBtn != nil else { return }
         let hw = size.width * 0.5
         let hh = size.height * 0.5
         let insets = safeInsets()
@@ -945,12 +1080,18 @@ public final class HeistScene: SKScene {
         moveHitZone.removeAllChildren()
         jumpHitZone.removeAllChildren()
         pounceHitZone.removeAllChildren()
+        dashHitZone.removeAllChildren()
+        maskHitZone.removeAllChildren()
+        grabHitZone.removeAllChildren()
 
         let jumpRect = paddedFaceHitRect(for: jumpBtn)
         let pounceRect = paddedFaceHitRect(for: pounceBtn)
+        let dashRect = paddedSecondaryHitRect(for: dashBtn)
+        let maskRect = paddedSecondaryHitRect(for: maskBtn)
+        let grabRect = paddedSecondaryHitRect(for: grabBtn)
         // Expand jump/pounce plates toward the right edge / each other so misses still land,
         // but never cross the midline into the move side.
-        let faceLeft = min(jumpRect.minX, pounceRect.minX)
+        let faceLeft = min(jumpRect.minX, pounceRect.minX, dashRect.minX, maskRect.minX, grabRect.minX)
         let jumpPlateRect = CGRect(
             x: max(0, jumpRect.minX - 12),
             y: jumpRect.minY,
@@ -965,6 +1106,9 @@ public final class HeistScene: SKScene {
         )
         placeHitPlate(on: jumpHitZone, rect: jumpPlateRect, name: "jumpPlate")
         placeHitPlate(on: pounceHitZone, rect: pouncePlateRect, name: "pouncePlate")
+        placeHitPlate(on: dashHitZone, rect: dashRect, name: "dashPlate")
+        placeHitPlate(on: maskHitZone, rect: maskRect, name: "maskPlate")
+        placeHitPlate(on: grabHitZone, rect: grabRect, name: "grabPlate")
 
         // Move: left third, hard-capped so it never overlaps face hit plates.
         let moveMaxX = min(-size.width * 0.02, faceLeft - 8)
@@ -1034,6 +1178,15 @@ public final class HeistScene: SKScene {
         }
         addRect(paddedFaceHitRect(for: jumpBtn), color: ArtCatalog.neonLime, label: "JUMP")
         addRect(paddedFaceHitRect(for: pounceBtn), color: ArtCatalog.neonPink, label: "POUNCE")
+        if dashBtn != nil {
+            addRect(paddedSecondaryHitRect(for: dashBtn), color: ArtCatalog.neonCyan, label: "DASH")
+        }
+        if maskBtn != nil {
+            addRect(paddedSecondaryHitRect(for: maskBtn), color: ArtCatalog.neonCyan, label: "MASK")
+        }
+        if grabBtn != nil {
+            addRect(paddedSecondaryHitRect(for: grabBtn), color: ArtCatalog.neonOrange, label: "GRAB")
+        }
         if let jump = jumpHitZone.children.first {
             let r = CGRect(
                 x: jumpHitZone.position.x - jump.frame.width * 0.5,
@@ -1675,7 +1828,7 @@ public final class HeistScene: SKScene {
             skipFreezeSample = true
             pauseCountLabel?.alpha = 0
             pauseCountLabel?.text = ""
-            clearLatchedPlayInput()
+            clearAllActionInput()
             pauseRoot.isHidden = false
             layoutUI()
             if smokeEnabled { writeSmokeStatus() }
@@ -1691,22 +1844,32 @@ public final class HeistScene: SKScene {
 
     /// Drop stick / face-button latch without requiring HUD nodes.
     private func clearLatchedPlayInput() {
-        releaseStickInput()
-        jumpHeld = false
-        jumpPressed = false
-        pouncePressed = false
-        jumpTouch = nil
-        pounceTouch = nil
+        clearAllActionInput()
     }
 
     /// Auto-pause from SwiftUI / UIKit lifecycle (resign active, background).
-    /// Idempotent — always clears latched input even before `sim` / HUD exist.
+    /// Idempotent — clears latched input even before `sim` / HUD exist; no flicker on banners.
     public func pauseFromAppLifecycle() {
-        clearLatchedPlayInput()
+        clearAllActionInput()
         pauseFromSystem = true
         guard sim != nil else { return }
         if runPaused { return }
         setPaused(true, system: true)
+    }
+
+    private func clearAllActionInput() {
+        releaseStickInput()
+        jumpHeld = false
+        jumpPressed = false
+        pouncePressed = false
+        dashPressed = false
+        maskPressed = false
+        grabPressed = false
+        jumpTouch = nil
+        pounceTouch = nil
+        dashTouch = nil
+        maskTouch = nil
+        grabTouch = nil
     }
 
     /// Resume after lifecycle pause: brief 3-2-1, else immediate unpause.
@@ -1914,12 +2077,19 @@ public final class HeistScene: SKScene {
             stickBase.alpha = 0.38
             stickKnob.alpha = 0.38
         }
-        // Thumb-sized face buttons — right side, inside safe area (zones are larger).
-        let edge = CGFloat(max(112, tuning.feel.faceButtonMinPt))
-        let btnX = hw - edge * 0.55 - rightSafe
-        jumpBtn.position = CGPoint(x: btnX, y: -hh + 168 + bottomSafe * 0.35)
-        pounceBtn.position = CGPoint(x: btnX, y: -hh + 68 + bottomSafe * 0.35)
+        // Right-thumb arc: JUMP/POUNCE on the outer column, DASH/MASK/GRAB on the inner arc.
+        // Keeps stick (left) clear and stays above the home indicator.
+        let edge = CGFloat(max(100, tuning.feel.faceButtonMinPt * 0.92))
+        let outerX = hw - edge * 0.52 - rightSafe
+        let innerX = outerX - edge * 0.95
+        let baseY = -hh + 78 + bottomSafe * 0.35
+        jumpBtn.position = CGPoint(x: outerX, y: baseY + 118)
+        pounceBtn.position = CGPoint(x: outerX, y: baseY + 18)
+        maskBtn.position = CGPoint(x: innerX, y: baseY + 148)
+        dashBtn.position = CGPoint(x: innerX, y: baseY + 78)
+        grabBtn.position = CGPoint(x: innerX, y: baseY + 8)
         layoutControlHitZones()
+        refreshActionButtonChrome()
         let hudTop = hh - topSafe - 28
         let hudX = -hw + 22 + leftSafe
         // Compact two-row pill — loot/hearts on top, combo/timer below.
@@ -2565,25 +2735,8 @@ public final class HeistScene: SKScene {
                 }
                 return
             }
-            // Face buttons first — padded visual rect (covers stroke/glow), then expanded plates.
-            // Never let the move stick steal a JUMP/POUNCE tap (old left-half fallback did).
-            let onJump = hitPaddedFaceButton(jumpBtn, pointInHUD: p) || hitInZone(jumpHitZone, pointInHUD: p)
-            let onPounce = hitPaddedFaceButton(pounceBtn, pointInHUD: p) || hitInZone(pounceHitZone, pointInHUD: p)
-            if jumpTouch == nil, onJump {
-                jumpTouch = touch
-                jumpPressed = true
-                jumpHeld = true
-                pressFaceButton(jumpBtn)
-                if !smokeEnabled { hapticLight.impactOccurred() }
-                continue
-            }
-            if pounceTouch == nil, onPounce {
-                pounceTouch = touch
-                pouncePressed = true
-                pressFaceButton(pounceBtn)
-                if !smokeEnabled { hapticMed.impactOccurred() }
-                continue
-            }
+            // Face cluster first — never let the move stick steal a right-thumb tap.
+            if tryBeginFaceTouch(touch, at: p) { continue }
             // Move stick: only the left move plate (no "any x < 0" fallback — that ate JUMP).
             if stickTouch == nil, hitInZone(moveHitZone, pointInHUD: p) {
                 stickTouch = touch
@@ -2595,6 +2748,58 @@ public final class HeistScene: SKScene {
                 updateStick(p)
             }
         }
+    }
+
+    /// Bind a right-thumb button if the touch lands on it. Returns true when claimed.
+    @discardableResult
+    private func tryBeginFaceTouch(_ touch: UITouch, at p: CGPoint) -> Bool {
+        let onJump = hitPaddedFaceButton(jumpBtn, pointInHUD: p) || hitInZone(jumpHitZone, pointInHUD: p)
+        let onPounce = hitPaddedFaceButton(pounceBtn, pointInHUD: p) || hitInZone(pounceHitZone, pointInHUD: p)
+        let onDash = hitPaddedSecondary(dashBtn, pointInHUD: p) || hitInZone(dashHitZone, pointInHUD: p)
+        let onMask = hitPaddedSecondary(maskBtn, pointInHUD: p) || hitInZone(maskHitZone, pointInHUD: p)
+        let onGrab = hitPaddedSecondary(grabBtn, pointInHUD: p) || hitInZone(grabHitZone, pointInHUD: p)
+        if jumpTouch == nil, onJump {
+            jumpTouch = touch
+            jumpPressed = true
+            jumpHeld = true
+            pressFaceButton(jumpBtn)
+            if !smokeEnabled { hapticLight.impactOccurred() }
+            return true
+        }
+        if pounceTouch == nil, onPounce {
+            pounceTouch = touch
+            pouncePressed = true
+            pressFaceButton(pounceBtn)
+            if !smokeEnabled { hapticMed.impactOccurred() }
+            return true
+        }
+        if dashTouch == nil, onDash, sim.state.bandit.dashCooldown <= 0 {
+            dashTouch = touch
+            dashPressed = true
+            pressFaceButton(dashBtn)
+            if !smokeEnabled { hapticMed.impactOccurred() }
+            return true
+        }
+        if maskTouch == nil, onMask, sim.state.bandit.maskCharges > 0, !sim.state.bandit.maskMode {
+            maskTouch = touch
+            maskPressed = true
+            pressFaceButton(maskBtn)
+            if !smokeEnabled { hapticHeavy.impactOccurred() }
+            return true
+        }
+        if grabTouch == nil, onGrab, sim.state.bandit.interactTarget != .none {
+            grabTouch = touch
+            grabPressed = true
+            pressFaceButton(grabBtn)
+            if !smokeEnabled { hapticLight.impactOccurred() }
+            return true
+        }
+        return false
+    }
+
+    private func hitPaddedSecondary(_ btn: SKShapeNode?, pointInHUD p: CGPoint) -> Bool {
+        guard let btn, !btn.isHidden else { return false }
+        return paddedSecondaryHitRect(for: btn).contains(p)
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -2609,22 +2814,12 @@ public final class HeistScene: SKScene {
                 updateStick(touch.location(in: hud))
             }
             if runPaused || resumeCountdown > 0 { continue }
-            // Sliding onto JUMP / POUNCE from a miss still counts (forgiving).
+            // Sliding onto a face button from a miss still counts (forgiving multitouch).
             let p = touch.location(in: hud)
-            if jumpTouch == nil, touch !== stickTouch, touch !== pounceTouch,
-               hitPaddedFaceButton(jumpBtn, pointInHUD: p) || hitInZone(jumpHitZone, pointInHUD: p) {
-                jumpTouch = touch
-                jumpPressed = true
-                jumpHeld = true
-                pressFaceButton(jumpBtn)
-                if !smokeEnabled { hapticLight.impactOccurred() }
-            }
-            if pounceTouch == nil, touch !== stickTouch, touch !== jumpTouch,
-               hitPaddedFaceButton(pounceBtn, pointInHUD: p) || hitInZone(pounceHitZone, pointInHUD: p) {
-                pounceTouch = touch
-                pouncePressed = true
-                pressFaceButton(pounceBtn)
-                if !smokeEnabled { hapticMed.impactOccurred() }
+            if touch !== stickTouch,
+               touch !== jumpTouch, touch !== pounceTouch,
+               touch !== dashTouch, touch !== maskTouch, touch !== grabTouch {
+                _ = tryBeginFaceTouch(touch, at: p)
             }
         }
     }
@@ -2653,6 +2848,15 @@ public final class HeistScene: SKScene {
             }
             if touch === pounceTouch {
                 pounceTouch = nil
+            }
+            if touch === dashTouch {
+                dashTouch = nil
+            }
+            if touch === maskTouch {
+                maskTouch = nil
+            }
+            if touch === grabTouch {
+                grabTouch = nil
             }
         }
     }
@@ -2686,10 +2890,39 @@ public final class HeistScene: SKScene {
         jumpHeld = true
     }
 
+    public func debugPressDashAlongsideMove() {
+        dashPressed = true
+    }
+
+    public func debugPressMaskAlongsideMove() {
+        maskPressed = true
+    }
+
+    public func debugPressGrabAlongsideMove() {
+        grabPressed = true
+    }
+
+    public func debugPressPounceAlongsideMove() {
+        pouncePressed = true
+    }
+
+    public var debugDashPressed: Bool { dashPressed }
+    public var debugMaskPressed: Bool { maskPressed }
+    public var debugGrabPressed: Bool { grabPressed }
+    public var debugPouncePressed: Bool { pouncePressed }
+
     public func debugReleaseJump() {
         jumpHeld = false
         jumpPressed = false
         jumpTouch = nil
+    }
+
+    public func debugClearActionEdges() {
+        dashPressed = false
+        maskPressed = false
+        grabPressed = false
+        pouncePressed = false
+        jumpPressed = false
     }
 
     public func debugReleaseStick() {
@@ -2713,6 +2946,9 @@ public final class HeistScene: SKScene {
         if let t = pounceTouch, t.phase == .ended || t.phase == .cancelled {
             pounceTouch = nil
         }
+        if let t = dashTouch, t.phase == .ended || t.phase == .cancelled { dashTouch = nil }
+        if let t = maskTouch, t.phase == .ended || t.phase == .cancelled { maskTouch = nil }
+        if let t = grabTouch, t.phase == .ended || t.phase == .cancelled { grabTouch = nil }
     }
 
     private func updateStick(_ p: CGPoint) {
@@ -2940,15 +3176,29 @@ public final class HeistScene: SKScene {
         sanitizeTrackedTouches()
 
         while accumulator >= tuning.dt && steps < maxSteps {
-            var input = InputFrame(moveX: moveX, moveY: moveY, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
+            var input = InputFrame(
+                moveX: moveX,
+                moveY: moveY,
+                jumpPressed: jumpPressed,
+                jumpHeld: jumpHeld,
+                pouncePressed: pouncePressed,
+                dashPressed: dashPressed,
+                maskPressed: maskPressed,
+                grabPressed: grabPressed
+            )
             jumpPressed = false
             pouncePressed = false
+            dashPressed = false
+            maskPressed = false
+            grabPressed = false
 
             if smokeEnabled {
                 let cue = smoke.next(sim: sim)
                 if cue.start { beginPlay() }
                 if cue.retry { doRetry() }
                 input = cue.input
+                // Mirror smoke taps onto the face cluster so the clip shows every button.
+                flashSmokeFaceButtons(from: input)
                 if stickBase != nil {
                     stickKnob.position = CGPoint(
                         x: stickBase.position.x + CGFloat(input.moveX) * 40,
@@ -3122,6 +3372,26 @@ public final class HeistScene: SKScene {
                 shake(0.7)
                 squash(0.8, 1.28)
                 neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 8)
+            case .dash:
+                JuiceSound.shared.playDash()
+                if !smokeEnabled { hapticMed.impactOccurred() }
+                shake(0.45)
+                squash(0.72, 1.35)
+                dust(at: e.position, count: 10, color: ArtCatalog.neonCyan)
+                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 6)
+                JuiceFX.play(
+                    .footDust, at: cg(e.position), in: world,
+                    size: 64, z: 48, timePerFrame: 1.0 / 28.0, blendAdd: true
+                )
+            case .grab:
+                JuiceSound.shared.playGrab()
+                if !smokeEnabled { hapticLight.impactOccurred() }
+                squash(1.2, 0.85)
+                dust(at: e.position, count: 6, color: ArtCatalog.neonOrange)
+            case .gadget:
+                JuiceSound.shared.playPounce()
+                shake(0.4)
+                neonBurst(at: e.position, color: ArtCatalog.neonLime, count: 8)
             case .flop:
                 // Belly-flop is mid-air commit — do NOT play land SFX here. Pounce→flop→land
                 // within <100ms used to log two "sfx land" lines and fail the CI double-land gate.
@@ -3706,12 +3976,13 @@ public final class HeistScene: SKScene {
             }
         }
 
+        refreshActionButtonChrome()
         let shinyTotal = b.carriedShinies + b.bankedShinies
         smokeStatus.shinies = shinyTotal
         hudCarried.text = "✦ \(shinyTotal)"
         hudHearts.text = String(repeating: "♥", count: max(0, b.hearts))
         if b.maskMode {
-            hudCombo.text = "MASK ×2 · x\(max(1, b.combo))"
+            hudCombo.text = "MASK ×\(max(0, b.maskCharges)) · x\(max(1, b.combo))"
             hudCombo.isHidden = false
             hudCombo.fontColor = ArtCatalog.neonCyan
             (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonCyan.withAlphaComponent(0.35)
@@ -3908,7 +4179,7 @@ public final class HeistScene: SKScene {
         bg.glowWidth = 1
         root.addChild(bg)
         let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        title.text = "STOMP 3 → MASK"
+        title.text = "JUMP · POUNCE · DASH · MASK · GRAB"
         title.fontSize = 16
         title.fontColor = ArtCatalog.neonLime
         title.verticalAlignmentMode = .center

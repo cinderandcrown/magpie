@@ -161,6 +161,40 @@ final class SmokeTests: XCTestCase {
         scene.debugLifecyclePause()
         XCTAssertEqual(scene.debugMoveX, 0, accuracy: 0.001)
         XCTAssertFalse(scene.debugHasStickTouch)
+
+        // Multitouch: stick + each face button; stick release never latches move.
+        for press in [
+            { scene.debugPressDashAlongsideMove() },
+            { scene.debugPressMaskAlongsideMove() },
+            { scene.debugPressGrabAlongsideMove() },
+            { scene.debugPressPounceAlongsideMove() },
+        ] as [() -> Void] {
+            scene.debugSetMoveX(0.7)
+            press()
+            scene.debugReleaseStick()
+            XCTAssertEqual(scene.debugMoveX, 0, accuracy: 0.001)
+            scene.debugClearActionEdges()
+            scene.debugLifecyclePause() // idempotent pause — no flicker / no re-latch
+            XCTAssertEqual(scene.debugMoveX, 0, accuracy: 0.001)
+        }
+        #else
+        XCTAssertTrue(true)
+        #endif
+    }
+
+    /// Idempotent lifecycle pause: second banner must not toggle or re-arm input.
+    @MainActor
+    func testLifecyclePauseIsIdempotent() {
+        #if canImport(SpriteKit) && canImport(UIKit)
+        let scene = HeistScene(size: CGSize(width: 390, height: 844), smokeAutoplay: false)
+        scene.debugSetMoveX(1)
+        scene.debugPressJumpAlongsideMove()
+        scene.debugLifecyclePause()
+        XCTAssertEqual(scene.debugMoveX, 0, accuracy: 0.001)
+        XCTAssertFalse(scene.debugJumpHeld)
+        scene.debugSetMoveX(0.5) // simulate a spurious re-set under a banner
+        scene.debugLifecyclePause()
+        XCTAssertEqual(scene.debugMoveX, 0, accuracy: 0.001)
         #else
         XCTAssertTrue(true)
         #endif

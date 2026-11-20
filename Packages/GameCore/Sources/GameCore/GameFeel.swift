@@ -85,5 +85,26 @@ public struct GameFeel: Equatable, Sendable {
     /// Minimum bandit alpha while blinking during i-frames (≥ 50%).
     public var invulnMinAlpha: Double = 0.55
 
+    // MARK: Action cluster (DASH / MASK / GRAB / GADGET)
+
+    /// Horizontal burst speed (tiles/s scale via tileSize) for dash/slide.
+    public var dashSpeed: Double = 14.0
+    /// How long the dash burst lasts (seconds).
+    public var dashDuration: Double = 0.22
+    /// Cooldown after a dash before the next (seconds).
+    public var dashCooldown: Double = 1.15
+    /// Brief i-frames while dashing (slide under lasers / through MOP legs).
+    public var dashInvuln: Double = 0.28
+    /// Max Mask Mode charges the MASK button can hold.
+    public var maskMaxCharges: Int = 2
+    /// Gadget stun radius in tiles.
+    public var gadgetStunTiles: Double = 4.5
+    /// Gadget stun duration on MOPs (seconds).
+    public var gadgetStunSeconds: Double = 2.2
+    /// Gadget cooldown (seconds).
+    public var gadgetCooldown: Double = 4.5
+    /// Grab / interact reach in tiles.
+    public var grabReachTiles: Double = 1.35
+
     public static let `default` = GameFeel()
 }
