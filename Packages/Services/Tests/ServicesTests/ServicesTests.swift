@@ -44,4 +44,21 @@ final class ServicesTests: XCTestCase {
         let world = await store.loadWorldBest(dayKey: day)
         XCTAssertEqual(world?.score, 500)
     }
+
+    func testCloudKitGhostsDefaultOffAndFactoryUsesMock() {
+        XCTAssertFalse(FeatureFlags.cloudKitGhostsEnabled)
+        let store = GhostStoreFactory.make()
+        XCTAssertTrue(store is MockGhostStore)
+    }
+
+    func testCloudKitGhostStoreSharedDoesNotRequireContainer() async {
+        // Touching shared / saving must not require a CKContainer when the flag is off.
+        let store = CloudKitGhostStore.shared
+        let day = "2026-11-20"
+        await store.saveOwnBest(
+            GhostRun(dayKey: day, playerID: "p1", displayName: "A", score: 1, seconds: 1, samples: [])
+        )
+        let best = await store.loadOwnBest(dayKey: day)
+        XCTAssertEqual(best?.score, 1)
+    }
 }

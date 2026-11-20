@@ -6,12 +6,15 @@ import SwiftUI
 @main
 struct MagpieApp: App {
     init() {
-        // Skip GameKit under XCTest / smoke — unsigned simulator hosts crash the test
-        // runner when gamed rejects the missing Game Center entitlement.
+        // Skip GameKit under XCTest / smoke — unsigned simulator hosts can fault when
+        // gamed rejects a missing Game Center entitlement.
         guard !ProcessInfo.processInfo.underAutomatedHarness else { return }
-        // Game Center auth is non-blocking — play works fully while signed out.
-        GameCenterService.shared.authenticate { ok in
-            GameCenterService.shared.setAccessPointVisible(ok, showHighlights: true)
+        // Defer auth until a window exists. Auth is fully optional — play works signed out.
+        // Never force-unwrap; GameCenterService swallows GameKit errors.
+        DispatchQueue.main.async {
+            GameCenterService.shared.authenticate { ok in
+                GameCenterService.shared.setAccessPointVisible(ok, showHighlights: true)
+            }
         }
     }
 
@@ -22,7 +25,10 @@ struct MagpieApp: App {
                 .statusBarHidden(true)
                 .onAppear {
                     guard !ProcessInfo.processInfo.underAutomatedHarness else { return }
-                    GameCenterService.shared.setAccessPointVisible(true, showHighlights: true)
+                    // Access point only when already authenticated — never fatal.
+                    if GameCenterService.shared.isAuthenticated {
+                        GameCenterService.shared.setAccessPointVisible(true, showHighlights: true)
+                    }
                 }
         }
     }

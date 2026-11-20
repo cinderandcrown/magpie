@@ -32,6 +32,16 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
             return
         }
         authCompletion = completion
+        // Game Center is optional. Any GameKit fault leaves the player signed out — never crash.
+        let finishFailure: @Sendable () -> Void = { [weak self] in
+            guard let self else { return }
+            self.isAuthenticated = false
+            self.localPlayerID = nil
+            self.localDisplayName = nil
+            let cb = self.authCompletion
+            self.authCompletion = nil
+            cb?(false)
+        }
         GKLocalPlayer.local.authenticateHandler = { [weak self] viewController, error in
             // Snapshot Sendable values only — never send GKLocalPlayer into a Task.
             let local = GKLocalPlayer.local
@@ -40,23 +50,25 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
             let name = local.displayName
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                if let viewController, let root = Self.topViewController() {
-                    root.present(viewController, animated: true)
+                if let viewController {
+                    if let root = Self.topViewController() {
+                        root.present(viewController, animated: true)
+                    } else {
+                        // No window yet — treat as not authenticated; caller may retry.
+                        finishFailure()
+                    }
                     return
                 }
                 if !ok {
-                    self.isAuthenticated = false
-                    self.localPlayerID = nil
-                    self.localDisplayName = nil
-                    self.authCompletion?(false)
-                    self.authCompletion = nil
+                    finishFailure()
                     return
                 }
                 self.isAuthenticated = true
                 self.localPlayerID = pid
                 self.localDisplayName = name
-                self.authCompletion?(true)
+                let cb = self.authCompletion
                 self.authCompletion = nil
+                cb?(true)
             }
         }
     }

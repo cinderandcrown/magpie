@@ -146,12 +146,7 @@ public final class HeistScene: SKScene {
         }
         return GameCenterService.shared
     }()
-    private var ghostStore: GhostStoreServing = {
-        if ProcessInfo.processInfo.underAutomatedHarness {
-            return MockGhostStore()
-        }
-        return CloudKitGhostStore.shared
-    }()
+    private var ghostStore: GhostStoreServing = GhostStoreFactory.make()
     /// Gameplay pause (not SKScene.isPaused — that freezes the whole tree).
     private var runPaused = false
     private var pauseFromSystem = false
@@ -2700,6 +2695,12 @@ public final class HeistScene: SKScene {
     public func debugLifecyclePause() {
         pauseFromAppLifecycle()
     }
+
+    /// Smoke/boot phase string published for launch smoke tests (`title`, `intro`, …).
+    public var debugSmokePhase: String { smokeStatus.phase }
+
+    /// True once `didMove` has wired the sim (title screen reachable).
+    public var debugSimReady: Bool { sim != nil }
 
     /// Drop latched fingers whose UITouch phase already ended/cancelled.
     private func sanitizeTrackedTouches() {
