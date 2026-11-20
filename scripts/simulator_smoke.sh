@@ -966,6 +966,14 @@ print(f"OK monotonic wallElapsed samples={len(vals)} last={vals[-1]:.1f}s")
 PY
 
 rm -f "$OUT_DIR/smoke-30s.mp4"
+# Nicholas feel-loop clip: ~30s of live play (skip title/ident), from continuous take.
+if [[ -f "$OUT_DIR/smoke-gameplay.mp4" ]]; then
+  ffmpeg -y -ss 18 -t 30 -i "$OUT_DIR/smoke-gameplay.mp4" \
+    -c:v libx264 -an -pix_fmt yuv420p -movflags +faststart "$OUT_DIR/smoke-30s.mp4" 2>/dev/null \
+    || ffmpeg -y -ss 12 -t 30 -i "$OUT_DIR/smoke-gameplay.mp4" \
+      -c:v libx264 -an -pix_fmt yuv420p -movflags +faststart "$OUT_DIR/smoke-30s.mp4" 2>/dev/null \
+    || true
+fi
 cp -f "$OUT_DIR/00-publisher-ident.png" "$OUT_DIR/00-ident.png"
 cp -f "$OUT_DIR/01-title.png" "$OUT_DIR/01-launch.png"
 cp -f "$OUT_DIR/02-midrun.png" "$OUT_DIR/02-mid.png"

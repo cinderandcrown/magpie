@@ -65,6 +65,7 @@ public final class HeistScene: SKScene {
     private var hudHearts = SKLabelNode(fontNamed: "AvenirNext-Bold")
     private var hudCombo = SKLabelNode(fontNamed: "AvenirNext-Heavy")
     private var hudTime = SKLabelNode(fontNamed: "AvenirNext-Medium")
+    private var hudPill = SKShapeNode()
     private var fpsLabel = SKLabelNode(fontNamed: "Menlo-Bold")
 
     private var accumulator: TimeInterval = 0
@@ -424,18 +425,16 @@ public final class HeistScene: SKScene {
                 if mirrorTile, i % 2 == 1 {
                     plate.xScale = -1
                 }
-                // Keep storefront neon readable for the midrun palette gate — do NOT
-                // wash toward muted purple-gray (that hid magenta/teal and dimmed the city).
+                // Push BG darker/desaturated so bandit, MOPs, and loot own the contrast.
+                // Mid still keeps a hint of neon for the palette gate without fighting sprites.
                 if neonBoost {
-                    // Lift mid-tones so the alley isn't a grimy 22–33/255 wash,
-                    // but keep sky darker than lit sprites (readability).
-                    plate.color = SKColor(red: 1.0, green: 0.55, blue: 0.92, alpha: 1)
-                    plate.colorBlendFactor = 0.22
-                    plate.alpha = 1.0
+                    plate.color = SKColor(red: 0.22, green: 0.10, blue: 0.28, alpha: 1)
+                    plate.colorBlendFactor = 0.42
+                    plate.alpha = 0.72
                 } else {
-                    plate.color = SKColor(red: 0.55, green: 0.82, blue: 1.0, alpha: 1)
-                    plate.colorBlendFactor = 0.12
-                    plate.alpha = 0.95
+                    plate.color = SKColor(red: 0.08, green: 0.10, blue: 0.22, alpha: 1)
+                    plate.colorBlendFactor = 0.48
+                    plate.alpha = 0.62
                 }
                 parent.addChild(plate)
             }
@@ -452,7 +451,7 @@ public final class HeistScene: SKScene {
         let gridW = min(max(mapW * 0.5, size.width / Self.worldZoom * 3), 1800)
         let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.55)
         grid.position = CGPoint(x: gridW * 0.28, y: midY)
-        grid.alpha = 0.4
+        grid.alpha = 0.18
         parallaxFar.addChild(grid)
         // Living far city: twinkling windows + a slow skyline transit.
         let windows = ArtCatalog.livingWindowLights(width: min(mapW * 0.6, 1400), height: h * 0.35)
@@ -466,10 +465,11 @@ public final class HeistScene: SKScene {
         // Keep strips high enough that the midrun storefront-band (12–48% screen) sees them.
         let signs = ArtCatalog.neonSignageStrip(width: mapW * 0.7, height: 96)
         signs.position = CGPoint(x: mapW * 0.18, y: midY + 118)
+        signs.alpha = 0.55
         parallaxMid.addChild(signs)
         let signsLow = ArtCatalog.neonSignageStrip(width: mapW * 0.45, height: 56)
         signsLow.position = CGPoint(x: mapW * 0.4, y: midY + 52)
-        signsLow.alpha = 0.9
+        signsLow.alpha = 0.4
         parallaxMid.addChild(signsLow)
         // Sweeping searchlight + street steam so the mid band feels alive.
         let light = ArtCatalog.neonSearchlight(height: h * 0.5)
@@ -624,8 +624,8 @@ public final class HeistScene: SKScene {
                 let below = sim.map.tile(atX: x, y: y - 1)
                 let openBelow = !sim.map.isSolid(below) && below != .water
 
-                // Occasional crate / pipe on walkable tops only (never hanging under ledges).
-                if !propTextures.isEmpty, !openBelow, (x + y * 5) % 17 == 0 {
+                // Sparse décor only — never a crate wall on the walkable deck.
+                if !propTextures.isEmpty, !openBelow, (x + y * 5) % 29 == 0 {
                     let tex = propTextures[propI % propTextures.count]
                     propI += 1
                     let n = SKSpriteNode(texture: tex, size: CGSize(width: tile * 0.7, height: tile * 0.7))
@@ -1047,6 +1047,14 @@ public final class HeistScene: SKScene {
     }
 
     private func setupHUD() {
+        hudPill = SKShapeNode(rectOf: CGSize(width: 168, height: 54), cornerRadius: 14)
+        hudPill.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.10, alpha: 0.72)
+        hudPill.strokeColor = SKColor(white: 1, alpha: 0.12)
+        hudPill.lineWidth = 1
+        hudPill.zPosition = 198
+        hudPill.name = "hudPill"
+        playHUD.addChild(hudPill)
+
         for (label, color) in [
             (hudCarried, ArtCatalog.neonOrange),
             (hudHearts, ArtCatalog.neonPink),
@@ -1069,34 +1077,33 @@ public final class HeistScene: SKScene {
         #endif
     }
 
-    /// Neon HUD font + multi-layer glow outline (readable under Dynamic Island / night sky).
+    /// Compact HUD font — sits on the dark pill, not raw over the skyline.
     private func styleHUDLabel(_ label: SKLabelNode, color: SKColor) {
         label.fontName = "AvenirNext-Heavy"
-        label.fontSize = 18
+        label.fontSize = 13
         label.fontColor = color
         label.horizontalAlignmentMode = .left
-        label.verticalAlignmentMode = .top
+        label.verticalAlignmentMode = .center
         label.zPosition = 210
         if label.childNode(withName: "hudOutline") == nil {
             let outline = SKLabelNode(fontNamed: "AvenirNext-Heavy")
             outline.name = "hudOutline"
-            outline.fontSize = 18
-            outline.fontColor = SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 0.95)
+            outline.fontSize = 13
+            outline.fontColor = SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 0.9)
             outline.horizontalAlignmentMode = .left
-            outline.verticalAlignmentMode = .top
-            outline.position = CGPoint(x: 1.5, y: -1.5)
+            outline.verticalAlignmentMode = .center
+            outline.position = CGPoint(x: 1, y: -1)
             outline.zPosition = -1
             label.addChild(outline)
-            // Soft neon halo behind the outline (baked multi-label glow — no SKEffectNode).
             let glow = SKLabelNode(fontNamed: "AvenirNext-Heavy")
             glow.name = "hudGlow"
-            glow.fontSize = 18
-            glow.fontColor = color.withAlphaComponent(0.45)
+            glow.fontSize = 13
+            glow.fontColor = color.withAlphaComponent(0.35)
             glow.horizontalAlignmentMode = .left
-            glow.verticalAlignmentMode = .top
-            glow.position = CGPoint(x: 0, y: 0)
+            glow.verticalAlignmentMode = .center
+            glow.position = .zero
             glow.zPosition = -2
-            glow.setScale(1.04)
+            glow.setScale(1.03)
             label.addChild(glow)
         }
         if let outline = label.childNode(withName: "hudOutline") as? SKLabelNode {
@@ -1887,12 +1894,15 @@ public final class HeistScene: SKScene {
         jumpBtn.position = CGPoint(x: btnX, y: -hh + 168 + bottomSafe * 0.35)
         pounceBtn.position = CGPoint(x: btnX, y: -hh + 68 + bottomSafe * 0.35)
         layoutControlHitZones()
-        let hudTop = hh - topSafe - 6
-        let hudX = -hw + 16 + leftSafe
-        hudCarried.position = CGPoint(x: hudX, y: hudTop)
-        hudHearts.position = CGPoint(x: hudX, y: hudTop - 26)
-        hudCombo.position = CGPoint(x: hudX, y: hudTop - 52)
-        hudTime.position = CGPoint(x: hudX, y: hudTop - 78)
+        let hudTop = hh - topSafe - 28
+        let hudX = -hw + 22 + leftSafe
+        // Compact two-row pill — loot/hearts on top, combo/timer below.
+        hudPill.position = CGPoint(x: hudX + 78, y: hudTop - 10)
+        hudPill.isHidden = playHUD.isHidden
+        hudCarried.position = CGPoint(x: hudX, y: hudTop + 6)
+        hudHearts.position = CGPoint(x: hudX + 72, y: hudTop + 6)
+        hudCombo.position = CGPoint(x: hudX, y: hudTop - 14)
+        hudTime.position = CGPoint(x: hudX + 110, y: hudTop - 14)
         for label in [hudCarried, hudHearts, hudCombo, hudTime] {
             if let outline = label.childNode(withName: "hudOutline") as? SKLabelNode {
                 outline.text = label.text
@@ -1938,6 +1948,7 @@ public final class HeistScene: SKScene {
         skyFill.isHidden = onTitle
         let showPlayHUD = playing && resumeCountdown <= 0 && !onTitle
         playHUD.isHidden = !showPlayHUD
+        hudPill.isHidden = !showPlayHUD
         pauseBtn?.isHidden = !showPlayHUD
         if !showPlayHUD || runPaused {
             stickKnob.position = stickBase.position
@@ -3599,15 +3610,15 @@ public final class HeistScene: SKScene {
         hudCarried.text = "✦ \(shinyTotal)"
         hudHearts.text = String(repeating: "♥", count: max(0, b.hearts))
         if b.maskMode {
-            hudCombo.text = b.combo >= 1 ? "◈ MASK ×2  COMBO x\(max(1, b.combo))" : "◈ MASK ×2"
+            hudCombo.text = "MASK ×2 · x\(max(1, b.combo))"
             hudCombo.isHidden = false
             hudCombo.fontColor = ArtCatalog.neonCyan
-            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
+            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonCyan.withAlphaComponent(0.35)
         } else if b.combo >= 1 {
-            hudCombo.text = "COMBO x\(b.combo)"
+            hudCombo.text = "x\(b.combo)"
             hudCombo.isHidden = false
             hudCombo.fontColor = ArtCatalog.neonLime
-            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonLime.withAlphaComponent(0.45)
+            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonLime.withAlphaComponent(0.35)
             // Pulse on each new chain step so the counter feels alive.
             if b.combo >= 2, hudCombo.action(forKey: "comboPulse") == nil {
                 hudCombo.run(SKAction.sequence([

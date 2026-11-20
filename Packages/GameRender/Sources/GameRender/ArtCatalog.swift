@@ -437,29 +437,28 @@ public enum ArtCatalog {
         (1...27).compactMap { tileTexture(index: $0) }
     }
 
-    /// 16-mask side-view ground autotile set (`sprites/tiles_side/mask_XX.png`).
-    /// Bits: N=1 E=2 S=4 W=8 (solid neighbour present). No per-tile outline strokes.
-    /// When `district` has a Higgsfield `platform.png`, use it for solid fills so
-    /// Downtown / Docks / Factory each read their own plate (masks still vary edges).
+    /// 16-mask side-view ground autotile set.
+    /// Bits: N=1 E=2 S=4 W=8 (solid neighbour present).
+    /// Uses a **clean** dark fill + bright top lip so busy district crate art never
+    /// walls the playfield — gameplay sprites stay the highest-contrast layer.
     public static func makePlatformTileSet(
         tileSize: CGSize,
         district: DistrictID? = nil
     ) -> SKTileSet {
+        _ = district // reserved for future lip tint per district
         warmSideAutotiles()
-        let districtPlatform: SKTexture? = {
-            guard let district else { return nil }
-            return ArtLibrary.districtTileTexture(district, name: "platform", maxPixel: 128)
-        }()
         var groups: [SKTileGroup] = []
         groups.reserveCapacity(16)
         for mask in 0..<16 {
-            // Prefer district platform for fully-surrounded / top-walkable masks so
-            // the heist ground matches the parallax district; keep side masks for edges.
-            let useDistrict = districtPlatform != nil && (mask == 15 || mask == 14 || mask == 13 || mask == 11 || mask == 7)
-            let tex = (useDistrict ? districtPlatform : nil)
-                ?? sideAutotileTexture(mask: mask)
-                ?? districtPlatform
-                ?? solidFallbackTexture(tileSize: tileSize)
+            // Prefer clean plate for solids; side autotiles only for thin edge cases.
+            let isSolidFill = mask == 15 || mask == 14 || mask == 13 || mask == 11 || mask == 7 || mask == 0
+            let tex: SKTexture
+            if isSolidFill {
+                tex = cleanPlatformTexture(tileSize: tileSize, mask: mask)
+            } else {
+                tex = sideAutotileTexture(mask: mask)
+                    ?? cleanPlatformTexture(tileSize: tileSize, mask: mask)
+            }
             let def = SKTileDefinition(texture: tex, size: tileSize)
             def.name = String(format: "side_mask_%02d", mask)
             let group = SKTileGroup(tileDefinition: def)
@@ -467,6 +466,48 @@ public enum ArtCatalog {
             groups.append(group)
         }
         return SKTileSet(tileGroups: groups)
+    }
+
+    /// Quiet dark plate + cyan top lip (and optional side seams). No repeating crate grid.
+    private static var cleanPlateCache: [Int: SKTexture] = [:]
+
+    public static func cleanPlatformTexture(tileSize: CGSize, mask: Int) -> SKTexture {
+        let key = mask & 0x1F
+        if let cached = cleanPlateCache[key] { return cached }
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 2
+        let img = UIGraphicsImageRenderer(size: tileSize, format: format).image { ctx in
+            let cg = ctx.cgContext
+            let w = tileSize.width
+            let h = tileSize.height
+            // Deep charcoal fill — stays behind bandit/MOPs/loot.
+            cg.setFillColor(UIColor(red: 0.07, green: 0.06, blue: 0.12, alpha: 1).cgColor)
+            cg.fill(CGRect(origin: .zero, size: tileSize))
+            cg.setFillColor(UIColor(red: 0.11, green: 0.10, blue: 0.18, alpha: 1).cgColor)
+            cg.fill(CGRect(x: 1, y: 1, width: w - 2, height: h - 2))
+            // Bright walkable lip when open above (no N neighbour).
+            let openTop = (mask & 1) == 0
+            if openTop || mask == 15 || mask == 14 || mask == 13 || mask == 11 || mask == 7 {
+                cg.setFillColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.95).cgColor)
+                cg.fill(CGRect(x: 0, y: h - 4, width: w, height: 4))
+                cg.setFillColor(UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.35).cgColor)
+                cg.fill(CGRect(x: 0, y: h - 5.5, width: w, height: 1.5))
+            }
+            // Soft side seam when open east/west.
+            if (mask & 2) == 0 {
+                cg.setFillColor(UIColor(red: 0.18, green: 0.16, blue: 0.28, alpha: 1).cgColor)
+                cg.fill(CGRect(x: w - 2, y: 0, width: 2, height: h))
+            }
+            if (mask & 8) == 0 {
+                cg.setFillColor(UIColor(red: 0.18, green: 0.16, blue: 0.28, alpha: 1).cgColor)
+                cg.fill(CGRect(x: 0, y: 0, width: 2, height: h))
+            }
+        }
+        let tex = SKTexture(image: img)
+        tex.filteringMode = .nearest
+        cleanPlateCache[key] = tex
+        return tex
     }
 
     public static func sideAutotileTexture(mask: Int) -> SKTexture? {

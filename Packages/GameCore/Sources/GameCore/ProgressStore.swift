@@ -33,7 +33,8 @@ public enum DistrictID: String, Equatable, Sendable, Codable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .neonDocks: return "Neon Docks"
+        // Heist 1 ships Downtown parallax/tiles — label matches the art.
+        case .neonDocks: return "Downtown"
         case .arcadeRow: return "Arcade Row"
         case .rooftops: return "Rooftops"
         case .sewerGrid: return "Sewer Grid"

@@ -240,10 +240,11 @@ public enum SpriteCycles {
         cycle(character: "mop_9000_boss", action: action)
     }
 
-    /// ~11–13% of portrait height at worldZoom ~1.85 after sheet padding.
-    public static let banditDisplaySize = CGSize(width: 104, height: 104)
-    public static let mopDisplaySize = CGSize(width: 96, height: 96)
-    public static let bossDisplaySize = CGSize(width: 160, height: 160)
+    /// Bandit is the visual hero (~1.2× prior); basic MOPs sit ~0.8× bandit height.
+    /// Hitboxes stay in GameCore (unchanged / generous).
+    public static let banditDisplaySize = CGSize(width: 124, height: 124)
+    public static let mopDisplaySize = CGSize(width: 100, height: 100)
+    public static let bossDisplaySize = CGSize(width: 168, height: 168)
 
     private static func loadIndexIfNeeded() {
         guard !didLoadIndex else { return }

@@ -1232,6 +1232,9 @@ final class GameCoreTests: XCTestCase {
         XCTAssertTrue(story.premise.lowercased().contains("omniclean"))
         XCTAssertTrue(story.premise.lowercased().contains("vigilante"))
         XCTAssertNotNil(story.district(id: .neonDocks))
+        // Heist 1 art is Downtown — on-screen name must match (not "Neon Docks").
+        XCTAssertEqual(DistrictID.neonDocks.displayName, "Downtown")
+        XCTAssertEqual(story.district(id: .neonDocks)?.title, "Downtown")
     }
 
     func testMaskReentryDropsFromOneWayToStreetMop() throws {
