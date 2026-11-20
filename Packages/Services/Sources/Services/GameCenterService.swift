@@ -7,8 +7,9 @@ import GameKit
 import UIKit
 
 /// Live GameKit wrapper. Auth never blocks play — failure leaves the mock-like signed-out state.
-@MainActor
-public final class GameCenterService: NSObject, GameCenterServing {
+/// Not `@MainActor`-typed so protocol conformance stays Sendable-safe under Swift 6;
+/// UIKit / GameKit calls hop to the main actor explicitly.
+public final class GameCenterService: NSObject, GameCenterServing, @unchecked Sendable {
     public static let shared = GameCenterService()
 
     public private(set) var isAuthenticated = false
@@ -49,10 +50,13 @@ public final class GameCenterService: NSObject, GameCenterServing {
     }
 
     public func setAccessPointVisible(_ visible: Bool, showHighlights: Bool) {
-        let point = GKAccessPoint.shared
-        point.location = .topLeading
-        point.showHighlights = showHighlights
-        point.isActive = visible && isAuthenticated
+        let active = visible && isAuthenticated
+        Task { @MainActor in
+            let point = GKAccessPoint.shared
+            point.location = .topLeading
+            point.showHighlights = showHighlights
+            point.isActive = active
+        }
     }
 
     public func submitScore(_ score: Int, leaderboardID: String) {
@@ -74,34 +78,36 @@ public final class GameCenterService: NSObject, GameCenterServing {
     }
 
     public func presentLeaderboard(id: String?) {
-        guard isAuthenticated, let root = Self.topViewController() else { return }
-        let gc = GKGameCenterViewController(state: .leaderboards)
-        if let id {
-            gc.leaderboardIdentifier = id
+        guard isAuthenticated else { return }
+        Task { @MainActor in
+            guard let root = Self.topViewController() else { return }
+            let gc = GKGameCenterViewController(state: .leaderboards)
+            if let id {
+                gc.leaderboardIdentifier = id
+            }
+            gc.gameCenterDelegate = self
+            root.present(gc, animated: true)
         }
-        gc.gameCenterDelegate = self
-        root.present(gc, animated: true)
     }
 
     public func presentAchievements() {
-        guard isAuthenticated, let root = Self.topViewController() else { return }
-        let gc = GKGameCenterViewController(state: .achievements)
-        gc.gameCenterDelegate = self
-        root.present(gc, animated: true)
+        guard isAuthenticated else { return }
+        Task { @MainActor in
+            guard let root = Self.topViewController() else { return }
+            let gc = GKGameCenterViewController(state: .achievements)
+            gc.gameCenterDelegate = self
+            root.present(gc, animated: true)
+        }
     }
 
     public func challengeFriends(leaderboardID: String, message: String) {
         guard isAuthenticated else { return }
         // Prefer modern Activities / share when available; fall back to leaderboard UI.
-        if #available(iOS 17.0, *) {
-            presentLeaderboard(id: leaderboardID)
-            _ = message
-        } else {
-            presentLeaderboard(id: leaderboardID)
-            _ = message
-        }
+        presentLeaderboard(id: leaderboardID)
+        _ = message
     }
 
+    @MainActor
     private static func topViewController(
         base: UIViewController? = UIApplication.shared.connectedScenes
             .compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController
