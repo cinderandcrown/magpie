@@ -24,9 +24,20 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
 
     public func authenticate(completion: (@Sendable (Bool) -> Void)?) {
         authCompletion = completion
+<<<<<<< HEAD
         let player = GKLocalPlayer.local
         player.authenticateHandler = { [weak self] viewController, error in
             Task { @MainActor in
+=======
+        GKLocalPlayer.local.authenticateHandler = { [weak self] viewController, error in
+            // Snapshot Sendable values only — never send GKLocalPlayer across isolation.
+            let local = GKLocalPlayer.local
+            let ok = error == nil && local.isAuthenticated
+            let pid = local.gamePlayerID
+            let name = local.displayName
+            // Present / mutate state on the main queue (handler may already be main).
+            DispatchQueue.main.async {
+>>>>>>> 375a6ee (Fix: GameCenter RegionIsolation + deprecated leaderboardIdentifier)
                 guard let self else { return }
                 if let viewController, let root = Self.topViewController() {
                     root.present(viewController, animated: true)
@@ -51,7 +62,7 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
 
     public func setAccessPointVisible(_ visible: Bool, showHighlights: Bool) {
         let active = visible && isAuthenticated
-        Task { @MainActor in
+        DispatchQueue.main.async {
             let point = GKAccessPoint.shared
             point.location = .topLeading
             point.showHighlights = showHighlights
@@ -79,11 +90,18 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
 
     public func presentLeaderboard(id: String?) {
         guard isAuthenticated else { return }
-        Task { @MainActor in
+        DispatchQueue.main.async {
             guard let root = Self.topViewController() else { return }
-            let gc = GKGameCenterViewController(state: .leaderboards)
+            let gc: GKGameCenterViewController
             if let id {
-                gc.leaderboardIdentifier = id
+                // iOS 14+ initializer — avoids deprecated `leaderboardIdentifier`.
+                gc = GKGameCenterViewController(
+                    leaderboardID: id,
+                    playerScope: .global,
+                    timeScope: .allTime
+                )
+            } else {
+                gc = GKGameCenterViewController(state: .leaderboards)
             }
             gc.gameCenterDelegate = self
             root.present(gc, animated: true)
@@ -92,7 +110,7 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
 
     public func presentAchievements() {
         guard isAuthenticated else { return }
-        Task { @MainActor in
+        DispatchQueue.main.async {
             guard let root = Self.topViewController() else { return }
             let gc = GKGameCenterViewController(state: .achievements)
             gc.gameCenterDelegate = self
@@ -107,21 +125,22 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
         _ = message
     }
 
-    @MainActor
+    /// Must run on the main queue (all call sites use `DispatchQueue.main.async`).
     private static func topViewController(
-        base: UIViewController? = UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController
+        base: UIViewController? = nil
     ) -> UIViewController? {
-        if let nav = base as? UINavigationController { return topViewController(base: nav.visibleViewController) }
-        if let tab = base as? UITabBarController { return topViewController(base: tab.selectedViewController) }
-        if let presented = base?.presentedViewController { return topViewController(base: presented) }
-        return base
+        let root = base ?? UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController
+        if let nav = root as? UINavigationController { return topViewController(base: nav.visibleViewController) }
+        if let tab = root as? UITabBarController { return topViewController(base: tab.selectedViewController) }
+        if let presented = root?.presentedViewController { return topViewController(base: presented) }
+        return root
     }
 }
 
 extension GameCenterService: GKGameCenterControllerDelegate {
     public nonisolated func gameCenterViewControllerDidFinish(_ gameCenterViewController: GKGameCenterViewController) {
-        Task { @MainActor in
+        DispatchQueue.main.async {
             gameCenterViewController.dismiss(animated: true)
         }
     }
