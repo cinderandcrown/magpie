@@ -119,11 +119,11 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: false
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: false
-    entitlements:
-      path: Magpie/Magpie.entitlements
         SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: false
         CODE_SIGN_IDENTITY: $(APP_CODE_SIGN_IDENTITY)
         "AD_HOC_CODE_SIGNING_ALLOWED[sdk=iphoneos*]": $(APP_AD_HOC_SIGNING)
+    entitlements:
+      path: Magpie/Magpie.entitlements
     dependencies:
       - package: GameCore
       - package: GameRender
