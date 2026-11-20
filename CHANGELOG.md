@@ -16,6 +16,7 @@
 - Camera: longer side-switch hold (~0.9 s) and softer facing blend so quick reverses don’t whip framing.
 
 ### Art / presentation
+- **Publisher splash = Trash Stack:** same mute logo (md5 `f4a3ffce…`), “Cinder & Crown Creative Presents”, serif 17 / tracking 3.2, charcoal/cream/crimson/gold, fixed 168 pt centered mark (no stretch in landscape), TS fade timing + tap-to-skip, charcoal first frame before logo decode. Spec: `cc-splash/SPEC.txt`.
 - **Living neon city:** twinkling windows, street steam, a slow skyline transit, sweeping searchlight, and denser rain (original procedural FX — see `Assets/LICENSES.md`).
 - Storefront neon hangs above the street with real sign crops + pink/cyan rims (no flat hot-pink plates). Title alley uses the same storefront strips instead of solid neon blades.
 - Publisher ident: full-screen charcoal Cinder & Crown splash (scene-level, opaque) before title; smoke holds the card long enough for slow CI screenshots (players still see ~2 s).

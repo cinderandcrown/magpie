@@ -37,6 +37,10 @@ final class GameRenderTests: XCTestCase {
         XCTAssertEqual(PublisherIdent.presentsLine, "Cinder & Crown Creative Presents")
         XCTAssertTrue(PublisherIdent.logoCredit.contains("used by permission"))
         XCTAssertFalse(PublisherIdent.presentsLine.contains("Asset"))
+        // Trash Stack parity — fixed 168 pt mute mark, never stretched to scene.
+        XCTAssertEqual(PublisherIdent.logoPointSize, 168, accuracy: 0.1)
+        XCTAssertEqual(PublisherIdent.titleFontSize, 17, accuracy: 0.1)
+        XCTAssertEqual(PublisherIdent.titleTracking, 3.2, accuracy: 0.01)
     }
 
     func testTitleButtonFramesNonOverlappingHelper() {

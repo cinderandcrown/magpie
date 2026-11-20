@@ -306,8 +306,8 @@ public final class HeistScene: SKScene {
         Self.didShowPublisherIdentThisProcess = true
         showingPublisherIdent = true
         titleRoot.isHidden = true
-        // Scene-level (above overlay) so the charcoal splash can't sit under title chrome.
-        let root = PublisherIdent.buildRoot(sceneSize: size)
+        // First paint = charcoal only (Trash Stack parity) — do not decode logo on frame 0.
+        let root = PublisherIdent.buildCharcoalRoot(sceneSize: size)
         root.zPosition = 900
         publisherIdentRoot = root
         addChild(root)
@@ -317,14 +317,22 @@ public final class HeistScene: SKScene {
             smokeStatus.boot = "ident"
             writeSmokeStatus()
         }
-        JuiceSound.shared.playPublisherIdentWhoosh()
-        let reduce = PublisherIdent.reduceMotionEnabled
-        PublisherIdent.runPresentation(
-            on: root,
-            reduceMotion: reduce,
-            smokeHold: smokeEnabled
-        ) { [weak self] in
-            self?.finishPublisherIdentAndShowTitle()
+        // Defer logo + animation one run-loop turn so the first frame is never blocked.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.showingPublisherIdent, let root = self.publisherIdentRoot else { return }
+            PublisherIdent.attachLogoArt(to: root, sceneSize: self.size)
+            let reduce = PublisherIdent.reduceMotionEnabled
+            PublisherIdent.runPresentation(
+                on: root,
+                reduceMotion: reduce,
+                smokeHold: self.smokeEnabled,
+                playWhoosh: { [weak self] in
+                    guard let self, !self.smokeEnabled else { return }
+                    JuiceSound.shared.playPublisherIdentWhoosh()
+                }
+            ) { [weak self] in
+                self?.finishPublisherIdentAndShowTitle()
+            }
         }
     }
 
