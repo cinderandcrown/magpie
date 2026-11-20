@@ -679,12 +679,17 @@ public struct Sim: Equatable, Sendable {
                 let ox = sin(state.mops[i].phase) * state.mops[i].patrolSpan
                 state.mops[i].position.x = state.mops[i].home.x + ox
                 state.mops[i].position.y = state.mops[i].home.y
-                // Gentle seek: if the bandit is on the same deck, drift toward them so
-                // the street never goes quiet for 20s while MOPs idle out of reach.
+                // Quiet-street seek only — if a combo is already rolling, stay on patrol
+                // so Mask can expire and the player isn't farmed by a magnet pack.
                 let dy = abs(state.mops[i].position.y - bandit.position.y)
                 let toBandit = bandit.position.x - state.mops[i].position.x
-                if dy < tile * 1.35, abs(toBandit) > tile * 1.2, abs(toBandit) < tile * 9 {
-                    let step = min(abs(toBandit), tile * 2.1) * dt
+                let streetQuiet = bandit.combo <= 0 || bandit.comboTimer < 2.2
+                if streetQuiet,
+                   dy < tile * 1.35,
+                   abs(toBandit) > tile * 1.6,
+                   abs(toBandit) < tile * 8
+                {
+                    let step = min(abs(toBandit), tile * 1.4) * dt
                     state.mops[i].position.x += (toBandit > 0 ? 1 : -1) * step
                 }
                 let dx = state.mops[i].position.x - prevX
