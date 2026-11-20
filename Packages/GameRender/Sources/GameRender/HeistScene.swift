@@ -141,14 +141,16 @@ public final class HeistScene: SKScene {
     private var tookDamageThisRun = false
     private var sawMaskThisRun = false
     private var gameCenter: GameCenterServing = {
-        ProcessInfo.processInfo.underAutomatedHarness
-            ? MockGameCenter()
-            : GameCenterService.shared
+        if ProcessInfo.processInfo.underAutomatedHarness {
+            return MockGameCenter()
+        }
+        return GameCenterService.shared
     }()
     private var ghostStore: GhostStoreServing = {
-        ProcessInfo.processInfo.underAutomatedHarness
-            ? MockGhostStore()
-            : CloudKitGhostStore.shared
+        if ProcessInfo.processInfo.underAutomatedHarness {
+            return MockGhostStore()
+        }
+        return CloudKitGhostStore.shared
     }()
     /// Gameplay pause (not SKScene.isPaused — that freezes the whole tree).
     private var runPaused = false
