@@ -33,7 +33,8 @@ public enum DistrictID: String, Equatable, Sendable, Codable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .neonDocks: return "Neon Docks"
+        // Heist 1 ships Downtown parallax/tiles — label matches the art.
+        case .neonDocks: return "Downtown"
         case .arcadeRow: return "Arcade Row"
         case .rooftops: return "Rooftops"
         case .sewerGrid: return "Sewer Grid"
@@ -45,8 +46,11 @@ public struct PlayerProgress: Equatable, Sendable, Codable {
     public var medalsByLevel: [String: LevelMedals]
     public var unlockedDistricts: [String]
     public var bestCombo: Int
+    /// Consecutive Daily Heist clear streak (UTC days).
     public var dailyClears: Int
     public var lastDailyDay: String?
+    /// Best Daily Heist score for the current UTC day (higher is better).
+    public var bestDailyScore: Int
     /// Best clear time per level (seconds). Lower is better.
     public var bestSecondsByLevel: [String: Double]
     /// Soft XP from medals / clears — drives the results level-up sting.
@@ -55,6 +59,8 @@ public struct PlayerProgress: Equatable, Sendable, Codable {
     public var freedCrewIDs: [String]
     /// First-launch comic intro completed / skipped.
     public var sawIntro: Bool
+    /// Local flags for reported Game Center achievements (idempotent).
+    public var unlockedAchievementIDs: [String]
 
     public init(
         medalsByLevel: [String: LevelMedals] = [:],
@@ -62,20 +68,40 @@ public struct PlayerProgress: Equatable, Sendable, Codable {
         bestCombo: Int = 0,
         dailyClears: Int = 0,
         lastDailyDay: String? = nil,
+        bestDailyScore: Int = 0,
         bestSecondsByLevel: [String: Double] = [:],
         xp: Int = 0,
         freedCrewIDs: [String] = [],
-        sawIntro: Bool = false
+        sawIntro: Bool = false,
+        unlockedAchievementIDs: [String] = []
     ) {
         self.medalsByLevel = medalsByLevel
         self.unlockedDistricts = unlockedDistricts
         self.bestCombo = bestCombo
         self.dailyClears = dailyClears
         self.lastDailyDay = lastDailyDay
+        self.bestDailyScore = bestDailyScore
         self.bestSecondsByLevel = bestSecondsByLevel
         self.xp = xp
         self.freedCrewIDs = freedCrewIDs
         self.sawIntro = sawIntro
+        self.unlockedAchievementIDs = unlockedAchievementIDs
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        medalsByLevel = try c.decodeIfPresent([String: LevelMedals].self, forKey: .medalsByLevel) ?? [:]
+        unlockedDistricts = try c.decodeIfPresent([String].self, forKey: .unlockedDistricts)
+            ?? [DistrictID.neonDocks.rawValue]
+        bestCombo = try c.decodeIfPresent(Int.self, forKey: .bestCombo) ?? 0
+        dailyClears = try c.decodeIfPresent(Int.self, forKey: .dailyClears) ?? 0
+        lastDailyDay = try c.decodeIfPresent(String.self, forKey: .lastDailyDay)
+        bestDailyScore = try c.decodeIfPresent(Int.self, forKey: .bestDailyScore) ?? 0
+        bestSecondsByLevel = try c.decodeIfPresent([String: Double].self, forKey: .bestSecondsByLevel) ?? [:]
+        xp = try c.decodeIfPresent(Int.self, forKey: .xp) ?? 0
+        freedCrewIDs = try c.decodeIfPresent([String].self, forKey: .freedCrewIDs) ?? []
+        sawIntro = try c.decodeIfPresent(Bool.self, forKey: .sawIntro) ?? false
+        unlockedAchievementIDs = try c.decodeIfPresent([String].self, forKey: .unlockedAchievementIDs) ?? []
     }
 
     public var rankLevel: Int { max(1, xp / 3 + 1) }
@@ -188,13 +214,42 @@ public struct ProgressStore: Sendable {
         )
     }
 
-    public func recordDailyClear(dayKey: String) {
+    /// Record a Daily Heist clear. Retries the same UTC day do not inflate the streak;
+    /// only the first clear of a new day extends it. Returns the updated streak.
+    @discardableResult
+    public func recordDailyClear(dayKey: String, score: Int = 0) -> Int {
         var progress = load()
-        if progress.lastDailyDay != dayKey {
-            progress.dailyClears += 1
-            progress.lastDailyDay = dayKey
-            save(progress)
+        if progress.lastDailyDay == dayKey {
+            if score > progress.bestDailyScore {
+                progress.bestDailyScore = score
+                save(progress)
+            }
+            return progress.dailyClears
         }
+        if let last = progress.lastDailyDay, Self.isConsecutiveDay(previous: last, current: dayKey) {
+            progress.dailyClears += 1
+        } else {
+            progress.dailyClears = 1
+        }
+        progress.lastDailyDay = dayKey
+        progress.bestDailyScore = score
+        save(progress)
+        return progress.dailyClears
+    }
+
+    /// True when `current` is exactly one UTC calendar day after `previous`.
+    public static func isConsecutiveDay(previous: String, current: String) -> Bool {
+        let parts: (String) -> DateComponents? = { key in
+            let bits = key.split(separator: "-").compactMap { Int($0) }
+            guard bits.count == 3 else { return nil }
+            return DateComponents(year: bits[0], month: bits[1], day: bits[2])
+        }
+        guard let a = parts(previous), let b = parts(current) else { return false }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let da = cal.date(from: a), let db = cal.date(from: b) else { return false }
+        let days = cal.dateComponents([.day], from: da, to: db).day ?? 0
+        return days == 1
     }
 
     public func recordCrewFreed(_ crewID: String) {

@@ -232,11 +232,16 @@ public struct SmokeBrain: Equatable, Sendable {
             let onLatch = sim.map.tile(atX: tx, y: ty) == .latch
                 || sim.map.tile(atX: tx + 1, y: ty) == .latch
                 || sim.map.tile(atX: tx - 1, y: ty) == .latch
-            // After 04 is snapped: while Mask is still on, freeze input. Each stomp would
-            // refresh maskTimer (maskDuration*0.55) and mask-off never arrives. Standing
-            // still (even elevated) lets the real timer expire; mask-off only needs maskOn=0.
+            // After 04 is snapped: while Mask is on, keep a gentle patrol (no stomps) so
+            // the clip shows traversal instead of a MOP pile-on, without refreshing Mask.
             if maskOk, !mask2Ok, b.maskMode {
-                return InputFrame(moveX: 0, jumpPressed: false, jumpHeld: false)
+                var drift: Double = (tick / 45) % 2 == 0 ? 0.35 : -0.28
+                if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 4) { drift = -0.4 }
+                return steerFromExit(
+                    InputFrame(moveX: drift, jumpPressed: false, jumpHeld: false),
+                    sim: sim,
+                    tx: tx
+                )
             }
             // Never freeze on the latch-tower ledge — drop to street first, then hold for the shot.
             if elevated || onLatch {
@@ -246,19 +251,36 @@ public struct SmokeBrain: Equatable, Sendable {
             if !b.maskMode, (!maskOk || !mask2Ok) {
                 return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
             }
-            // Hold on deck for Mask screenshot — maskTimer keeps maskOn=1 while we wait.
-            var moveX: Double = 0.08
+            // Hold Mask for the screenshot — keep a street patrol so MOPs don't pile on
+            // and the Nicholas clip still shows traversal (no freeze-in-place).
+            var moveX: Double = (tick / 50) % 2 == 0 ? 0.55 : -0.4
+            var jumpPressed = false
+            var jumpHeld = false
             if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 6) {
-                moveX = -0.35
+                moveX = -0.55
+            } else if gapAhead(sim: sim, tx: tx, ty: ty) {
+                jumpPressed = b.onGround || b.coyote > 0
+                jumpHeld = true
+                moveX = max(moveX, 0.7)
             } else if b.onWallLeft || b.onWallRight, !b.onGround {
                 moveX = b.onWallRight ? -0.5 : 0.4
+                jumpPressed = true
+                jumpHeld = true
             }
-            if b.maskMode { moveX = min(abs(moveX), 0.12) * (moveX < 0 ? -1 : 1) }
+            // Soft hop every ~2s so the sheet shows jump while Mask is lit.
+            if b.onGround, tick % 120 == 0 {
+                jumpPressed = true
+                jumpHeld = true
+            }
             // Global unstick if the hold somehow parks progress.
             if progressStallSeconds > 3.5, !b.maskMode {
                 return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
             }
-            return steerFromExit(InputFrame(moveX: moveX, jumpPressed: false, jumpHeld: false), sim: sim, tx: tx)
+            return steerFromExit(
+                InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed),
+                sim: sim,
+                tx: tx
+            )
         }
 
         if act == .finishPush {
@@ -370,13 +392,26 @@ public struct SmokeBrain: Equatable, Sendable {
         var moveX: Double
         var jumpPressed = false
         var jumpHeld = false
-        if phase < 90 {
-            moveX = 0.4 // walk
-        } else if phase < 170 {
-            moveX = 1.0 // run
-        } else {
+        // Explicit L/R reversals + brief releases so the smoke clip proves facing/stop.
+        if phase < 50 {
             moveX = 1.0
-            if b.onGround, phase == 170 || phase == 190 {
+        } else if phase < 70 {
+            moveX = 0 // release
+        } else if phase < 120 {
+            moveX = -1.0
+        } else if phase < 140 {
+            moveX = 0 // release
+        } else if phase < 180 {
+            moveX = 1.0
+            if b.onGround, phase == 150 || phase == 170 {
+                jumpPressed = true
+                jumpHeld = true
+            } else if !b.onGround {
+                jumpHeld = b.velocity.y > 0
+            }
+        } else {
+            moveX = 0.85
+            if b.onGround, phase == 190 {
                 jumpPressed = true
                 jumpHeld = true
             } else if !b.onGround {

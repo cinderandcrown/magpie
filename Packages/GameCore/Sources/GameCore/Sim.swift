@@ -85,17 +85,22 @@ public struct Sim: Equatable, Sendable {
         }
         var mops: [MopEnemy] = []
         var mopID = 0
+        var rng = SeededRNG(seed: seed)
         for (i, c) in map.findAll(.mopSpawn).enumerated() {
             let p = map.worldStandOnDeckBelow(ofX: c.0, markerY: c.1, tileSize: tile)
             // Keep a short clear zone at spawn so the first hop isn't an instant bag —
             // but leave easy MOPs close (≈2.2 tiles) for first-minute wins.
             if abs(p.x - start.x) < tile * 2.2 { continue }
             if cps.contains(where: { abs(p.x - $0.position.x) < tile * 2.5 }) { continue }
+            // Daily Heist seed can skip ~12% of far spawns so each day feels different
+            // without rewriting the reachability-proven ASCII.
+            if mopID >= 8, rng.nextDouble() < 0.12 { continue }
             // Opening pack: short readable patrol so hop-stomps chain into Mask fast.
-            let span = tile * (mopID < 8 ? 0.7 : 2.2)
+            let span = tile * (mopID < 8 ? 0.7 : 2.2) * (0.85 + rng.nextDouble() * 0.3)
             // Wide phase desync so neighbors don't mirror-walk on top of each other.
+            let phase = Double(mopID) * 1.7 + Double(i) * 0.37 + rng.nextDouble() * 2.4
             mops.append(MopEnemy(
-                id: mopID, position: p, home: p, patrolSpan: span, phase: Double(mopID) * 1.7 + Double(i) * 0.37,
+                id: mopID, position: p, home: p, patrolSpan: span, phase: phase,
                 alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1, stun: 0
             ))
             mopID += 1
@@ -274,7 +279,17 @@ public struct Sim: Equatable, Sendable {
     private mutating func integrate(input: InputFrame, bandit: inout BanditState, dt: Double) {
         let feel = tuning.feel
         let move = max(-1, min(1, input.moveX))
-        if abs(move) > feel.stickDeadZone { bandit.facing = move >= 0 ? 1 : -1 }
+        // Stick owns facing while held; otherwise face the direction of travel so knockback
+        // / coast never reads as moonwalking. Hurt pose locks facing to the knockback.
+        if bandit.animHold > 0, bandit.anim == .hurt {
+            if abs(bandit.velocity.x) > 4 {
+                bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
+            }
+        } else if abs(move) > feel.stickDeadZone {
+            bandit.facing = move >= 0 ? 1 : -1
+        } else if abs(bandit.velocity.x) > 10 {
+            bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
+        }
 
         // Accel from time-to-speed: reach runPx in groundAccelTime; stop in groundStopTime.
         let walkPx = feel.walkSpeed * tuning.tileSize
@@ -303,10 +318,12 @@ public struct Sim: Equatable, Sendable {
             } else if bandit.velocity.x > targetVx {
                 bandit.velocity.x = max(targetVx, bandit.velocity.x - accel * dt)
             }
-        } else if bandit.onGround {
-            let fr = groundDecel * dt
+        } else {
+            // Release stick → bleed horizontal on ground and in air (no forever skate / knockback).
+            let frMul = bandit.onGround ? 1.0 : feel.airControlMul * 0.85
+            let fr = groundDecel * frMul * dt
             if bandit.velocity.x > 0 { bandit.velocity.x = max(0, bandit.velocity.x - fr) }
-            else { bandit.velocity.x = min(0, bandit.velocity.x + fr) }
+            else if bandit.velocity.x < 0 { bandit.velocity.x = min(0, bandit.velocity.x + fr) }
         }
 
         // Jump
@@ -807,6 +824,8 @@ public struct Sim: Equatable, Sendable {
                 bandit.position.x = nx
                 bandit.velocity.y = feel.jumpVelocity * tile / 3
                 bandit.velocity.x = away * feel.runSpeed * tile * 0.85
+                // Face the knockback so the hurt pose never moonwalks away from the MOP.
+                bandit.facing = away
                 state.mops[i].position.x -= away * tile * 0.5
                 state.mops[i].home.x = state.mops[i].position.x
                 state.mops[i].stun = 0.5

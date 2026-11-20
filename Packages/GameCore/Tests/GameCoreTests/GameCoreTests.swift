@@ -682,13 +682,24 @@ final class GameCoreTests: XCTestCase {
         """)
         var tuning = Tuning.default
         tuning.hearts = 1
-        var sim = Sim(map: map, tuning: tuning)
+        var sim = Sim(map: map, tuning: tuning, seed: 1)
         sim.state.phase = .playing
         XCTAssertFalse(sim.state.mops.isEmpty, "expected MOP outside spawn clear zone")
-        sim.state.bandit.position = sim.state.mops[0].position
+        // Pin MOP still; side-bump so stomp grace cannot convert the hit.
+        sim.state.mops[0].patrolSpan = 0
+        sim.state.mops[0].phase = 0
+        let mop = sim.state.mops[0].home
+        sim.state.mops[0].position = mop
+        sim.state.bandit.position = Vec2(mop.x - 2, mop.y)
         sim.state.bandit.velocity = .zero
         sim.state.bandit.onGround = true
-        for _ in 0..<5 { sim.step(.idle) }
+        sim.state.bandit.landStompGrace = 0
+        sim.state.bandit.invuln = 0
+        for _ in 0..<8 {
+            sim.state.bandit.position = Vec2(mop.x - 2, mop.y)
+            sim.state.bandit.landStompGrace = 0
+            sim.step(.idle)
+        }
         XCTAssertEqual(sim.state.phase, .failed(.bagged))
     }
 
@@ -1168,6 +1179,50 @@ final class GameCoreTests: XCTestCase {
         }
     }
 
+    func testDailyScorePrefersCleanFastLoot() {
+        let clean = DailyScore.compute(
+            seconds: 40, shiniesCollected: 10, shiniesTotal: 10, tookDamage: false, combo: 4
+        )
+        let dirty = DailyScore.compute(
+            seconds: 40, shiniesCollected: 10, shiniesTotal: 10, tookDamage: true, combo: 4
+        )
+        XCTAssertGreaterThan(clean, dirty)
+        XCTAssertEqual(clean - dirty, 500)
+    }
+
+    func testDailySeedStableAndGhostPlayback() {
+        let a = DailyHeist.seed(dayKey: "2026-11-20")
+        let b = DailyHeist.seed(dayKey: "2026-11-20")
+        let c = DailyHeist.seed(dayKey: "2026-11-21")
+        XCTAssertEqual(a, b)
+        XCTAssertNotEqual(a, c)
+        XCTAssertTrue(ProgressStore.isConsecutiveDay(previous: "2026-11-19", current: "2026-11-20"))
+        XCTAssertFalse(ProgressStore.isConsecutiveDay(previous: "2026-11-18", current: "2026-11-20"))
+
+        let samples = [
+            GhostSamplePoint(t: 0, x: 0, y: 0, facing: 1),
+            GhostSamplePoint(t: 1, x: 100, y: 0, facing: 1),
+        ]
+        let mid = GhostPlayback.pose(samples: samples, at: 0.5)
+        XCTAssertEqual(mid?.0.x ?? -1, 50, accuracy: 0.01)
+
+        var rec = GhostRecorder()
+        rec.capture(elapsed: 0, position: Vec2(1, 2), facing: 1)
+        rec.capture(elapsed: 0.05, position: Vec2(2, 2), facing: 1) // within interval, same facing
+        rec.capture(elapsed: 0.12, position: Vec2(3, 2), facing: -1)
+        XCTAssertEqual(rec.samples.count, 2)
+    }
+
+    func testDailyHeistSimUsesSeed() throws {
+        let s1 = try DailyHeist.makeSim(dayKey: "2026-11-20")
+        let s2 = try DailyHeist.makeSim(dayKey: "2026-11-20")
+        XCTAssertEqual(s1.seed, s2.seed)
+        XCTAssertEqual(s1.state.mops.count, s2.state.mops.count)
+        // Different days can desync mop phases / counts.
+        let s3 = try DailyHeist.makeSim(dayKey: "2026-11-21")
+        XCTAssertNotEqual(s1.seed, s3.seed)
+    }
+
     func testStoryCatalogLoads() {
         let story = StoryCatalog.load()
         XCTAssertFalse(story.introPanels.isEmpty)
@@ -1177,6 +1232,9 @@ final class GameCoreTests: XCTestCase {
         XCTAssertTrue(story.premise.lowercased().contains("omniclean"))
         XCTAssertTrue(story.premise.lowercased().contains("vigilante"))
         XCTAssertNotNil(story.district(id: .neonDocks))
+        // Heist 1 art is Downtown — on-screen name must match (not "Neon Docks").
+        XCTAssertEqual(DistrictID.neonDocks.displayName, "Downtown")
+        XCTAssertEqual(story.district(id: .neonDocks)?.title, "Downtown")
     }
 
     func testMaskReentryDropsFromOneWayToStreetMop() throws {
@@ -1238,6 +1296,103 @@ final class GameCoreTests: XCTestCase {
         // Street contact after the drop is enough — Mask needs a multi-stomp combo on ship builds.
         let onStreet = sim.state.bandit.position.y < streetY + sim.tuning.tileSize * 1.5
         XCTAssertTrue(onStreet || sawStomp, "re-entry hunt should reach the street deck after dropping")
+    }
+
+    /// P0: hold left then release — vx must settle to 0 and facing must match travel while moving.
+    func testHoldLeftThenReleaseStopsAndFacesTravel() throws {
+        let map = try TileMap.parse("""
+        ################
+        #..............#
+        #............@.#
+        #==============#
+        ################
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 1)
+        sim.state.phase = .playing
+        for _ in 0..<40 {
+            sim.step(InputFrame(moveX: -1))
+            if abs(sim.state.bandit.velocity.x) > 20 {
+                XCTAssertLessThan(sim.state.bandit.facing, 0, "facing must match left run")
+            }
+        }
+        XCTAssertLessThan(sim.state.bandit.velocity.x, -20, "should be running left")
+        for _ in 0..<90 {
+            sim.step(.idle)
+        }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 1.5, "release must stop horizontal motion")
+        XCTAssertEqual(sim.state.bandit.anim, .idle, "run anim must not keep playing at rest")
+    }
+
+    /// P0: reverse direction — facing flips with travel, then release stops.
+    func testLeftRightReversalFacingMatchesVelocity() throws {
+        let map = try TileMap.parse("""
+        ####################
+        #..................#
+        #.@................#
+        #==================#
+        ####################
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 2)
+        sim.state.phase = .playing
+        for _ in 0..<35 { sim.step(InputFrame(moveX: 1)) }
+        XCTAssertGreaterThan(sim.state.bandit.velocity.x, 20)
+        XCTAssertGreaterThan(sim.state.bandit.facing, 0)
+        for _ in 0..<40 { sim.step(InputFrame(moveX: -1)) }
+        XCTAssertLessThan(sim.state.bandit.velocity.x, -20)
+        XCTAssertLessThan(sim.state.bandit.facing, 0)
+        for _ in 0..<90 { sim.step(.idle) }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 1.5)
+    }
+
+    /// P0: take a hit while moving left — knockback facing matches travel; release stops.
+    func testHurtWhileMovingFacingMatchesKnockbackThenStops() throws {
+        let map = try TileMap.parse("""
+        ################
+        #..............#
+        #.@........M...#
+        #==============#
+        ################
+        """)
+        var tuning = Tuning.default
+        tuning.hearts = 3
+        var sim = Sim(map: map, tuning: tuning, seed: 3)
+        sim.state.phase = .playing
+        XCTAssertFalse(sim.state.mops.isEmpty)
+        // Sprint into the MOP from the left (ground contact = hurt, not stomp).
+        var hurt = false
+        for _ in 0..<120 {
+            sim.step(InputFrame(moveX: 1))
+            if sim.state.events.contains(where: { if case .hurt = $0.kind { return true }; return false }) {
+                hurt = true
+                break
+            }
+        }
+        XCTAssertTrue(hurt, "expected a side-bump hurt")
+        let vx = sim.state.bandit.velocity.x
+        XCTAssertNotEqual(vx, 0, accuracy: 1)
+        // Facing must match knockback travel (not the pre-hit run direction).
+        XCTAssertEqual(sim.state.bandit.facing < 0, vx < 0)
+        for _ in 0..<120 {
+            sim.step(.idle)
+        }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 2.0, "post-hurt release must stop")
+    }
+
+    /// Stick held at zero magnitude (drag back to dead zone) stops like a full release.
+    func testDeadZoneReleaseStops() throws {
+        let map = try TileMap.parse("""
+        ############
+        #..........#
+        #.@........#
+        #==========#
+        ############
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 4)
+        sim.state.phase = .playing
+        for _ in 0..<40 { sim.step(InputFrame(moveX: -1)) }
+        let dead = sim.tuning.feel.stickDeadZone * 0.5
+        for _ in 0..<90 { sim.step(InputFrame(moveX: dead)) }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 1.5)
     }
 
 }

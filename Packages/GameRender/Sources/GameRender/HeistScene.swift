@@ -2,6 +2,7 @@
 
 #if canImport(SpriteKit) && canImport(UIKit)
 import GameCore
+import Services
 import SpriteKit
 import UIKit
 
@@ -64,6 +65,7 @@ public final class HeistScene: SKScene {
     private var hudHearts = SKLabelNode(fontNamed: "AvenirNext-Bold")
     private var hudCombo = SKLabelNode(fontNamed: "AvenirNext-Heavy")
     private var hudTime = SKLabelNode(fontNamed: "AvenirNext-Medium")
+    private var hudPill = SKShapeNode()
     private var fpsLabel = SKLabelNode(fontNamed: "Menlo-Bold")
 
     private var accumulator: TimeInterval = 0
@@ -129,6 +131,27 @@ public final class HeistScene: SKScene {
     private var maskGradePulse: CGFloat = 0
     private var lastAwardedMedals = 0
     private var retentionMode: String? = nil // "map" | "daily"
+    /// Daily Heist run (UTC-seeded layout + GC score + ghost).
+    private var isDailyRun = false
+    private var dailyDayKey = ProgressStore.dayKey()
+    private var ghostRecorder = GhostRecorder()
+    private var racingGhostSamples: [GhostSamplePoint] = []
+    private var racingGhostKind: GhostKind?
+    private var ghostVisual: SKSpriteNode?
+    private var tookDamageThisRun = false
+    private var sawMaskThisRun = false
+    private var gameCenter: GameCenterServing = {
+        if ProcessInfo.processInfo.underAutomatedHarness {
+            return MockGameCenter()
+        }
+        return GameCenterService.shared
+    }()
+    private var ghostStore: GhostStoreServing = {
+        if ProcessInfo.processInfo.underAutomatedHarness {
+            return MockGhostStore()
+        }
+        return CloudKitGhostStore.shared
+    }()
     /// Gameplay pause (not SKScene.isPaused — that freezes the whole tree).
     private var runPaused = false
     private var pauseFromSystem = false
@@ -412,18 +435,16 @@ public final class HeistScene: SKScene {
                 if mirrorTile, i % 2 == 1 {
                     plate.xScale = -1
                 }
-                // Keep storefront neon readable for the midrun palette gate — do NOT
-                // wash toward muted purple-gray (that hid magenta/teal and dimmed the city).
+                // Push BG darker/desaturated so bandit, MOPs, and loot own the contrast.
+                // Mid still keeps a hint of neon for the palette gate without fighting sprites.
                 if neonBoost {
-                    // Lift mid-tones so the alley isn't a grimy 22–33/255 wash,
-                    // but keep sky darker than lit sprites (readability).
-                    plate.color = SKColor(red: 1.0, green: 0.55, blue: 0.92, alpha: 1)
-                    plate.colorBlendFactor = 0.22
-                    plate.alpha = 1.0
+                    plate.color = SKColor(red: 0.22, green: 0.10, blue: 0.28, alpha: 1)
+                    plate.colorBlendFactor = 0.42
+                    plate.alpha = 0.72
                 } else {
-                    plate.color = SKColor(red: 0.55, green: 0.82, blue: 1.0, alpha: 1)
-                    plate.colorBlendFactor = 0.12
-                    plate.alpha = 0.95
+                    plate.color = SKColor(red: 0.08, green: 0.10, blue: 0.22, alpha: 1)
+                    plate.colorBlendFactor = 0.48
+                    plate.alpha = 0.62
                 }
                 parent.addChild(plate)
             }
@@ -440,7 +461,7 @@ public final class HeistScene: SKScene {
         let gridW = min(max(mapW * 0.5, size.width / Self.worldZoom * 3), 1800)
         let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.55)
         grid.position = CGPoint(x: gridW * 0.28, y: midY)
-        grid.alpha = 0.4
+        grid.alpha = 0.18
         parallaxFar.addChild(grid)
         // Living far city: twinkling windows + a slow skyline transit.
         let windows = ArtCatalog.livingWindowLights(width: min(mapW * 0.6, 1400), height: h * 0.35)
@@ -454,10 +475,11 @@ public final class HeistScene: SKScene {
         // Keep strips high enough that the midrun storefront-band (12–48% screen) sees them.
         let signs = ArtCatalog.neonSignageStrip(width: mapW * 0.7, height: 96)
         signs.position = CGPoint(x: mapW * 0.18, y: midY + 118)
+        signs.alpha = 0.55
         parallaxMid.addChild(signs)
         let signsLow = ArtCatalog.neonSignageStrip(width: mapW * 0.45, height: 56)
         signsLow.position = CGPoint(x: mapW * 0.4, y: midY + 52)
-        signsLow.alpha = 0.9
+        signsLow.alpha = 0.4
         parallaxMid.addChild(signsLow)
         // Sweeping searchlight + street steam so the mid band feels alive.
         let light = ArtCatalog.neonSearchlight(height: h * 0.5)
@@ -612,8 +634,8 @@ public final class HeistScene: SKScene {
                 let below = sim.map.tile(atX: x, y: y - 1)
                 let openBelow = !sim.map.isSolid(below) && below != .water
 
-                // Occasional crate / pipe on walkable tops only (never hanging under ledges).
-                if !propTextures.isEmpty, !openBelow, (x + y * 5) % 17 == 0 {
+                // Sparse décor only — never a crate wall on the walkable deck.
+                if !propTextures.isEmpty, !openBelow, (x + y * 5) % 29 == 0 {
                     let tex = propTextures[propI % propTextures.count]
                     propI += 1
                     let n = SKSpriteNode(texture: tex, size: CGSize(width: tile * 0.7, height: tile * 0.7))
@@ -1035,6 +1057,14 @@ public final class HeistScene: SKScene {
     }
 
     private func setupHUD() {
+        hudPill = SKShapeNode(rectOf: CGSize(width: 168, height: 54), cornerRadius: 14)
+        hudPill.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.10, alpha: 0.72)
+        hudPill.strokeColor = SKColor(white: 1, alpha: 0.12)
+        hudPill.lineWidth = 1
+        hudPill.zPosition = 198
+        hudPill.name = "hudPill"
+        playHUD.addChild(hudPill)
+
         for (label, color) in [
             (hudCarried, ArtCatalog.neonOrange),
             (hudHearts, ArtCatalog.neonPink),
@@ -1057,34 +1087,33 @@ public final class HeistScene: SKScene {
         #endif
     }
 
-    /// Neon HUD font + multi-layer glow outline (readable under Dynamic Island / night sky).
+    /// Compact HUD font — sits on the dark pill, not raw over the skyline.
     private func styleHUDLabel(_ label: SKLabelNode, color: SKColor) {
         label.fontName = "AvenirNext-Heavy"
-        label.fontSize = 18
+        label.fontSize = 13
         label.fontColor = color
         label.horizontalAlignmentMode = .left
-        label.verticalAlignmentMode = .top
+        label.verticalAlignmentMode = .center
         label.zPosition = 210
         if label.childNode(withName: "hudOutline") == nil {
             let outline = SKLabelNode(fontNamed: "AvenirNext-Heavy")
             outline.name = "hudOutline"
-            outline.fontSize = 18
-            outline.fontColor = SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 0.95)
+            outline.fontSize = 13
+            outline.fontColor = SKColor(red: 0.02, green: 0.01, blue: 0.08, alpha: 0.9)
             outline.horizontalAlignmentMode = .left
-            outline.verticalAlignmentMode = .top
-            outline.position = CGPoint(x: 1.5, y: -1.5)
+            outline.verticalAlignmentMode = .center
+            outline.position = CGPoint(x: 1, y: -1)
             outline.zPosition = -1
             label.addChild(outline)
-            // Soft neon halo behind the outline (baked multi-label glow — no SKEffectNode).
             let glow = SKLabelNode(fontNamed: "AvenirNext-Heavy")
             glow.name = "hudGlow"
-            glow.fontSize = 18
-            glow.fontColor = color.withAlphaComponent(0.45)
+            glow.fontSize = 13
+            glow.fontColor = color.withAlphaComponent(0.35)
             glow.horizontalAlignmentMode = .left
-            glow.verticalAlignmentMode = .top
-            glow.position = CGPoint(x: 0, y: 0)
+            glow.verticalAlignmentMode = .center
+            glow.position = .zero
             glow.zPosition = -2
-            glow.setScale(1.04)
+            glow.setScale(1.03)
             label.addChild(glow)
         }
         if let outline = label.childNode(withName: "hudOutline") as? SKLabelNode {
@@ -1339,6 +1368,7 @@ public final class HeistScene: SKScene {
         RetentionChrome.present(daily)
         retentionMode = "daily"
         smokeStatus.daily = true
+        gameCenter.setAccessPointVisible(true, showHighlights: true)
         writeSmokeStatus()
     }
 
@@ -1625,6 +1655,8 @@ public final class HeistScene: SKScene {
     }
 
     private func setPaused(_ on: Bool, system: Bool = false) {
+        // Scene may not have finished didMove yet (unit probes / early resign).
+        guard sim != nil else { return }
         let playing: Bool = {
             if case .playing = sim.state.phase { return true }
             return false
@@ -1632,19 +1664,18 @@ public final class HeistScene: SKScene {
         guard playing || runPaused else { return }
         // Manual pause button is ignored under smoke; harness flags drive pause beats instead.
         if on {
-            if runPaused { return }
+            if runPaused {
+                pauseFromSystem = system || pauseFromSystem
+                clearLatchedPlayInput()
+                return
+            }
             runPaused = true
             pauseFromSystem = system
             resumeCountdown = 0
             skipFreezeSample = true
             pauseCountLabel?.alpha = 0
             pauseCountLabel?.text = ""
-            moveX = 0
-            jumpHeld = false
-            jumpPressed = false
-            pouncePressed = false
-            stickTouch = nil
-            jumpTouch = nil
+            clearLatchedPlayInput()
             pauseRoot.isHidden = false
             layoutUI()
             if smokeEnabled { writeSmokeStatus() }
@@ -1658,8 +1689,23 @@ public final class HeistScene: SKScene {
         }
     }
 
+    /// Drop stick / face-button latch without requiring HUD nodes.
+    private func clearLatchedPlayInput() {
+        releaseStickInput()
+        jumpHeld = false
+        jumpPressed = false
+        pouncePressed = false
+        jumpTouch = nil
+        pounceTouch = nil
+    }
+
     /// Auto-pause from SwiftUI / UIKit lifecycle (resign active, background).
+    /// Idempotent — always clears latched input even before `sim` / HUD exist.
     public func pauseFromAppLifecycle() {
+        clearLatchedPlayInput()
+        pauseFromSystem = true
+        guard sim != nil else { return }
+        if runPaused { return }
         setPaused(true, system: true)
     }
 
@@ -1874,12 +1920,15 @@ public final class HeistScene: SKScene {
         jumpBtn.position = CGPoint(x: btnX, y: -hh + 168 + bottomSafe * 0.35)
         pounceBtn.position = CGPoint(x: btnX, y: -hh + 68 + bottomSafe * 0.35)
         layoutControlHitZones()
-        let hudTop = hh - topSafe - 6
-        let hudX = -hw + 16 + leftSafe
-        hudCarried.position = CGPoint(x: hudX, y: hudTop)
-        hudHearts.position = CGPoint(x: hudX, y: hudTop - 26)
-        hudCombo.position = CGPoint(x: hudX, y: hudTop - 52)
-        hudTime.position = CGPoint(x: hudX, y: hudTop - 78)
+        let hudTop = hh - topSafe - 28
+        let hudX = -hw + 22 + leftSafe
+        // Compact two-row pill — loot/hearts on top, combo/timer below.
+        hudPill.position = CGPoint(x: hudX + 78, y: hudTop - 10)
+        hudPill.isHidden = playHUD.isHidden
+        hudCarried.position = CGPoint(x: hudX, y: hudTop + 6)
+        hudHearts.position = CGPoint(x: hudX + 72, y: hudTop + 6)
+        hudCombo.position = CGPoint(x: hudX, y: hudTop - 14)
+        hudTime.position = CGPoint(x: hudX + 110, y: hudTop - 14)
         for label in [hudCarried, hudHearts, hudCombo, hudTime] {
             if let outline = label.childNode(withName: "hudOutline") as? SKLabelNode {
                 outline.text = label.text
@@ -1925,10 +1974,10 @@ public final class HeistScene: SKScene {
         skyFill.isHidden = onTitle
         let showPlayHUD = playing && resumeCountdown <= 0 && !onTitle
         playHUD.isHidden = !showPlayHUD
+        hudPill.isHidden = !showPlayHUD
         pauseBtn?.isHidden = !showPlayHUD
         if !showPlayHUD || runPaused {
-            stickKnob.position = stickBase.position
-            moveX = 0
+            releaseStickInput()
         }
         if runPaused {
             for node in [stickBase, stickKnob, jumpBtn, pounceBtn, pauseBtn] as [SKNode?] {
@@ -2086,12 +2135,87 @@ public final class HeistScene: SKScene {
     }
 
     private func requestBeginPlay() {
+        isDailyRun = false
+        racingGhostSamples = []
+        racingGhostKind = nil
         // Smoke skips the district card so title→play timing stays in the freeze budget.
         if smokeEnabled {
             beginPlay()
             return
         }
         presentDistrictCardThenPlay()
+    }
+
+    /// Daily Heist: UTC-seeded Neon Docks grammar + optional ghost race.
+    private func startDailyHeist(racing: GhostKind?) {
+        hideRetention()
+        isDailyRun = true
+        dailyDayKey = ProgressStore.dayKey()
+        tookDamageThisRun = false
+        sawMaskThisRun = false
+        ghostRecorder.reset()
+        racingGhostKind = racing
+        do {
+            let map = try DailyHeist.loadMap()
+            let seed = DailyHeist.seed(dayKey: dailyDayKey)
+            sim = Sim(map: map, tuning: tuning, seed: seed)
+            pendingDistrict = .neonDocks
+            rebuildWorldEntitiesAfterDailyReload()
+        } catch {
+            // Fall through to current map if daily load fails.
+        }
+        Task { await prepareRacingGhost(kind: racing) }
+        beginPlay()
+    }
+
+    private func rebuildWorldEntitiesAfterDailyReload() {
+        shinyNodes.values.forEach { $0.removeFromParent() }
+        shinyNodes.removeAll()
+        mopNodes.values.forEach { $0.removeFromParent() }
+        mopNodes.removeAll()
+        crewNodes.values.forEach { $0.removeFromParent() }
+        crewNodes.removeAll()
+        for s in sim.state.shinies {
+            let n = ArtCatalog.makeShinyNode()
+            n.position = cg(s.position)
+            n.zPosition = 20
+            world.addChild(n)
+            shinyNodes[s.id] = n
+        }
+        for m in sim.state.mops {
+            let n = ArtCatalog.makeMopNode()
+            n.position = cg(m.position)
+            n.zPosition = 30
+            world.addChild(n)
+            mopNodes[m.id] = n
+        }
+        for c in sim.state.crewCages {
+            let n = makeCrewCageNode(crewID: c.crewID)
+            n.position = cg(c.position)
+            n.zPosition = 28
+            world.addChild(n)
+            crewNodes[c.id] = n
+        }
+    }
+
+    private func prepareRacingGhost(kind: GhostKind?) async {
+        guard let kind else {
+            racingGhostSamples = []
+            return
+        }
+        let run: GhostRun?
+        switch kind {
+        case .own:
+            run = await ghostStore.loadOwnBest(dayKey: dailyDayKey)
+        case .worldBest:
+            run = await ghostStore.loadWorldBest(dayKey: dailyDayKey)
+        case .friend:
+            // Friend picker arrives with GC Challenges UI; for now race world best as stand-in.
+            run = await ghostStore.loadWorldBest(dayKey: dailyDayKey)
+        }
+        racingGhostSamples = run?.samples.map {
+            GhostSamplePoint(t: $0.t, x: $0.x, y: $0.y, facing: $0.facing)
+        } ?? []
     }
 
     private func showTitleScreen() {
@@ -2120,6 +2244,13 @@ public final class HeistScene: SKScene {
         mopAlerted.removeAll()
         celebratedFirstStomp = false
         celebratedEarlyWin = false
+        if !isDailyRun {
+            tookDamageThisRun = false
+            sawMaskThisRun = false
+            ghostRecorder.reset()
+        }
+        ensureGhostVisual()
+        gameCenter.setAccessPointVisible(false, showHighlights: false)
         midSurpriseFired = false
         lastStompElapsed = -1
         nextLullNudgeAt = 8
@@ -2247,11 +2378,31 @@ public final class HeistScene: SKScene {
                     hideRetention()
                     return
                 }
-                if hitNames.contains("dailyPlay") {
+                if hitNames.contains("dailyPlay")
+                    || hitNames.contains("dailyRaceOwn")
+                    || hitNames.contains("dailyRaceBest")
+                    || hitNames.contains("dailyRaceFriend") {
                     JuiceSound.shared.playUITap()
-                    hideRetention()
-                    progressStore.recordDailyClear(dayKey: ProgressStore.dayKey())
-                    requestBeginPlay()
+                    let kind: GhostKind? = {
+                        if hitNames.contains("dailyRaceOwn") { return .own }
+                        if hitNames.contains("dailyRaceBest") { return .worldBest }
+                        if hitNames.contains("dailyRaceFriend") { return .friend }
+                        return nil
+                    }()
+                    startDailyHeist(racing: kind)
+                    return
+                }
+                if hitNames.contains("dailyChallenge") {
+                    JuiceSound.shared.playUITap()
+                    gameCenter.challengeFriends(
+                        leaderboardID: GameCenterIDs.dailyHeist,
+                        message: "Beat my Daily Heist score!"
+                    )
+                    return
+                }
+                if hitNames.contains("dailyLeaderboardBtn") {
+                    JuiceSound.shared.playUITap()
+                    gameCenter.presentLeaderboard(id: GameCenterIDs.dailyHeist)
                     return
                 }
                 for d in DistrictID.allCases {
@@ -2447,11 +2598,17 @@ public final class HeistScene: SKScene {
     }
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if smokeEnabled || runPaused || resumeCountdown > 0 { return }
+        if smokeEnabled { return }
         for touch in touches {
             if touch === stickTouch {
+                // Drag-off / lifecycle pause must not leave moveX latched.
+                if runPaused || resumeCountdown > 0 {
+                    releaseStickInput()
+                    continue
+                }
                 updateStick(touch.location(in: hud))
             }
+            if runPaused || resumeCountdown > 0 { continue }
             // Sliding onto JUMP / POUNCE from a miss still counts (forgiving).
             let p = touch.location(in: hud)
             if jumpTouch == nil, touch !== stickTouch, touch !== pounceTouch,
@@ -2473,16 +2630,22 @@ public final class HeistScene: SKScene {
     }
 
     public override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        if smokeEnabled || runPaused || resumeCountdown > 0 { return }
+        // Always clear tracked fingers — never skip while paused/countdown or moveX latches
+        // after Control Center, JUMP multitouch, or background resign.
+        if smokeEnabled { return }
+        releaseEndedTouches(touches)
+    }
+
+    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if smokeEnabled { return }
+        releaseEndedTouches(touches)
+    }
+
+    /// Zero stick / face-button state for ended or cancelled fingers.
+    private func releaseEndedTouches(_ touches: Set<UITouch>) {
         for touch in touches {
             if touch === stickTouch {
-                stickTouch = nil
-                moveX = 0
-                moveY = 0
-                stickKnob.position = stickBase.position
-                stickBase.alpha = 0.38
-                stickKnob.alpha = 0.38
-                layoutUI()
+                releaseStickInput()
             }
             if touch === jumpTouch {
                 jumpTouch = nil
@@ -2494,8 +2657,62 @@ public final class HeistScene: SKScene {
         }
     }
 
-    public override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        touchesEnded(touches, with: event)
+    private func releaseStickInput() {
+        stickTouch = nil
+        moveX = 0
+        moveY = 0
+        if stickBase != nil, stickKnob != nil {
+            stickKnob.position = stickBase.position
+            stickBase.alpha = 0.38
+            stickKnob.alpha = 0.38
+        }
+    }
+
+    // MARK: - Input latch probes (MagpieTests / feel regression)
+
+    /// Current latched horizontal stick (−1…1).
+    public var debugMoveX: Double { moveX }
+    public var debugJumpHeld: Bool { jumpHeld }
+    public var debugHasStickTouch: Bool { stickTouch != nil }
+
+    /// Inject stick magnitude without a UITouch (unit tests).
+    public func debugSetMoveX(_ x: Double) {
+        moveX = max(-1, min(1, x))
+    }
+
+    /// Simulate JUMP held alongside stick (multitouch) then release stick only.
+    public func debugPressJumpAlongsideMove() {
+        jumpPressed = true
+        jumpHeld = true
+    }
+
+    public func debugReleaseJump() {
+        jumpHeld = false
+        jumpPressed = false
+        jumpTouch = nil
+    }
+
+    public func debugReleaseStick() {
+        releaseStickInput()
+    }
+
+    /// Background / Control Center path — must zero move even if a finger was down.
+    public func debugLifecyclePause() {
+        pauseFromAppLifecycle()
+    }
+
+    /// Drop latched fingers whose UITouch phase already ended/cancelled.
+    private func sanitizeTrackedTouches() {
+        if let t = stickTouch, t.phase == .ended || t.phase == .cancelled {
+            releaseStickInput()
+        }
+        if let t = jumpTouch, t.phase == .ended || t.phase == .cancelled {
+            jumpTouch = nil
+            jumpHeld = false
+        }
+        if let t = pounceTouch, t.phase == .ended || t.phase == .cancelled {
+            pounceTouch = nil
+        }
     }
 
     private func updateStick(_ p: CGPoint) {
@@ -2504,6 +2721,12 @@ public final class HeistScene: SKScene {
         let dead = tuning.feel.stickDeadZone
         var dx = delta.x, dy = delta.y
         let len = hypot(dx, dy)
+        // Finger slid far off the virtual stick origin → treat as release (no latched run).
+        let releaseR = maxR * 2.6
+        if len > releaseR {
+            releaseStickInput()
+            return
+        }
         if len > maxR {
             dx = dx / len * maxR
             dy = dy / len * maxR
@@ -2712,6 +2935,10 @@ public final class HeistScene: SKScene {
             if case .title = sim.state.phase { return 1 }
             return 2
         }()
+        // Safety net: if UIKit ended the stick finger without delivering touchesEnded
+        // (Control Center / call / rare multitouch races), drop the latch immediately.
+        sanitizeTrackedTouches()
+
         while accumulator >= tuning.dt && steps < maxSteps {
             var input = InputFrame(moveX: moveX, moveY: moveY, jumpPressed: jumpPressed, jumpHeld: jumpHeld, pouncePressed: pouncePressed)
             jumpPressed = false
@@ -2987,6 +3214,7 @@ public final class HeistScene: SKScene {
                     },
                 ]))
             case .hurt:
+                tookDamageThisRun = true
                 JuiceSound.shared.playHurt()
                 damageFlash()
                 shake(0.35)
@@ -3114,6 +3342,29 @@ public final class HeistScene: SKScene {
             guard isWin else { return 0 }
             let totalShinies = sim.state.shinies.count
             let got = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
+            if isDailyRun {
+                let score = DailyScore.compute(
+                    seconds: seconds,
+                    shiniesCollected: got,
+                    shiniesTotal: totalShinies,
+                    tookDamage: tookDamageThisRun,
+                    combo: combo
+                )
+                let streak = progressStore.recordDailyClear(dayKey: dailyDayKey, score: score)
+                _ = progressStore.recordClear(
+                    levelID: ProgressStore.dailyLevelID,
+                    shiniesCollected: got,
+                    shiniesTotal: totalShinies,
+                    seconds: seconds,
+                    combo: combo
+                )
+                gameCenter.submitScore(score, leaderboardID: GameCenterIDs.dailyHeist)
+                gameCenter.submitScore(score, leaderboardID: GameCenterIDs.mostWantedWeekly)
+                gameCenter.submitScore(combo, leaderboardID: GameCenterIDs.bestCombo)
+                reportDailyAchievements(score: score, streak: streak, medals: 0, gotAllLoot: got >= totalShinies)
+                persistDailyGhost(score: score, seconds: seconds)
+                return got >= totalShinies && !tookDamageThisRun ? 3 : (got >= totalShinies / 2 ? 2 : 1)
+            }
             let levelID = ProgressStore.levelID(for: pendingDistrict)
             let earned = progressStore.recordClear(
                 levelID: levelID,
@@ -3126,8 +3377,17 @@ public final class HeistScene: SKScene {
             lastAwardedMedals = earned.medals.count
             smokeStatus.medals = earned.medals.count
             smokeStatus.combo = max(smokeStatus.combo, combo)
+            reportCampaignAchievements(
+                levelID: levelID,
+                medals: earned.medals.count,
+                noDamage: !tookDamageThisRun
+            )
             return earned.medals.count
         }()
+
+        if isWin {
+            gameCenter.setAccessPointVisible(true, showHighlights: true)
+        }
 
         // Score: shinies ×100 + combo ×50 + time bonus under par + star bonus.
         let par = ProgressStore.defaultParSeconds
@@ -3397,6 +3657,15 @@ public final class HeistScene: SKScene {
             bandit.zPosition = 20
         }
 
+        if isDailyRun, sim.state.phase == .playing {
+            ghostRecorder.capture(
+                elapsed: sim.state.elapsed,
+                position: b.position,
+                facing: b.facing
+            )
+        }
+        updateRacingGhostVisual(elapsed: sim.state.elapsed)
+
         for s in sim.state.shinies {
             guard let node = shinyNodes[s.id] else { continue }
             if shinyCollecting.contains(s.id) { continue }
@@ -3442,15 +3711,15 @@ public final class HeistScene: SKScene {
         hudCarried.text = "✦ \(shinyTotal)"
         hudHearts.text = String(repeating: "♥", count: max(0, b.hearts))
         if b.maskMode {
-            hudCombo.text = b.combo >= 1 ? "◈ MASK ×2  COMBO x\(max(1, b.combo))" : "◈ MASK ×2"
+            hudCombo.text = "MASK ×2 · x\(max(1, b.combo))"
             hudCombo.isHidden = false
             hudCombo.fontColor = ArtCatalog.neonCyan
-            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
+            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonCyan.withAlphaComponent(0.35)
         } else if b.combo >= 1 {
-            hudCombo.text = "COMBO x\(b.combo)"
+            hudCombo.text = "x\(b.combo)"
             hudCombo.isHidden = false
             hudCombo.fontColor = ArtCatalog.neonLime
-            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonLime.withAlphaComponent(0.45)
+            (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonLime.withAlphaComponent(0.35)
             // Pulse on each new chain step so the counter feels alive.
             if b.combo >= 2, hudCombo.action(forKey: "comboPulse") == nil {
                 hudCombo.run(SKAction.sequence([
@@ -3482,6 +3751,7 @@ public final class HeistScene: SKScene {
             skyFill.color = ArtCatalog.nightSky
             skyFill.colorBlendFactor = 1
             if !lastMaskMode {
+                sawMaskThisRun = true
                 applyMaskParallaxGrade(active: true, pulse: 1)
             }
         } else {
@@ -4309,6 +4579,96 @@ public final class HeistScene: SKScene {
         }
         for _ in 0..<3 { bandit.emitMaskTrail() }
         hitSpark(at: sim.state.bandit.position, color: ArtCatalog.neonCyan)
+    }
+
+    // MARK: - Daily Heist ghosts + Game Center
+
+    private func ensureGhostVisual() {
+        if ghostVisual == nil {
+            let g = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.35), size: SpriteCycles.banditDisplaySize)
+            g.name = "dailyGhost"
+            g.zPosition = 18
+            g.alpha = 0
+            world.addChild(g)
+            ghostVisual = g
+        }
+        ghostVisual?.isHidden = racingGhostSamples.isEmpty
+        ghostVisual?.alpha = racingGhostSamples.isEmpty ? 0 : 0.55
+        ghostVisual?.color = ArtCatalog.neonCyan
+        ghostVisual?.colorBlendFactor = 0.85
+    }
+
+    private func updateRacingGhostVisual(elapsed: Double) {
+        guard let ghost = ghostVisual, !racingGhostSamples.isEmpty else {
+            ghostVisual?.alpha = 0
+            return
+        }
+        guard let (pos, facing) = GhostPlayback.pose(samples: racingGhostSamples, at: elapsed) else {
+            ghost.alpha = 0
+            return
+        }
+        ghost.position = CGPoint(x: CGFloat(pos.x), y: CGFloat(pos.y) - bodyCenterToFeet)
+        ghost.xScale = facing >= 0 ? 1 : -1
+        ghost.alpha = 0.55
+        ghost.isHidden = false
+    }
+
+    private func persistDailyGhost(score: Int, seconds: Double) {
+        let playerID = gameCenter.localPlayerID ?? "local"
+        let name = gameCenter.localDisplayName ?? "Bandit"
+        let samples = ghostRecorder.samples.map {
+            GhostSample(t: $0.t, x: $0.x, y: $0.y, facing: $0.facing)
+        }
+        let run = GhostRun(
+            dayKey: dailyDayKey,
+            playerID: playerID,
+            displayName: name,
+            score: score,
+            seconds: Float(seconds),
+            samples: samples
+        )
+        Task { await ghostStore.saveOwnBest(run) }
+        if racingGhostKind == .own {
+            unlockAchievement(GameCenterIDs.beatOwnGhost)
+        }
+        if racingGhostKind == .friend || racingGhostKind == .worldBest {
+            unlockAchievement(GameCenterIDs.beatFriendGhost)
+        }
+    }
+
+    private func reportDailyAchievements(score: Int, streak: Int, medals: Int, gotAllLoot: Bool) {
+        _ = score
+        unlockAchievement(GameCenterIDs.firstHeist)
+        if gotAllLoot && !tookDamageThisRun { unlockAchievement(GameCenterIDs.threeStarHeist) }
+        if !tookDamageThisRun { unlockAchievement(GameCenterIDs.noDamageHeist) }
+        if streak >= 3 { unlockAchievement(GameCenterIDs.dailyStreak3) }
+        if streak >= 7 { unlockAchievement(GameCenterIDs.dailyStreak7) }
+        if streak >= 30 { unlockAchievement(GameCenterIDs.dailyStreak30) }
+        if sim.state.bandit.maskMode || sawMaskThisRun { unlockAchievement(GameCenterIDs.firstMaskMode) }
+        _ = medals
+    }
+
+    private func reportCampaignAchievements(levelID: String, medals: Int, noDamage: Bool) {
+        unlockAchievement(GameCenterIDs.firstHeist)
+        if medals >= 3 { unlockAchievement(GameCenterIDs.threeStarHeist) }
+        if noDamage { unlockAchievement(GameCenterIDs.noDamageHeist) }
+        if levelID.hasPrefix("arcade_row") { unlockAchievement(GameCenterIDs.clearArcadeRow) }
+        if levelID.hasPrefix("rooftops") { unlockAchievement(GameCenterIDs.clearRooftops) }
+        if sim.state.bandit.maskMode || sawMaskThisRun { unlockAchievement(GameCenterIDs.firstMaskMode) }
+        if sim.state.crewCages.contains(where: \.freed) {
+            unlockAchievement(GameCenterIDs.firstCrewRescue)
+        }
+    }
+
+    private func unlockAchievement(_ id: String) {
+        var progress = progressStore.load()
+        guard !progress.unlockedAchievementIDs.contains(id) else {
+            gameCenter.reportAchievement(id: id, percentComplete: 100)
+            return
+        }
+        progress.unlockedAchievementIDs.append(id)
+        progressStore.save(progress)
+        gameCenter.reportAchievement(id: id, percentComplete: 100)
     }
 }
 #endif
