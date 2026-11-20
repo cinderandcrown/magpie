@@ -22,12 +22,12 @@ public struct GameFeel: Equatable, Sendable {
     public var airControlMul: Double = 0.7
     /// Radial stick dead zone (normalized 0…1).
     public var stickDeadZone: Double = 0.15
-    /// Virtual stick max travel in points.
-    public var stickMaxRadius: Double = 52
-    /// JUMP / POUNCE button minimum edge length in points.
-    public var faceButtonMinPt: Double = 88
-    /// Extra invisible hit padding around face buttons (points).
-    public var faceButtonHitPad: Double = 12
+    /// Virtual stick max travel in points (thumb travel).
+    public var stickMaxRadius: Double = 68
+    /// JUMP / POUNCE button minimum edge length in points (thumb-sized).
+    public var faceButtonMinPt: Double = 112
+    /// Extra invisible hit padding around face buttons (points) — forgiving misses.
+    public var faceButtonHitPad: Double = 40
 
     // MARK: Gravity / jump
 
@@ -45,8 +45,10 @@ public struct GameFeel: Equatable, Sendable {
     public var jumpVelocity: Double = 30.0
     /// Early JUMP release multiplies upward velocity by this (50% cut → 0.5).
     public var jumpCutFraction: Double = 0.5
-    public var coyoteSeconds: Double = 0.12
-    public var jumpBufferSeconds: Double = 0.14
+    /// Leave-ledge grace (~100 ms) so late jumps still fire.
+    public var coyoteSeconds: Double = 0.10
+    /// Early JUMP buffer (~150 ms) so pre-land taps still fire.
+    public var jumpBufferSeconds: Double = 0.15
     /// Max horizontal nudge (px) around ledge corners on head bump / near-miss land.
     public var cornerCorrectPx: Double = 6
 
@@ -62,24 +64,24 @@ public struct GameFeel: Equatable, Sendable {
     public var pounceBoostX: Double = 3.5
     public var pounceBoostY: Double = 4.0
     public var bellyFlopFallBoost: Double = 18
-    public var stompBounceVelocity: Double = 15.0
+    public var stompBounceVelocity: Double = 16.5
     /// Holding JUMP on stomp multiplies bounce by this (chain assist).
-    public var stompBounceHoldMul: Double = 1.45
+    public var stompBounceHoldMul: Double = 1.55
     /// MOP sprite width in tiles — stomp box is `stompWidthMul` × this.
     public var mopSpriteWidthTiles: Double = 1.0
-    /// Horizontal stomp hurtbox vs MOP sprite width (≈1.3×).
-    public var stompWidthMul: Double = 1.3
-    /// Side-contact damage box vs MOP sprite width (must stay smaller than sprite).
-    public var hurtWidthMul: Double = 0.55
+    /// Horizontal stomp hurtbox vs MOP sprite width — wider than the sprite so near-misses still kill.
+    public var stompWidthMul: Double = 2.0
+    /// Side-contact damage box vs MOP sprite width (must stay smaller than stomp box).
+    public var hurtWidthMul: Double = 0.42
     /// Count as stomp-capable for this many frames while |vy| is near apex.
-    public var stompApexFrames: Int = 2
-    /// Pounce magnet search radius in tiles (ahead + below).
-    public var pounceMagnetTiles: Double = 2.0
+    public var stompApexFrames: Int = 4
+    /// Fall / pounce magnet search radius in tiles (ahead + below).
+    public var pounceMagnetTiles: Double = 2.8
     /// How hard the magnet pulls (tiles/s² scale via tileSize).
-    public var pounceMagnetAccel: Double = 28
-    /// Hit-stop on stomp (seconds) — ~65 ms punch; combo bumps in the render layer (cap ~80 ms).
-    public var stompHitstop: Double = 0.065
-    public var invulnSeconds: Double = 1.0
+    public var pounceMagnetAccel: Double = 42
+    /// Hit-stop on stomp (seconds) — ~70 ms punch; combo bumps in the render layer (cap ~80 ms).
+    public var stompHitstop: Double = 0.07
+    public var invulnSeconds: Double = 1.15
     /// Minimum bandit alpha while blinking during i-frames (≥ 50%).
     public var invulnMinAlpha: Double = 0.55
 

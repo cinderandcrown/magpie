@@ -87,17 +87,39 @@ public struct Sim: Equatable, Sendable {
         var mopID = 0
         for (i, c) in map.findAll(.mopSpawn).enumerated() {
             let p = map.worldStandOnDeckBelow(ofX: c.0, markerY: c.1, tileSize: tile)
-            // Keep a 4-tile clear zone around spawn / checkpoints so knockback doesn't feed a mob pile-up.
-            if abs(p.x - start.x) < tile * 4 { continue }
-            if cps.contains(where: { abs(p.x - $0.position.x) < tile * 4 }) { continue }
-            // Opening pack: short but readable patrol (was 0.25 — stacked into one blob).
-            let span = tile * (mopID < 8 ? 0.95 : 2.2)
+            // Keep a short clear zone at spawn so the first hop isn't an instant bag —
+            // but leave easy MOPs close (≈2.2 tiles) for first-minute wins.
+            if abs(p.x - start.x) < tile * 2.2 { continue }
+            if cps.contains(where: { abs(p.x - $0.position.x) < tile * 2.5 }) { continue }
+            // Opening pack: short readable patrol so hop-stomps chain into Mask fast.
+            let span = tile * (mopID < 8 ? 0.7 : 2.2)
             // Wide phase desync so neighbors don't mirror-walk on top of each other.
             mops.append(MopEnemy(
                 id: mopID, position: p, home: p, patrolSpan: span, phase: Double(mopID) * 1.7 + Double(i) * 0.37,
                 alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1, stun: 0
             ))
             mopID += 1
+        }
+        // Full docks (and similar) get an easy hop-stomp pack + street shinies for the first minute.
+        // Tiny unit-test maps must stay clean — don't inject extras into 10-tile harness levels.
+        if map.width >= 40 {
+            for k in 0..<3 {
+                let p = Vec2(start.x + tile * (3.0 + Double(k) * 1.4), start.y)
+                if mops.contains(where: { abs($0.home.x - p.x) < tile * 0.8 && abs($0.home.y - p.y) < tile }) {
+                    continue
+                }
+                mops.append(MopEnemy(
+                    id: mopID, position: p, home: p, patrolSpan: tile * 0.55,
+                    phase: Double(k) * 2.1, alive: true, respawn: 0,
+                    anim: .walk, animHold: 0, facing: 1, stun: 0
+                ))
+                mopID += 1
+            }
+            for k in 0..<4 {
+                let p = Vec2(start.x + tile * (2.4 + Double(k) * 1.8), start.y + tile * 0.15)
+                if shinies.contains(where: { abs($0.position.x - p.x) < tile * 0.7 }) { continue }
+                shinies.append(ShinyPickup(id: shinies.count, position: p, alive: true))
+            }
         }
         // Nudge spawn homes apart when markers land too close on the same deck.
         for i in mops.indices {
@@ -205,9 +227,16 @@ public struct Sim: Equatable, Sendable {
             b.apexStompFrames -= 1
         }
         if b.onGround { b.apexStompFrames = 0 }
-        let stompFalling = b.flopping
-            || (wasAirborne && (b.velocity.y < 0 || b.apexStompFrames > 0))
         collide(bandit: &b)
+        // Any downward / landed-from-air contact can stomp — includes the land frame (vy≈0).
+        let stompFalling = b.flopping
+            || (wasAirborne && (b.velocity.y <= 0 || b.apexStompFrames > 0))
+        // Soft magnet: full pull on pounce/flop; short-range assist on normal falls.
+        if b.pouncing || b.flopping {
+            applyPounceMagnet(bandit: &b, reachMul: 1.0)
+        } else if stompFalling {
+            applyPounceMagnet(bandit: &b, reachMul: 0.55)
+        }
         updateAnim(bandit: &b)
         collectShinies(bandit: &b)
         collectCrew(bandit: &b)
@@ -351,17 +380,17 @@ public struct Sim: Equatable, Sendable {
         }
     }
 
-    /// Soft homing toward the nearest MOP within ~2 tiles ahead and below while pouncing.
-    private mutating func applyPounceMagnet(bandit: inout BanditState) {
+    /// Soft homing toward the nearest MOP within reach while falling / pouncing.
+    private mutating func applyPounceMagnet(bandit: inout BanditState, reachMul: Double = 1.0) {
         let feel = tuning.feel
-        let reach = feel.pounceMagnetTiles * tuning.tileSize
+        let reach = feel.pounceMagnetTiles * tuning.tileSize * max(0.2, reachMul)
         var best: (idx: Int, dist: Double)?
         for (i, mop) in state.mops.enumerated() where mop.alive {
             let dx = mop.position.x - bandit.position.x
             let dy = mop.position.y - bandit.position.y
-            // Ahead (facing) and at/below the bandit.
-            if dx * bandit.facing < 0 { continue }
-            if dy > halfH { continue }
+            // Prefer ahead, but allow a little behind so turnarounds still connect.
+            if dx * bandit.facing < -reach * 0.35 { continue }
+            if dy > halfH * 1.2 { continue }
             let d = hypot(dx, dy)
             if d > reach { continue }
             if best == nil || d < best!.dist { best = (i, d) }
@@ -371,9 +400,9 @@ public struct Sim: Equatable, Sendable {
         let dx = mop.position.x - bandit.position.x
         let dy = mop.position.y - bandit.position.y
         let d = max(1, hypot(dx, dy))
-        let pull = feel.pounceMagnetAccel * tuning.tileSize * tuning.dt
+        let pull = feel.pounceMagnetAccel * tuning.tileSize * tuning.dt * max(0.35, reachMul)
         bandit.velocity.x += (dx / d) * pull
-        bandit.velocity.y += (dy / d) * pull * 0.65
+        bandit.velocity.y += (dy / d) * pull * 0.75
     }
 
     private mutating func collide(bandit: inout BanditState) {
@@ -635,12 +664,11 @@ public struct Sim: Equatable, Sendable {
             for i in state.mops.indices where state.mops[i].alive {
                 let dx = abs(bandit.position.x - state.mops[i].position.x)
                 let feetY = bandit.position.y - halfH
-                let mopMidY = state.mops[i].position.y + mopHalfH
-                // Feet above MOP mid, or body still above MOP center (fast-fall contact).
-                let aboveMid = feetY >= mopMidY - 6 || bandit.position.y >= state.mops[i].position.y
-                guard aboveMid, dx <= stompHalfW else { continue }
-                // Don't stomp from far below / deep underground overlaps.
-                guard bandit.position.y >= state.mops[i].position.y - mopHalfH * 0.5 else { continue }
+                let mopTop = state.mops[i].position.y + mopHalfH * 1.35
+                // Generous vertical: any downward contact from above / overlapping the MOP top.
+                let fromAbove = feetY <= mopTop + 14
+                    && bandit.position.y >= state.mops[i].position.y - mopHalfH * 0.35
+                guard fromAbove, dx <= stompHalfW else { continue }
 
                 state.mops[i].alive = false
                 // Longer respawn while chaining so the pack doesn't pop back underfoot.
@@ -653,7 +681,8 @@ public struct Sim: Equatable, Sendable {
                 bandit.flopping = false
                 bandit.pouncing = false
                 bandit.jumpCutArmed = jumpHeld
-                bandit.invuln = max(bandit.invuln, max(0.85, feel.invulnSeconds * 0.85))
+                // Stomp frames are always safe — no bagging on contact.
+                bandit.invuln = max(bandit.invuln, max(1.0, feel.invulnSeconds))
                 bandit.combo = min(tuning.comboCap, bandit.combo + 1)
                 bandit.comboTimer = tuning.comboGroundGrace
                 if bandit.combo >= tuning.maskModeAtCombo && !bandit.maskMode {

@@ -38,12 +38,17 @@ public final class HeistScene: SKScene {
     private var pouncePressed = false
     private var stickTouch: UITouch?
     private var jumpTouch: UITouch?
+    private var pounceTouch: UITouch?
     private var stickOrigin = CGPoint.zero
 
     private var stickBase: SKShapeNode!
     private var stickKnob: SKShapeNode!
     private var jumpBtn: SKShapeNode!
     private var pounceBtn: SKShapeNode!
+    /// Invisible forgiving hit plates (larger than the art).
+    private var jumpHitZone: SKNode!
+    private var pounceHitZone: SKNode!
+    private var moveHitZone: SKNode!
 
     private var titleRoot = SKNode()
     private var publisherIdentRoot: SKNode?
@@ -163,6 +168,9 @@ public final class HeistScene: SKScene {
             smokeEnabled = true
         }
         // Smoke uses ship tuning + real Neon Docks — only input source / seed / status flags differ.
+        // Critical: run + jump must work together — SKView defaults multitouch OFF.
+        view.isMultipleTouchEnabled = true
+        isUserInteractionEnabled = true
         view.preferredFramesPerSecond = 60
         view.ignoresSiblingOrder = true
         view.shouldCullNonVisibleNodes = true
@@ -745,60 +753,74 @@ public final class HeistScene: SKScene {
     // MARK: - UI
 
     private func setupControls() {
-        // Neon stick: dark plate + crisp cyan ring (not a stock translucent blob).
-        // Floating stick: dock hint is faint; active stick appears at the finger (left half).
-        stickBase = SKShapeNode(circleOfRadius: 54)
+        // Invisible zone plates first (under art) — left third move, right third jump/pounce.
+        moveHitZone = SKNode()
+        moveHitZone.name = "moveHitZone"
+        moveHitZone.zPosition = 190
+        playHUD.addChild(moveHitZone)
+        jumpHitZone = SKNode()
+        jumpHitZone.name = "jumpHitZone"
+        jumpHitZone.zPosition = 190
+        playHUD.addChild(jumpHitZone)
+        pounceHitZone = SKNode()
+        pounceHitZone.name = "pounceHitZone"
+        pounceHitZone.zPosition = 190
+        playHUD.addChild(pounceHitZone)
+
+        // Neon stick: dark plate + crisp cyan ring. Dock hint visible; active stick follows finger.
+        let stickR = CGFloat(max(58, tuning.feel.stickMaxRadius * 0.95))
+        stickBase = SKShapeNode(circleOfRadius: stickR)
         stickBase.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.12, alpha: 0.78)
         stickBase.strokeColor = ArtCatalog.neonCyan
         stickBase.lineWidth = 2.5
         stickBase.glowWidth = 1.5
         stickBase.zPosition = 200
-        stickBase.alpha = 0.2
+        stickBase.alpha = 0.35
         playHUD.addChild(stickBase)
-        let stickInner = SKShapeNode(circleOfRadius: 40)
+        let stickInner = SKShapeNode(circleOfRadius: stickR * 0.72)
         stickInner.fillColor = .clear
         stickInner.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.25)
         stickInner.lineWidth = 1
         stickInner.zPosition = 0.5
         stickBase.addChild(stickInner)
 
-        stickKnob = SKShapeNode(circleOfRadius: 22)
+        stickKnob = SKShapeNode(circleOfRadius: stickR * 0.42)
         stickKnob.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.55)
         stickKnob.strokeColor = .white
         stickKnob.lineWidth = 1.5
         stickKnob.glowWidth = 1
         stickKnob.zPosition = 201
-        stickKnob.alpha = 0.2
+        stickKnob.alpha = 0.35
         playHUD.addChild(stickKnob)
 
         jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime, large: true)
+        jumpBtn.name = "jumpBtn"
         playHUD.addChild(jumpBtn)
         pounceBtn = makeFaceButton(title: "POUNCE", color: ArtCatalog.neonPink, large: true)
+        pounceBtn.name = "pounceBtn"
         playHUD.addChild(pounceBtn)
     }
 
     private func makeFaceButton(title: String, color: SKColor, large: Bool = false) -> SKShapeNode {
         let edge: CGFloat
-        let pad: CGFloat
         let font: CGFloat
         if large {
-            // ≥88 pt face buttons with generous hit pads (GameFeel.faceButtonMinPt).
-            edge = CGFloat(max(88, tuning.feel.faceButtonMinPt))
-            pad = CGFloat(tuning.feel.faceButtonHitPad)
-            font = title.count > 5 ? 14 : 16
+            // Thumb-sized face (≥112 pt). Invisible zones add the forgiving miss padding.
+            edge = CGFloat(max(112, tuning.feel.faceButtonMinPt))
+            font = title.count > 5 ? 15 : 18
         } else {
             edge = 92
-            pad = 0
             font = 13
         }
+        let h = large ? edge * 0.78 : 56
         let b = SKShapeNode(
-            rectOf: CGSize(width: edge + pad, height: (large ? edge * 0.72 : 56) + pad),
-            cornerRadius: large ? 18 : 16
+            rectOf: CGSize(width: edge, height: h),
+            cornerRadius: large ? 22 : 16
         )
-        b.fillColor = SKColor(red: 0.05, green: 0.04, blue: 0.14, alpha: 0.82)
+        b.fillColor = SKColor(red: 0.05, green: 0.04, blue: 0.14, alpha: 0.88)
         b.strokeColor = color
-        b.lineWidth = 2.5
-        b.glowWidth = 1.5
+        b.lineWidth = 3
+        b.glowWidth = 2
         b.zPosition = 200
         let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         t.text = title
@@ -808,6 +830,65 @@ public final class HeistScene: SKScene {
         t.name = "btnLabel"
         b.addChild(t)
         return b
+    }
+
+    private func pressFaceButton(_ btn: SKShapeNode) {
+        btn.removeAction(forKey: "press")
+        btn.setScale(1)
+        let down = SKAction.group([
+            SKAction.scale(to: 0.88, duration: 0.05),
+            SKAction.fadeAlpha(to: 1, duration: 0.05),
+        ])
+        let up = SKAction.scale(to: 1.0, duration: 0.1)
+        up.timingMode = .easeOut
+        btn.run(SKAction.sequence([down, up]), withKey: "press")
+    }
+
+    /// Rebuild invisible hit plates: left ~38% = move, right ~38% split JUMP (top) / POUNCE (bottom).
+    private func layoutControlHitZones() {
+        guard moveHitZone != nil, jumpHitZone != nil, pounceHitZone != nil else { return }
+        let hw = size.width * 0.5
+        let hh = size.height * 0.5
+        let insets = safeInsets()
+        let bottomSafe = max(insets.bottom, 20)
+        moveHitZone.removeAllChildren()
+        jumpHitZone.removeAllChildren()
+        pounceHitZone.removeAllChildren()
+
+        let moveW = size.width * 0.38
+        let moveH = size.height * 0.55
+        let movePlate = SKShapeNode(rectOf: CGSize(width: moveW, height: moveH), cornerRadius: 8)
+        movePlate.fillColor = .clear
+        movePlate.strokeColor = .clear
+        movePlate.name = "movePlate"
+        moveHitZone.position = CGPoint(x: -hw + moveW * 0.5, y: -hh + moveH * 0.5 + bottomSafe * 0.2)
+        moveHitZone.addChild(movePlate)
+
+        let rightW = size.width * 0.40
+        let jumpH = size.height * 0.28
+        let pounceH = size.height * 0.26
+        let jumpPlate = SKShapeNode(rectOf: CGSize(width: rightW, height: jumpH), cornerRadius: 8)
+        jumpPlate.fillColor = .clear
+        jumpPlate.strokeColor = .clear
+        jumpPlate.name = "jumpPlate"
+        jumpHitZone.position = CGPoint(
+            x: hw - rightW * 0.5,
+            y: -hh + pounceH + jumpH * 0.5 + bottomSafe * 0.25
+        )
+        jumpHitZone.addChild(jumpPlate)
+
+        let pouncePlate = SKShapeNode(rectOf: CGSize(width: rightW, height: pounceH), cornerRadius: 8)
+        pouncePlate.fillColor = .clear
+        pouncePlate.strokeColor = .clear
+        pouncePlate.name = "pouncePlate"
+        pounceHitZone.position = CGPoint(x: hw - rightW * 0.5, y: -hh + pounceH * 0.5 + bottomSafe * 0.15)
+        pounceHitZone.addChild(pouncePlate)
+    }
+
+    private func hitInZone(_ zone: SKNode, pointInHUD p: CGPoint) -> Bool {
+        // playHUD sits at the origin under hud — plate.contains expects zone-local coords.
+        let local = CGPoint(x: p.x - zone.position.x, y: p.y - zone.position.y)
+        return zone.children.contains { $0.contains(local) }
     }
 
     private func setupHUD() {
@@ -1639,15 +1720,17 @@ public final class HeistScene: SKScene {
         let rightSafe = max(insets.right, 0)
         // Dock / rest position stays inside safe area (same look in smoke + ship).
         if stickTouch == nil {
-            stickBase.position = CGPoint(x: -hw + 72 + leftSafe, y: -hh + 96 + bottomSafe * 0.4)
+            stickBase.position = CGPoint(x: -hw + 88 + leftSafe, y: -hh + 110 + bottomSafe * 0.4)
             stickKnob.position = stickBase.position
-            stickBase.alpha = 0.22
-            stickKnob.alpha = 0.22
+            stickBase.alpha = 0.38
+            stickKnob.alpha = 0.38
         }
-        // Separated ≥88pt face buttons — right half, inside safe area.
-        let btnX = hw - 70 - rightSafe
-        jumpBtn.position = CGPoint(x: btnX, y: -hh + 148 + bottomSafe * 0.35)
-        pounceBtn.position = CGPoint(x: btnX, y: -hh + 58 + bottomSafe * 0.35)
+        // Thumb-sized face buttons — right side, inside safe area (zones are larger).
+        let edge = CGFloat(max(112, tuning.feel.faceButtonMinPt))
+        let btnX = hw - edge * 0.55 - rightSafe
+        jumpBtn.position = CGPoint(x: btnX, y: -hh + 168 + bottomSafe * 0.35)
+        pounceBtn.position = CGPoint(x: btnX, y: -hh + 68 + bottomSafe * 0.35)
+        layoutControlHitZones()
         let hudTop = hh - topSafe - 6
         let hudX = -hw + 16 + leftSafe
         hudCarried.position = CGPoint(x: hudX, y: hudTop)
@@ -2188,20 +2271,24 @@ public final class HeistScene: SKScene {
                 }
                 return
             }
-            if jumpBtn.contains(p) {
+            // Right third zones first (JUMP / POUNCE) — large invisible plates, not tiny art.
+            if jumpTouch == nil, hitInZone(jumpHitZone, pointInHUD: p) || jumpBtn.contains(p) {
                 jumpTouch = touch
                 jumpPressed = true
                 jumpHeld = true
-                hapticLight.impactOccurred()
+                pressFaceButton(jumpBtn)
+                if !smokeEnabled { hapticLight.impactOccurred() }
                 continue
             }
-            if pounceBtn.contains(p) {
+            if pounceTouch == nil, hitInZone(pounceHitZone, pointInHUD: p) || pounceBtn.contains(p) {
+                pounceTouch = touch
                 pouncePressed = true
-                hapticMed.impactOccurred()
+                pressFaceButton(pounceBtn)
+                if !smokeEnabled { hapticMed.impactOccurred() }
                 continue
             }
-            // Left half: stick appears at the finger (placement-insensitive).
-            if p.x < 0 {
+            // Left third (or left half fallback): stick appears at the finger.
+            if stickTouch == nil, hitInZone(moveHitZone, pointInHUD: p) || p.x < 0 {
                 stickTouch = touch
                 stickOrigin = p
                 stickBase.position = p
@@ -2215,8 +2302,27 @@ public final class HeistScene: SKScene {
 
     public override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         if smokeEnabled || runPaused || resumeCountdown > 0 { return }
-        for touch in touches where touch === stickTouch {
-            updateStick(touch.location(in: hud))
+        for touch in touches {
+            if touch === stickTouch {
+                updateStick(touch.location(in: hud))
+            }
+            // Sliding onto JUMP / POUNCE from a miss still counts (forgiving).
+            let p = touch.location(in: hud)
+            if jumpTouch == nil, touch !== stickTouch, touch !== pounceTouch,
+               hitInZone(jumpHitZone, pointInHUD: p) {
+                jumpTouch = touch
+                jumpPressed = true
+                jumpHeld = true
+                pressFaceButton(jumpBtn)
+                if !smokeEnabled { hapticLight.impactOccurred() }
+            }
+            if pounceTouch == nil, touch !== stickTouch, touch !== jumpTouch,
+               hitInZone(pounceHitZone, pointInHUD: p) {
+                pounceTouch = touch
+                pouncePressed = true
+                pressFaceButton(pounceBtn)
+                if !smokeEnabled { hapticMed.impactOccurred() }
+            }
         }
     }
 
@@ -2228,13 +2334,16 @@ public final class HeistScene: SKScene {
                 moveX = 0
                 moveY = 0
                 stickKnob.position = stickBase.position
-                stickBase.alpha = 0.22
-                stickKnob.alpha = 0.22
+                stickBase.alpha = 0.38
+                stickKnob.alpha = 0.38
                 layoutUI()
             }
             if touch === jumpTouch {
                 jumpTouch = nil
                 jumpHeld = false
+            }
+            if touch === pounceTouch {
+                pounceTouch = nil
             }
         }
     }
@@ -2644,15 +2753,15 @@ public final class HeistScene: SKScene {
                 if midrunOk { smokeStatus.stomps += 1 }
                 JuiceSound.shared.playStomp()
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
-                // Hit-stop: ~65 ms base, ~80 ms at combo ≥3 (stays in the 40–80 ms punch band).
+                // Hit-stop: ~70 ms base, ~80 ms at combo ≥3 (stays in the 40–80 ms punch band).
                 let stop = sim.state.bandit.combo >= 3
                     ? max(tuning.feel.stompHitstop, 0.08)
                     : tuning.feel.stompHitstop
                 hitStop = max(hitStop, stop)
-                shake(1.7)
-                squash(1.68, 0.36)
-                impactFlash(intensity: sim.state.bandit.combo >= 3 ? 0.55 : 0.38)
-                zoomPunch(1.045)
+                shake(1.85)
+                squash(1.72, 0.34)
+                impactFlash(intensity: sim.state.bandit.combo >= 3 ? 0.6 : 0.42)
+                zoomPunch(1.05)
                 neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 22)
                 neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 14)
                 dust(at: e.position, count: 20, color: ArtCatalog.neonPink)
@@ -3170,15 +3279,22 @@ public final class HeistScene: SKScene {
         hudCarried.text = "✦ \(shinyTotal)"
         hudHearts.text = String(repeating: "♥", count: max(0, b.hearts))
         if b.maskMode {
-            hudCombo.text = b.combo > 1 ? "◈ MASK ×2  COMBO x\(b.combo)" : "◈ MASK ×2"
+            hudCombo.text = b.combo >= 1 ? "◈ MASK ×2  COMBO x\(max(1, b.combo))" : "◈ MASK ×2"
             hudCombo.isHidden = false
             hudCombo.fontColor = ArtCatalog.neonCyan
             (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
-        } else if b.combo > 1 {
+        } else if b.combo >= 1 {
             hudCombo.text = "COMBO x\(b.combo)"
             hudCombo.isHidden = false
             hudCombo.fontColor = ArtCatalog.neonLime
             (hudCombo.childNode(withName: "hudGlow") as? SKLabelNode)?.fontColor = ArtCatalog.neonLime.withAlphaComponent(0.45)
+            // Pulse on each new chain step so the counter feels alive.
+            if b.combo >= 2, hudCombo.action(forKey: "comboPulse") == nil {
+                hudCombo.run(SKAction.sequence([
+                    SKAction.scale(to: 1.18, duration: 0.07),
+                    SKAction.scale(to: 1.0, duration: 0.1),
+                ]), withKey: "comboPulse")
+            }
         } else {
             hudCombo.text = ""
             hudCombo.isHidden = true

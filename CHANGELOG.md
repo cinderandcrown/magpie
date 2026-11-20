@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Gameplay
+- **Phone feel (Nicholas):** thumb-sized JUMP/POUNCE (112 pt) + huge invisible hit zones (left ~38% move, right ~40% jump/pounce), multitouch on, press squash + haptic; coyote 100 ms / jump buffer 150 ms; stomp box 2.0× sprite wide with fall magnet + land-frame stomps; easy opening MOP pack + street shinies; combo shows from x1.
 - **Feel pass 3 (post-daaed6f):** MOPs no longer stack into one white blob (wider patrol + de-clump + gentle seek); walk/run reads on screen (faster sheets, lean, foot dust); quiet stretches get a “POUNCE A MOP!” nudge.
 - **Feel pass 2 (post-76646e9):** snappier accel/turn (less robotic), slightly tighter fall, louder jump/land/stomp, harder stomp hit-stop (~65–80 ms) + white flash + zoom punch, speed-scaled camera follow, post-Mask “NOW → EXIT” toast with amplified beacon, mid-surprise earlier (~26 s / tile 28).
 - **Punchy juice (feel pass):** every jump / land / stomp / pickup gets hit-stop, harder screen shake, squash-stretch, dust/sparks/impact rings, and SFX. Jump arcs fall faster (less float); coyote 0.12 s + jump buffer 0.14 s kept.
