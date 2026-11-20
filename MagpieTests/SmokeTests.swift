@@ -78,8 +78,14 @@ final class SmokeTests: XCTestCase {
         XCTAssertNotEqual(sim.state.phase, .title)
         // With harness flags pre-armed the brain can clear the loop well under 100 ticks.
         XCTAssertGreaterThan(sim.state.tick, 20, "soak must advance the sim past title")
+        let finished: Bool = {
+            switch sim.state.phase {
+            case .won, .failed: return true
+            default: return false
+            }
+        }()
         XCTAssertTrue(
-            stomps > 0 || brain.diedOnce || sim.state.phase == .won || sim.state.phase == .failed,
+            stomps > 0 || brain.diedOnce || finished,
             "smoke soak should stomp, die, or finish — not idle forever"
         )
     }
