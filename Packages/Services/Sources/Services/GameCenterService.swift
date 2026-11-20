@@ -24,11 +24,6 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
 
     public func authenticate(completion: (@Sendable (Bool) -> Void)?) {
         authCompletion = completion
-<<<<<<< HEAD
-        let player = GKLocalPlayer.local
-        player.authenticateHandler = { [weak self] viewController, error in
-            Task { @MainActor in
-=======
         GKLocalPlayer.local.authenticateHandler = { [weak self] viewController, error in
             // Snapshot Sendable values only — never send GKLocalPlayer across isolation.
             let local = GKLocalPlayer.local
@@ -37,13 +32,12 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
             let name = local.displayName
             // Present / mutate state on the main queue (handler may already be main).
             DispatchQueue.main.async {
->>>>>>> 375a6ee (Fix: GameCenter RegionIsolation + deprecated leaderboardIdentifier)
                 guard let self else { return }
                 if let viewController, let root = Self.topViewController() {
                     root.present(viewController, animated: true)
                     return
                 }
-                if error != nil || !player.isAuthenticated {
+                if !ok {
                     self.isAuthenticated = false
                     self.localPlayerID = nil
                     self.localDisplayName = nil
@@ -52,8 +46,8 @@ public final class GameCenterService: NSObject, GameCenterServing, @unchecked Se
                     return
                 }
                 self.isAuthenticated = true
-                self.localPlayerID = player.gamePlayerID
-                self.localDisplayName = player.displayName
+                self.localPlayerID = pid
+                self.localDisplayName = name
                 self.authCompletion?(true)
                 self.authCompletion = nil
             }
