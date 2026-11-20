@@ -17,19 +17,35 @@ public struct InputFrame: Equatable, Sendable {
     public var jumpPressed: Bool
     public var jumpHeld: Bool
     public var pouncePressed: Bool
+    /// Ground slide / air dash burst.
+    public var dashPressed: Bool
+    /// Spend a Mask charge to enter Mask Mode.
+    public var maskPressed: Bool
+    /// Context grab / interact (loot, doors, vents).
+    public var grabPressed: Bool
+    /// Junk gadget throw (smoke / EMP stun).
+    public var gadgetPressed: Bool
 
     public init(
         moveX: Double = 0,
         moveY: Double = 0,
         jumpPressed: Bool = false,
         jumpHeld: Bool = false,
-        pouncePressed: Bool = false
+        pouncePressed: Bool = false,
+        dashPressed: Bool = false,
+        maskPressed: Bool = false,
+        grabPressed: Bool = false,
+        gadgetPressed: Bool = false
     ) {
         self.moveX = moveX
         self.moveY = moveY
         self.jumpPressed = jumpPressed
         self.jumpHeld = jumpHeld
         self.pouncePressed = pouncePressed
+        self.dashPressed = dashPressed
+        self.maskPressed = maskPressed
+        self.grabPressed = grabPressed
+        self.gadgetPressed = gadgetPressed
     }
 
     public static let idle = InputFrame()

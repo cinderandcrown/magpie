@@ -197,6 +197,15 @@ jobs:
           app="$(ls -d "$RUNNER_TEMP"/ipa/Payload/*.app | head -1)"
           codesign --verify --strict "$app"
           codesign -d --entitlements "$RUNNER_TEMP/entitlements.plist" --xml "$app" 2>/dev/null
+          # Profile entitlements — fail the upload if the IPA claims a capability the profile lacks.
+          profile_ent="$RUNNER_TEMP/profile-entitlements.plist"
+          if [ -f "$app/embedded.mobileprovision" ]; then
+            security cms -D -i "$app/embedded.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+            /usr/libexec/PlistBuddy -x -c 'Print :Entitlements' "$RUNNER_TEMP/profile.plist" > "$profile_ent"
+          else
+            echo "WARN: no embedded.mobileprovision — check_signed_app will reject iCloud entitlements" >&2
+            printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict/></plist>' > "$profile_ent"
+          fi
           python3 scripts/check_signed_app.py \
             --info "$app/Info.plist" \
             --entitlements "$RUNNER_TEMP/entitlements.plist" \
@@ -204,7 +213,8 @@ jobs:
             --bundle-id "$BUNDLE_ID" \
             --version "$VERSION" \
             --build "$BUILD" \
-            --require-export-compliance
+            --require-export-compliance \
+            --profile-entitlements "$profile_ent"
 
       - name: Validate with Apple
         # altool needs the ASC app record; skip on PR sign-checks until Nicholas creates it.

@@ -1143,6 +1143,11 @@ public enum TitleArt {
         "ui/logo_b1_holo_glass_compact",
         "ui/logo_b1_holo_glass",
     ]
+    /// Official title/start key art (Higgsfield leap still) — aspect-fill behind chrome.
+    public static let titleKeyArtCandidates: [String] = [
+        "ui/title_leap@1024",
+        "ui/title_leap",
+    ]
     public static let displayTitle = "The Neon City Bandit"
     public static let fallbackWordmark = "THE NEON CITY\nBANDIT"
     /// In-game credits. Spriterrific steampunk-neon bandit / MOP sheets owned by Cinder & Crown.
@@ -1684,6 +1689,17 @@ public final class BanditVisual: SKNode {
             playOnce(deathTextures, action: "death", fallbackTPF: 0.05)
         case .pickUp:
             playOnce(pickUpTextures, action: "pick_up", fallbackTPF: 0.04)
+        case .slide:
+            // DASH / slide burst — reuse run frames at a snappy rate when no dedicated sheet.
+            if !sheetDriven { startRunCycle() }
+            let slideSrc = runTextures.isEmpty ? walkTextures : runTextures
+            let slideTrim = slideSrc.count > 10 ? Array(slideSrc.prefix(10)) : slideSrc
+            if slideTrim.count > 1 {
+                playLoop(slideTrim, action: "run", fallbackTPF: 0.035)
+            } else {
+                sprite.texture = runTextures.first ?? walkTextures.first ?? idleTex
+                driveTextures = []
+            }
         case .idle:
             if !sheetDriven { startIdleMotion() }
             playLoop(idleTextures, action: "idle", fallbackTPF: 0.12)

@@ -203,6 +203,24 @@ public final class JuiceSound: @unchecked Sendable {
         SFXManager.shared.playPounce()
     }
 
+    public func playDash() {
+        prepare()
+        logSmoke("sfx dash_whoosh")
+        SFXManager.shared.play("pounce_whoosh", rate: 1.35, gain: 0.9)
+    }
+
+    public func playMaskActivate() {
+        prepare()
+        logSmoke("sfx mask_activate")
+        SFXManager.shared.play("mask_on", rate: 1.0, gain: 0.85)
+    }
+
+    public func playGrab() {
+        prepare()
+        logSmoke("sfx grab_pickup")
+        SFXManager.shared.playCollect(combo: 1, loot: true)
+    }
+
     public func playStomp() {
         prepare()
         logSmoke("sfx stomp_crunch")

@@ -57,6 +57,47 @@ class CheckSignedAppTests(unittest.TestCase):
         found = csa.problems(info, entitlements, "GDNRT9DJ58", "com.cinderandcrown.magpie", "0.1.0", "1")
         self.assertGreaterEqual(len(found), 3)
 
+    def test_rejects_icloud_without_profile(self) -> None:
+        info = {
+            "CFBundleIdentifier": "com.cinderandcrown.magpie",
+            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleVersion": "1",
+            "ITSAppUsesNonExemptEncryption": False,
+        }
+        entitlements = {
+            "application-identifier": "GDNRT9DJ58.com.cinderandcrown.magpie",
+            "com.apple.developer.team-identifier": "GDNRT9DJ58",
+            "com.apple.developer.icloud-container-identifiers": ["iCloud.com.cinderandcrown.magpie"],
+            "com.apple.developer.icloud-services": ["CloudKit"],
+        }
+        found = csa.problems(
+            info, entitlements, "GDNRT9DJ58", "com.cinderandcrown.magpie", "0.1.0", "1",
+            profile_entitlements={"application-identifier": "GDNRT9DJ58.com.cinderandcrown.magpie"},
+        )
+        self.assertTrue(any("icloud" in p.lower() for p in found))
+
+    def test_profile_subset_rejects_extra_capability(self) -> None:
+        info = {
+            "CFBundleIdentifier": "com.cinderandcrown.magpie",
+            "CFBundleShortVersionString": "0.1.0",
+            "CFBundleVersion": "1",
+        }
+        entitlements = {
+            "application-identifier": "GDNRT9DJ58.com.cinderandcrown.magpie",
+            "com.apple.developer.team-identifier": "GDNRT9DJ58",
+            "com.apple.developer.game-center": True,
+        }
+        profile = {
+            "application-identifier": "GDNRT9DJ58.com.cinderandcrown.magpie",
+            "com.apple.developer.team-identifier": "GDNRT9DJ58",
+            # game-center intentionally absent
+        }
+        found = csa.problems(
+            info, entitlements, "GDNRT9DJ58", "com.cinderandcrown.magpie", "0.1.0", "1",
+            profile_entitlements=profile,
+        )
+        self.assertTrue(any("game-center" in p for p in found))
+
     def test_cli_ok(self) -> None:
         import plistlib
 

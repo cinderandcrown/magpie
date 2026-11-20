@@ -44,8 +44,12 @@ final class GameCoreTests: XCTestCase {
     }
 
     func testVariableJumpShorterWhenReleased() throws {
+        // Tall chamber so neither jump bonks the ceiling before apex.
         let map = try TileMap.parse("""
         ######
+        #....#
+        #....#
+        #....#
         #....#
         #.@..#
         #====#
@@ -53,6 +57,7 @@ final class GameCoreTests: XCTestCase {
         """)
         var held = Sim(map: map, tuning: .default)
         held.state.phase = .playing
+        for _ in 0..<15 { held.step(.idle) }
         held.step(InputFrame(jumpPressed: true, jumpHeld: true))
         var peakHeld = 0.0
         for _ in 0..<50 {
@@ -62,6 +67,7 @@ final class GameCoreTests: XCTestCase {
 
         var cut = Sim(map: map, tuning: .default)
         cut.state.phase = .playing
+        for _ in 0..<15 { cut.step(.idle) }
         cut.step(InputFrame(jumpPressed: true, jumpHeld: true))
         var peakCut = 0.0
         for i in 0..<50 {
@@ -116,6 +122,7 @@ final class GameCoreTests: XCTestCase {
         let map = try TileMap.parse("""
         ######
         #....#
+        #....#
         #.@..#
         #====#
         ######
@@ -124,23 +131,38 @@ final class GameCoreTests: XCTestCase {
         XCTAssertEqual(tuning.feel.jumpBufferSeconds, 0.12, accuracy: 0.001)
         var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
+        for _ in 0..<15 { sim.step(.idle) }
         sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
         for _ in 0..<20 { sim.step(InputFrame(jumpHeld: true)) }
-        // Press jump shortly before landing — buffer should consume on touchdown.
+        // Spend the mid-air charge so the pre-land press buffers instead of double-jumping.
+        if sim.state.bandit.airJumpsRemaining > 0, !sim.state.bandit.onGround {
+            sim.state.bandit.coyote = 0
+            sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+            for _ in 0..<8 { sim.step(InputFrame(jumpHeld: true)) }
+        }
+        XCTAssertEqual(sim.state.bandit.airJumpsRemaining, 0)
+        // Press jump within ~1 tile of the deck so the 0.12s buffer still covers touchdown.
+        let deckY = Double(2) * sim.tuning.tileSize + 14 // approx feet on y=2 ground in this map
         var armed = false
-        while !sim.state.bandit.onGround && sim.state.tick < 200 {
-            let near = sim.state.bandit.velocity.y < -40
-            if near, !armed {
+        var jumpedAgain = false
+        while !sim.state.bandit.onGround && sim.state.tick < 400 {
+            let nearDeck = sim.state.bandit.position.y < deckY + sim.tuning.tileSize * 1.2
+                && sim.state.bandit.velocity.y < -20
+            if nearDeck, !armed {
                 sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
                 armed = true
             } else {
                 sim.step(InputFrame(jumpHeld: armed))
             }
+            if sim.state.events.contains(where: { $0.kind == .jump }) || sim.state.bandit.velocity.y > 40 {
+                jumpedAgain = true
+            }
         }
-        var jumpedAgain = false
         for _ in 0..<20 {
             sim.step(InputFrame(jumpHeld: true))
-            if sim.state.bandit.velocity.y > 40 { jumpedAgain = true }
+            if sim.state.bandit.velocity.y > 40 || sim.state.events.contains(where: { $0.kind == .jump }) {
+                jumpedAgain = true
+            }
         }
         XCTAssertTrue(armed)
         XCTAssertTrue(jumpedAgain, "jump buffer (\(tuning.feel.jumpBufferSeconds)s) should fire on landing")
@@ -1393,6 +1415,220 @@ final class GameCoreTests: XCTestCase {
         let dead = sim.tuning.feel.stickDeadZone * 0.5
         for _ in 0..<90 { sim.step(InputFrame(moveX: dead)) }
         XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 1.5)
+    }
+
+    // MARK: - Action cluster (JUMP / POUNCE / DASH / MASK / GRAB)
+
+    func testDoubleJumpConsumesAirCharge() throws {
+        let map = try TileMap.parse("""
+        ########
+        #......#
+        #......#
+        #......#
+        #.@....#
+        #======#
+        ########
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 11)
+        sim.state.phase = .playing
+        // Settle onto the deck before the jump so coyote/air charges are clean.
+        for _ in 0..<20 { sim.step(.idle) }
+        XCTAssertTrue(sim.state.bandit.onGround)
+        XCTAssertEqual(sim.state.bandit.airJumpsRemaining, 0)
+        sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+        for _ in 0..<6 { sim.step(InputFrame(jumpHeld: true)) }
+        XCTAssertFalse(sim.state.bandit.onGround)
+        XCTAssertEqual(sim.state.bandit.airJumpsRemaining, 1, "takeoff arms one mid-air jump")
+        sim.state.bandit.coyote = 0
+        sim.state.bandit.jumpBuffer = 0
+        let yBefore = sim.state.bandit.position.y
+        sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+        XCTAssertEqual(sim.state.bandit.airJumpsRemaining, 0)
+        XCTAssertGreaterThan(sim.state.bandit.velocity.y, 40)
+        XCTAssertGreaterThanOrEqual(sim.state.bandit.position.y, yBefore - 1)
+        // Third air jump must not fire.
+        sim.state.bandit.coyote = 0
+        sim.state.bandit.jumpBuffer = 0
+        let vy = sim.state.bandit.velocity.y
+        sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+        XCTAssertEqual(sim.state.bandit.airJumpsRemaining, 0)
+        XCTAssertLessThanOrEqual(sim.state.bandit.velocity.y, vy + 1)
+    }
+
+    func testDashGrantsIFramesAndCooldown() throws {
+        let map = try TileMap.parse("""
+        ##############
+        #............#
+        #.@..........#
+        #============#
+        ##############
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 12)
+        sim.state.phase = .playing
+        for _ in 0..<10 { sim.step(InputFrame(moveX: 1)) }
+        let x0 = sim.state.bandit.position.x
+        sim.step(InputFrame(moveX: 1, dashPressed: true))
+        XCTAssertTrue(sim.state.events.contains { $0.kind == .dash })
+        XCTAssertGreaterThan(sim.state.bandit.invuln, 0.1)
+        XCTAssertGreaterThan(sim.state.bandit.dashCooldown, 0.5)
+        XCTAssertGreaterThan(sim.state.bandit.dashTimer, 0)
+        XCTAssertGreaterThan(sim.state.bandit.position.x, x0)
+        // Cooldown blocks a second dash.
+        sim.state.bandit.dashTimer = 0
+        sim.step(InputFrame(dashPressed: true))
+        XCTAssertFalse(sim.state.events.contains { $0.kind == .dash })
+    }
+
+    func testDashIFramesDodgeMopContact() throws {
+        let map = try TileMap.parse("""
+        ##############
+        #............#
+        #.@....M.....#
+        #============#
+        ##############
+        """)
+        var tuning = Tuning.default
+        tuning.hearts = 3
+        var sim = Sim(map: map, tuning: tuning, seed: 13)
+        sim.state.phase = .playing
+        XCTAssertFalse(sim.state.mops.isEmpty)
+        // Close the gap, then dash through with i-frames.
+        for _ in 0..<40 { sim.step(InputFrame(moveX: 1)) }
+        let heartsBefore = sim.state.bandit.hearts
+        sim.step(InputFrame(moveX: 1, dashPressed: true))
+        for _ in 0..<12 {
+            sim.step(InputFrame(moveX: 1))
+        }
+        XCTAssertEqual(sim.state.bandit.hearts, heartsBefore, "dash i-frames must dodge MOP contact")
+        XCTAssertFalse(sim.state.events.contains { if case .hurt = $0.kind { return true }; return false })
+    }
+
+    func testMaskButtonSpendsCharge() throws {
+        let map = try TileMap.parse("""
+        ######
+        #....#
+        #.@..#
+        #====#
+        ######
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 14)
+        sim.state.phase = .playing
+        XCTAssertEqual(sim.state.bandit.maskCharges, 2)
+        sim.step(InputFrame(maskPressed: true))
+        XCTAssertTrue(sim.state.bandit.maskMode)
+        XCTAssertEqual(sim.state.bandit.maskCharges, 1)
+        XCTAssertTrue(sim.state.events.contains { $0.kind == .maskOn })
+        // Already in Mask Mode — second press is a no-op until it ends.
+        sim.step(InputFrame(maskPressed: true))
+        XCTAssertEqual(sim.state.bandit.maskCharges, 1)
+    }
+
+    func testGrabNearShinyPlaysPickUp() throws {
+        let map = try TileMap.parse("""
+        ##########
+        #........#
+        #.@....*.#
+        #========#
+        ##########
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 15)
+        sim.state.phase = .playing
+        for _ in 0..<20 { sim.step(.idle) }
+        XCTAssertFalse(sim.state.shinies.isEmpty)
+        let shiny = sim.state.shinies[0].position
+        let tile = sim.tuning.tileSize
+        // Sit inside grab reach but outside the auto-collect radius.
+        sim.state.bandit.position = Vec2(shiny.x - tile * 1.1, shiny.y)
+        sim.state.bandit.velocity = .zero
+        sim.step(.idle)
+        XCTAssertEqual(sim.state.bandit.interactTarget, .shiny)
+        XCTAssertTrue(sim.state.shinies[0].alive)
+        sim.step(InputFrame(grabPressed: true))
+        XCTAssertTrue(
+            sim.state.events.contains { $0.kind == .grab } || sim.state.events.contains { $0.kind == .shiny },
+            "GRAB near loot must fire grab and/or shiny collect"
+        )
+        XCTAssertTrue(sim.state.bandit.anim == .pickUp || sim.state.bandit.carriedShinies >= 1)
+    }
+
+    func testGrabDimmedWhenNoTarget() throws {
+        let map = try TileMap.parse("""
+        ########
+        #......#
+        #.@....#
+        #======#
+        ########
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 16)
+        sim.state.phase = .playing
+        for _ in 0..<10 { sim.step(.idle) }
+        XCTAssertEqual(sim.state.bandit.interactTarget, .none)
+        sim.step(InputFrame(grabPressed: true))
+        XCTAssertFalse(sim.state.events.contains { $0.kind == .grab })
+    }
+
+    func testPounceStillAttacks() throws {
+        let map = try TileMap.parse("""
+        ########
+        #......#
+        #......#
+        #.@....#
+        #======#
+        ########
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 17)
+        sim.state.phase = .playing
+        sim.step(InputFrame(jumpPressed: true, jumpHeld: true))
+        for _ in 0..<6 { sim.step(InputFrame(jumpHeld: true)) }
+        sim.step(InputFrame(pouncePressed: true))
+        XCTAssertTrue(sim.state.bandit.pouncing || sim.state.events.contains { $0.kind == .pounce })
+    }
+
+    /// Stick + face-button edges coexist in one InputFrame (multitouch contract).
+    func testStickPlusActionEdgesInSameFrame() throws {
+        let map = try TileMap.parse("""
+        ############
+        #..........#
+        #.@........#
+        #==========#
+        ############
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 18)
+        sim.state.phase = .playing
+        for _ in 0..<20 { sim.step(.idle) }
+        for _ in 0..<15 { sim.step(InputFrame(moveX: 1)) }
+        sim.step(InputFrame(moveX: 1, jumpPressed: true, jumpHeld: true, dashPressed: true))
+        XCTAssertGreaterThan(abs(sim.state.bandit.velocity.x), 20)
+        XCTAssertTrue(sim.state.events.contains { $0.kind == .dash } || sim.state.bandit.dashCooldown > 0)
+        // Hold stick through the dash burst, then release — edges must not latch motion.
+        while sim.state.bandit.dashTimer > 0 {
+            sim.step(InputFrame(moveX: 1))
+        }
+        sim.step(InputFrame(moveX: 1, pouncePressed: true))
+        for _ in 0..<90 { sim.step(.idle) }
+        XCTAssertEqual(sim.state.bandit.velocity.x, 0, accuracy: 2)
+        XCTAssertEqual(sim.state.bandit.anim, .idle)
+    }
+
+    func testPauseIdempotentDoesNotFlickerPhase() throws {
+        // Sim stays .playing; pause is a render-layer flag. Prove action edges do not latch across idle.
+        let map = try TileMap.parse("""
+        ######
+        #....#
+        #.@..#
+        #====#
+        ######
+        """)
+        var sim = Sim(map: map, tuning: .default, seed: 19)
+        sim.state.phase = .playing
+        sim.step(InputFrame(jumpPressed: true, dashPressed: true, maskPressed: true, grabPressed: true))
+        let phase = sim.state.phase
+        for _ in 0..<5 { sim.step(.idle) }
+        XCTAssertEqual(sim.state.phase, phase)
+        // No phantom dash from a held edge — cooldown only from the first press.
+        let cd = sim.state.bandit.dashCooldown
+        sim.step(.idle)
+        XCTAssertLessThanOrEqual(sim.state.bandit.dashCooldown, cd)
     }
 
 }

@@ -3,7 +3,16 @@
 import Foundation
 
 public enum BanditAnim: Equatable, Hashable, Sendable {
-    case idle, walk, run, jump, apex, fall, pounce, wallSlide, hurt, death, pickUp
+    case idle, walk, run, jump, apex, fall, pounce, wallSlide, hurt, death, pickUp, slide
+}
+
+public enum InteractKind: Equatable, Sendable {
+    case none
+    case shiny
+    case exit
+    case latch
+    case stash
+    case crew
 }
 
 public struct BanditState: Equatable, Sendable {
@@ -23,6 +32,8 @@ public struct BanditState: Equatable, Sendable {
     public var maskMode: Bool
     /// Remaining Mask Mode duration (independent of combo grace).
     public var maskTimer: Double
+    /// MASK button charges (HUD "MASK ×N"). Earned by combo, spent to activate.
+    public var maskCharges: Int
     public var hearts: Int
     public var invuln: Double
     public var carriedShinies: Int
@@ -40,6 +51,16 @@ public struct BanditState: Equatable, Sendable {
     public var landStompGrace: Int
     /// While > 0, one-way platforms do not collide (drop-through).
     public var dropThrough: Double
+    /// Remaining dash/slide burst time.
+    public var dashTimer: Double
+    /// Cooldown before next dash.
+    public var dashCooldown: Double
+    /// Cooldown before next gadget throw.
+    public var gadgetCooldown: Double
+    /// Mid-air jumps remaining (1 = double jump). Refills on ground / wall jump.
+    public var airJumpsRemaining: Int
+    /// Nearest context interact (loot / door / vent) for the GRAB button.
+    public var interactTarget: InteractKind
 
     public static func spawn(at position: Vec2, hearts: Int) -> BanditState {
         BanditState(
@@ -58,6 +79,7 @@ public struct BanditState: Equatable, Sendable {
             comboTimer: 0,
             maskMode: false,
             maskTimer: 0,
+            maskCharges: 2,
             hearts: hearts,
             invuln: 0,
             carriedShinies: 0,
@@ -68,7 +90,12 @@ public struct BanditState: Equatable, Sendable {
             jumpCutArmed: false,
             apexStompFrames: 0,
             landStompGrace: 0,
-            dropThrough: 0
+            dropThrough: 0,
+            dashTimer: 0,
+            dashCooldown: 0,
+            gadgetCooldown: 0,
+            airJumpsRemaining: 0,
+            interactTarget: .none
         )
     }
 }

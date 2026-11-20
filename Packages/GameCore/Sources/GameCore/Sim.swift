@@ -6,6 +6,7 @@ public struct SimEvent: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case jump, land, pounce, flop, stomp, shiny, bank, maskOn, hurt, win, fail(FailReason), checkpoint, dust, shake
         case crewFreed(crewID: String)
+        case dash, grab, gadget
     }
     public var kind: Kind
     public var position: Vec2
@@ -195,12 +196,20 @@ public struct Sim: Equatable, Sendable {
         }
         if b.landCooldown > 0 { b.landCooldown = max(0, b.landCooldown - dt) }
         if b.dropThrough > 0 { b.dropThrough = max(0, b.dropThrough - dt) }
+        if b.dashCooldown > 0 { b.dashCooldown = max(0, b.dashCooldown - dt) }
+        if b.gadgetCooldown > 0 { b.gadgetCooldown = max(0, b.gadgetCooldown - dt) }
+        if b.dashTimer > 0 {
+            b.dashTimer = max(0, b.dashTimer - dt)
+            if b.dashTimer <= 0, b.anim == .slide { b.anim = b.onGround ? .idle : .fall }
+        }
         if b.animHold > 0 {
             b.animHold = max(0, b.animHold - dt)
             if b.animHold <= 0, b.anim == .hurt || b.anim == .pickUp {
                 b.anim = .idle
             }
         }
+        // Context GRAB target — loot / exit / latch / stash / crew within reach.
+        b.interactTarget = nearestInteract(bandit: b)
 
         // Drop through one-ways: hold down while feet are ON a one-way deck.
         // Do NOT scan horizontal neighbors — a canal lip beside solid street used to
@@ -224,6 +233,7 @@ public struct Sim: Equatable, Sendable {
         let wasAirborne = !b.onGround || b.flopping || b.pouncing || b.dropThrough > 0
         let groundedBefore = b.onGround
         integrate(input: input, bandit: &b, dt: dt)
+        applyActionButtons(input: input, bandit: &b)
         // Capture fall speed before collide zeroes it on land — used for stomp vs hurt.
         let preCollideVy = b.velocity.y
         // Stomp window: falling, OR within a few frames of apex (Nick feel pass).
@@ -310,34 +320,45 @@ public struct Sim: Equatable, Sendable {
             speedPx = walkPx + (runPx - walkPx) * min(1, u)
         }
         let targetVx = (move >= 0 ? 1.0 : -1.0) * speedPx
-        if mag > feel.stickDeadZone {
-            let reversing = bandit.velocity.x * targetVx < 0
-            let accel = accelBase * (reversing ? feel.turnAccelMul : 1)
-            if bandit.velocity.x < targetVx {
-                bandit.velocity.x = min(targetVx, bandit.velocity.x + accel * dt)
-            } else if bandit.velocity.x > targetVx {
-                bandit.velocity.x = max(targetVx, bandit.velocity.x - accel * dt)
+        // DASH owns horizontal velocity for its burst window (stick must not crush the i-frame dodge).
+        if bandit.dashTimer <= 0 {
+            if mag > feel.stickDeadZone {
+                let reversing = bandit.velocity.x * targetVx < 0
+                let accel = accelBase * (reversing ? feel.turnAccelMul : 1)
+                if bandit.velocity.x < targetVx {
+                    bandit.velocity.x = min(targetVx, bandit.velocity.x + accel * dt)
+                } else if bandit.velocity.x > targetVx {
+                    bandit.velocity.x = max(targetVx, bandit.velocity.x - accel * dt)
+                }
+            } else {
+                // Release stick → bleed horizontal on ground and in air (no forever skate / knockback).
+                let frMul = bandit.onGround ? 1.0 : feel.airControlMul * 0.85
+                let fr = groundDecel * frMul * dt
+                if bandit.velocity.x > 0 { bandit.velocity.x = max(0, bandit.velocity.x - fr) }
+                else if bandit.velocity.x < 0 { bandit.velocity.x = min(0, bandit.velocity.x + fr) }
             }
-        } else {
-            // Release stick → bleed horizontal on ground and in air (no forever skate / knockback).
-            let frMul = bandit.onGround ? 1.0 : feel.airControlMul * 0.85
-            let fr = groundDecel * frMul * dt
-            if bandit.velocity.x > 0 { bandit.velocity.x = max(0, bandit.velocity.x - fr) }
-            else if bandit.velocity.x < 0 { bandit.velocity.x = min(0, bandit.velocity.x + fr) }
         }
 
-        // Jump
+        // Jump — ground / coyote / wall, plus one mid-air double jump.
+        // Air charge is armed only by a real takeoff (not by walking off a ledge).
+        if bandit.onGround { bandit.airJumpsRemaining = 0 }
         let canCoyote = bandit.coyote > 0
         let canWall = (bandit.onWallLeft || bandit.onWallRight) && !bandit.onGround
-        if bandit.jumpBuffer > 0 && (bandit.onGround || canCoyote || canWall) {
+        let canDouble = !bandit.onGround && !canCoyote && !canWall && bandit.airJumpsRemaining > 0
+        if bandit.jumpBuffer > 0 && (bandit.onGround || canCoyote || canWall || canDouble) {
             if canWall && !bandit.onGround {
                 let dir: Double = bandit.onWallLeft ? 1 : -1
                 bandit.velocity.x = dir * feel.wallJumpVelocityX * tuning.tileSize / 2.2
                 bandit.velocity.y = feel.wallJumpVelocityY * tuning.tileSize / 2.2
                 bandit.facing = dir
                 bandit.wallCling = 0
+                bandit.airJumpsRemaining = 1
+            } else if canDouble {
+                bandit.airJumpsRemaining -= 1
+                bandit.velocity.y = feel.jumpVelocity * tuning.tileSize / 2.2 * 0.92
             } else {
                 bandit.velocity.y = feel.jumpVelocity * tuning.tileSize / 2.2
+                bandit.airJumpsRemaining = 1
             }
             bandit.onGround = false
             bandit.coyote = 0
@@ -576,6 +597,10 @@ public struct Sim: Equatable, Sendable {
     private func updateAnim(bandit: inout BanditState) {
         // Hurt / death / pick-up are sticky until animHold expires.
         if bandit.animHold > 0 { return }
+        if bandit.dashTimer > 0 {
+            bandit.anim = .slide
+            return
+        }
         if bandit.onGround {
             let speed = abs(bandit.velocity.x)
             let walkPx = tuning.walkSpeed * tuning.tileSize
@@ -598,6 +623,112 @@ public struct Sim: Equatable, Sendable {
         } else {
             bandit.anim = .fall
         }
+    }
+
+    /// DASH / MASK / GRAB / GADGET — thumb-cluster actions.
+    private mutating func applyActionButtons(input: InputFrame, bandit: inout BanditState) {
+        let feel = tuning.feel
+        let tile = tuning.tileSize
+
+        if input.dashPressed, bandit.dashCooldown <= 0, bandit.animHold <= 0 || bandit.anim == .pickUp {
+            bandit.dashTimer = feel.dashDuration
+            bandit.dashCooldown = feel.dashCooldown
+            bandit.velocity.x = bandit.facing * feel.dashSpeed * tile / 2.2
+            if bandit.onGround {
+                bandit.velocity.y = min(bandit.velocity.y, 0)
+                bandit.anim = .slide
+            } else {
+                bandit.velocity.y = max(bandit.velocity.y, -feel.dashSpeed * tile * 0.15)
+                bandit.anim = .slide
+            }
+            bandit.invuln = max(bandit.invuln, feel.dashInvuln)
+            bandit.pouncing = false
+            bandit.flopping = false
+            state.events.append(SimEvent(kind: .dash, position: bandit.position))
+            state.events.append(SimEvent(kind: .dust, position: bandit.position))
+        }
+
+        if input.maskPressed, !bandit.maskMode, bandit.maskCharges > 0 {
+            bandit.maskCharges -= 1
+            bandit.maskMode = true
+            bandit.maskTimer = tuning.maskDuration
+            state.events.append(SimEvent(kind: .maskOn, position: bandit.position))
+        }
+
+        if input.grabPressed, bandit.interactTarget != .none, bandit.animHold <= 0 {
+            switch bandit.interactTarget {
+            case .shiny:
+                // Force a nearby shiny collect via the normal radius after a pick-up pose.
+                bandit.anim = .pickUp
+                bandit.animHold = 0.35
+                // Nudge toward nearest shiny so collectShinies hits this frame.
+                if let shiny = state.shinies.first(where: {
+                    $0.alive && $0.position.distance(to: bandit.position) <= feel.grabReachTiles * tile * 1.4
+                }) {
+                    let dx = shiny.position.x - bandit.position.x
+                    bandit.position.x += max(-tile * 0.35, min(tile * 0.35, dx))
+                }
+                collectShinies(bandit: &bandit)
+                state.events.append(SimEvent(kind: .grab, position: bandit.position))
+            case .exit:
+                bandit.anim = .pickUp
+                bandit.animHold = 0.25
+                bankAndExit(bandit: &bandit)
+                state.events.append(SimEvent(kind: .grab, position: bandit.position))
+            case .crew:
+                bandit.anim = .pickUp
+                bandit.animHold = 0.35
+                collectCrew(bandit: &bandit)
+                state.events.append(SimEvent(kind: .grab, position: bandit.position))
+            case .latch, .stash:
+                bandit.anim = .pickUp
+                bandit.animHold = 0.28
+                state.events.append(SimEvent(kind: .grab, position: bandit.position))
+                state.events.append(SimEvent(kind: .dust, position: bandit.position))
+            case .none:
+                break
+            }
+        }
+
+        if input.gadgetPressed, bandit.gadgetCooldown <= 0 {
+            bandit.gadgetCooldown = feel.gadgetCooldown
+            let reach = feel.gadgetStunTiles * tile
+            for i in state.mops.indices where state.mops[i].alive {
+                if state.mops[i].position.distance(to: bandit.position) <= reach {
+                    state.mops[i].stun = max(state.mops[i].stun, feel.gadgetStunSeconds)
+                    state.mops[i].anim = .hurt
+                    state.mops[i].animHold = 0.4
+                }
+            }
+            state.events.append(SimEvent(kind: .gadget, position: bandit.position))
+            state.events.append(SimEvent(kind: .shake, position: bandit.position))
+        }
+    }
+
+    private func nearestInteract(bandit: BanditState) -> InteractKind {
+        let tile = tuning.tileSize
+        let reach = tuning.feel.grabReachTiles * tile
+        var best: (InteractKind, Double) = (.none, reach + 1)
+        for s in state.shinies where s.alive {
+            let d = s.position.distance(to: bandit.position)
+            if d <= reach, d < best.1 { best = (.shiny, d) }
+        }
+        for c in state.crewCages where !c.freed {
+            let d = c.position.distance(to: bandit.position)
+            if d <= reach * 1.1, d < best.1 { best = (.crew, d) }
+        }
+        let tx = Int(floor(bandit.position.x / tile))
+        let ty = Int(floor(bandit.position.y / tile))
+        for oy in -1...1 {
+            for ox in -1...1 {
+                let t = map.tile(atX: tx + ox, y: ty + oy)
+                let d = hypot(Double(ox), Double(oy)) * tile
+                if t == .exit, d <= reach * 1.2, d < best.1 { best = (.exit, d) }
+                if t == .latch, d <= reach, d < best.1 { best = (.latch, d) }
+                if t == .stash, d <= reach, d < best.1 { best = (.stash, d) }
+            }
+        }
+        return best.0
     }
 
     private mutating func collectShinies(bandit: inout BanditState) {
@@ -725,12 +856,19 @@ public struct Sim: Equatable, Sendable {
                 bandit.invuln = max(bandit.invuln, max(1.0, feel.invulnSeconds))
                 bandit.combo = min(tuning.comboCap, bandit.combo + 1)
                 bandit.comboTimer = tuning.comboGroundGrace
+                // Combo auto-enters Mask Mode (classic beat) and tops up MASK button charges.
                 if bandit.combo >= tuning.maskModeAtCombo && !bandit.maskMode {
                     bandit.maskMode = true
                     bandit.maskTimer = tuning.maskDuration
+                    let cap = tuning.feel.maskMaxCharges
+                    bandit.maskCharges = min(cap, max(bandit.maskCharges, 1))
                     state.events.append(SimEvent(kind: .maskOn, position: bandit.position))
                 } else if bandit.maskMode {
                     bandit.maskTimer = max(bandit.maskTimer, tuning.maskDuration * 0.55)
+                    let cap = tuning.feel.maskMaxCharges
+                    if bandit.maskCharges < cap {
+                        bandit.maskCharges = min(cap, bandit.maskCharges + 1)
+                    }
                 }
                 state.events.append(SimEvent(kind: .stomp, position: state.mops[i].position))
                 state.events.append(SimEvent(kind: .shake, position: state.mops[i].position))
