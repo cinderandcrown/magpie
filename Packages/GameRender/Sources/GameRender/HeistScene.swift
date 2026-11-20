@@ -1102,10 +1102,10 @@ public final class HeistScene: SKScene {
 
     private func updateProgressBar(barWidth: CGFloat, barY: CGFloat) {
         guard let fill = progressFill, let dot = progressBanditDot else { return }
-        let span = max(1, exitWorldX - startWorldX)
-        let x = sim != nil ? sim.state.bandit.position.x : startWorldX
-        let t = max(0, min(1, (x - startWorldX) / span))
-        let w = max(4, barWidth * CGFloat(t))
+        let span = max(1.0, exitWorldX - startWorldX)
+        let progressX = sim.state.bandit.position.x
+        let t = max(0.0, min(1.0, (progressX - startWorldX) / span))
+        let w = max(CGFloat(4), barWidth * CGFloat(t))
         fill.path = CGPath(
             roundedRect: CGRect(x: -barWidth * 0.5, y: -3, width: w, height: 6),
             cornerWidth: 3, cornerHeight: 3, transform: nil
@@ -2137,10 +2137,15 @@ public final class HeistScene: SKScene {
         hudCombo.position = CGPoint(x: hudX, y: hudTop - 14)
         hudTime.position = CGPoint(x: hudX + 110, y: hudTop - 14)
         // Progress bar centered under the notch / above objective chip.
-        let barW: CGFloat = min(size.width * 0.55, 240)
+        let barW: CGFloat = min(size.width * 0.55, CGFloat(240))
         let barY = hudTop + 22
         progressTrack?.position = CGPoint(x: 0, y: barY)
-        progressTrack?.path = CGPath(roundedRect: CGRect(x: -barW * 0.5, y: -3, width: barW, height: 6), cornerWidth: 3, cornerHeight: 3, transform: nil)
+        progressTrack?.path = CGPath(
+            roundedRect: CGRect(x: -barW * 0.5, y: -3, width: barW, height: 6),
+            cornerWidth: 3,
+            cornerHeight: 3,
+            transform: nil
+        )
         updateProgressBar(barWidth: barW, barY: barY)
         for label in [hudCarried, hudHearts, hudCombo, hudTime] {
             if let outline = label.childNode(withName: "hudOutline") as? SKLabelNode {
@@ -2495,11 +2500,11 @@ public final class HeistScene: SKScene {
     }
 
     private static let mopChatterLines = [
-        "pest_detected",
-        "sanitizing",
-        "resist_is_futile",
-        "sweep_protocol",
-        "polish_complete",
+        "mop_pest_detected.m4a",
+        "mop_sanitizing.m4a",
+        "mop_do_not_resist.m4a",
+        "mop_sweep_protocol.m4a",
+        "mop_please_hold_still.m4a",
     ]
 
     private func doRetry() {
@@ -4069,8 +4074,8 @@ public final class HeistScene: SKScene {
         smokeStatus.shinies = shinyTotal
         hudCarried.text = "✦ \(shinyTotal)"
         hudHearts.text = String(repeating: "♥", count: max(0, b.hearts))
-        let barW: CGFloat = min(size.width * 0.55, 240)
-        let barY = size.height * 0.5 - max(safeInsets().top, 59) - 6
+        let barW: CGFloat = min(size.width * 0.55, CGFloat(240))
+        let barY = size.height * 0.5 - max(safeInsets().top, CGFloat(59)) - CGFloat(6)
         updateProgressBar(barWidth: barW, barY: barY)
         if tutorialStep == 0, !b.onGround, b.velocity.y != 0 {
             tutorialStep = 1
@@ -4269,8 +4274,7 @@ public final class HeistScene: SKScene {
 
     private func refreshObjectiveChip(forceBanner: Bool = false) {
         let stompsNeeded = 3
-        let stomps = min(stompsNeeded, Int(smokeStatus.stomps > 0 ? smokeStatus.stomps : Double(sim.state.bandit.combo > 0 ? sim.state.bandit.combo : celebratedFirstStomp ? 1 : 0)))
-        // Prefer live stomp count from events tracked locally.
+        // Prefer live stomp count from events tracked locally (all Int — avoid Int/Double ternaries).
         let done = tutorialStomps
         let text: String
         switch tutorialStep {
@@ -4285,13 +4289,12 @@ public final class HeistScene: SKScene {
         default:
             text = "Crack the VAULT"
         }
-        _ = stomps
         if objectiveBanner == nil || forceBanner {
             objectiveBanner?.removeFromParent()
             let root = SKNode()
             root.name = "objectiveBanner"
             root.zPosition = 280
-            let bg = SKShapeNode(rectOf: CGSize(width: min(size.width * 0.72, 280), height: 34), cornerRadius: 8)
+            let bg = SKShapeNode(rectOf: CGSize(width: min(size.width * 0.72, CGFloat(280)), height: CGFloat(34)), cornerRadius: 8)
             bg.name = "objBg"
             bg.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.1, alpha: 0.9)
             bg.strokeColor = ArtCatalog.neonCyan
