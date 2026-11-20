@@ -137,6 +137,10 @@ public final class HeistScene: SKScene {
     private var celebratedEarlyWin = false
     private var midSurpriseFired = false
     private var exitBeacon: SKNode?
+    /// Run-clock of last stomp — drives the "don't stand around" nudge.
+    private var lastStompElapsed: Double = -1
+    private var nextLullNudgeAt: Double = 8
+    private var runDustCooldown: CGFloat = 0
     /// Wall-clock play timer for smoke (monotonic across death/retry — review gate).
     private var smokeWallStart: TimeInterval = 0
     private var smokeWallElapsed: TimeInterval = 0
@@ -1891,6 +1895,9 @@ public final class HeistScene: SKScene {
         celebratedFirstStomp = false
         celebratedEarlyWin = false
         midSurpriseFired = false
+        lastStompElapsed = -1
+        nextLullNudgeAt = 8
+        runDustCooldown = 0
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
         // Keep the freeze sample — allow one ≤250ms title→play transition frame (preload should
@@ -2653,6 +2660,8 @@ public final class HeistScene: SKScene {
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
                 scorePop(at: e.position, text: "+\(max(1, sim.state.bandit.combo))", color: ArtCatalog.neonLime)
+                lastStompElapsed = sim.state.elapsed
+                nextLullNudgeAt = sim.state.elapsed + 9
                 if !celebratedFirstStomp {
                     celebratedFirstStomp = true
                     showPlayToast("STOMPED!", color: ArtCatalog.neonLime, hold: 1.1)
@@ -3075,6 +3084,34 @@ public final class HeistScene: SKScene {
             runSpeed: runSpeed,
             smokeLite: false
         )
+        // Foot puffs while sprinting — motion reads even if the sheet is subtle.
+        runDustCooldown -= dt
+        if b.onGround, abs(b.velocity.x) > tuning.feel.runSpeed * tuning.tileSize * 0.45, runDustCooldown <= 0 {
+            runDustCooldown = 0.11
+            dust(at: b.position, count: 3, color: ArtCatalog.neonCyan.withAlphaComponent(0.7))
+        }
+        // If the street goes quiet, nudge the player back into stomps.
+        if case .playing = sim.state.phase, !runPaused, sim.state.elapsed >= nextLullNudgeAt {
+            let sinceStomp = lastStompElapsed < 0
+                ? sim.state.elapsed
+                : sim.state.elapsed - lastStompElapsed
+            let nearMop = sim.state.mops.contains {
+                $0.alive && abs($0.position.y - b.position.y) < tuning.tileSize * 2.5
+                    && abs($0.position.x - b.position.x) < tuning.tileSize * 14
+            }
+            if sinceStomp >= 7, nearMop {
+                nextLullNudgeAt = sim.state.elapsed + 10
+                showPlayToast("POUNCE A MOP!", color: ArtCatalog.neonPink, hold: 1.25)
+                if let mop = sim.state.mops.filter(\.alive).min(by: {
+                    abs($0.position.x - b.position.x) < abs($1.position.x - b.position.x)
+                }) {
+                    impactRing(at: mop.position, color: ArtCatalog.neonPink)
+                    neonBurst(at: mop.position, color: ArtCatalog.neonOrange, count: 6)
+                }
+            } else {
+                nextLullNudgeAt = sim.state.elapsed + 2.5
+            }
+        }
         if b.anim == .death {
             bandit.alpha = 1
             bandit.zPosition = 55

@@ -1392,11 +1392,15 @@ public final class BanditVisual: SKNode {
             applyPose(anim)
         }
         // Animation rate tracks horizontal speed for walk/run (clamped); one-shots stay at authored fps.
+        // Floor at ~1× so a slow walk never reads as a frozen idle cutout sliding across the street.
         let speedRatio: CGFloat = {
             switch anim {
-            case .walk, .run:
+            case .walk:
+                let denom = max(runSpeed * 0.55, 0.1)
+                return max(1.0, min(1.55, abs(moveSpeed) / denom))
+            case .run:
                 let denom = max(runSpeed, 0.1)
-                return max(0.6, min(1.4, abs(moveSpeed) / denom))
+                return max(1.05, min(1.65, abs(moveSpeed) / denom * 1.15))
             default:
                 return 1
             }
@@ -1407,8 +1411,18 @@ public final class BanditVisual: SKNode {
         if !sheetDriven, anim == .idle || anim == .run || anim == .walk {
             let runLike = anim == .run
             sprite.position.y = sin(bobPhase * (runLike ? 15 : 3.2)) * (runLike ? 2.6 : 1.3)
+        } else if sheetDriven, anim == .run || anim == .walk {
+            // Tiny vertical bob so locomotion reads even when sheet deltas are subtle on phone.
+            sprite.position.y = sin(bobPhase * (anim == .run ? 18 : 12)) * (anim == .run ? 1.8 : 1.1)
         } else {
             sprite.position.y = 0
+        }
+        // Forward lean while moving — sells speed without needing a new sheet.
+        if anim == .run || anim == .walk {
+            let lean: CGFloat = anim == .run ? 0.11 : 0.06
+            body.zRotation = facingSign * lean
+        } else if abs(body.zRotation) > 0.001 {
+            body.zRotation *= 0.7
         }
         tickSheetDriver(dt: dt)
         if maskMode {
@@ -1520,10 +1534,14 @@ public final class BanditVisual: SKNode {
         switch anim {
         case .walk:
             if !sheetDriven { startRunCycle() }
-            playLoop(walkTextures.isEmpty ? runTextures : walkTextures, action: "walk", fallbackTPF: 0.06)
+            // Prefer walk sheet; fall back to run. Cap frames so a 29-frame loop doesn't crawl.
+            let walkSrc = walkTextures.isEmpty ? runTextures : walkTextures
+            let walkTrim = walkSrc.count > 16 ? Array(walkSrc.prefix(16)) : walkSrc
+            playLoop(walkTrim, action: "walk", fallbackTPF: 0.05)
         case .run:
             if !sheetDriven { startRunCycle() }
-            playLoop(runTextures, action: "run", fallbackTPF: 0.055)
+            let runTrim = runTextures.count > 14 ? Array(runTextures.prefix(14)) : runTextures
+            playLoop(runTrim, action: "run", fallbackTPF: 0.045)
         case .jump:
             if !sheetDriven { poseJump() }
             if jumpTextures.count > 2 {

@@ -90,13 +90,30 @@ public struct Sim: Equatable, Sendable {
             // Keep a 4-tile clear zone around spawn / checkpoints so knockback doesn't feed a mob pile-up.
             if abs(p.x - start.x) < tile * 4 { continue }
             if cps.contains(where: { abs(p.x - $0.position.x) < tile * 4 }) { continue }
-            // Opening pack: tiny patrol so hop-stomps chain into Mask without side-bags.
-            let span = tile * (mopID < 8 ? 0.25 : 2.2)
+            // Opening pack: short but readable patrol (was 0.25 — stacked into one blob).
+            let span = tile * (mopID < 8 ? 0.95 : 2.2)
+            // Wide phase desync so neighbors don't mirror-walk on top of each other.
             mops.append(MopEnemy(
-                id: mopID, position: p, home: p, patrolSpan: span, phase: Double(i) * 0.85,
+                id: mopID, position: p, home: p, patrolSpan: span, phase: Double(mopID) * 1.7 + Double(i) * 0.37,
                 alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1, stun: 0
             ))
             mopID += 1
+        }
+        // Nudge spawn homes apart when markers land too close on the same deck.
+        for i in mops.indices {
+            for j in (i + 1)..<mops.count {
+                guard abs(mops[i].home.y - mops[j].home.y) < tile * 0.8 else { continue }
+                let dx = mops[j].home.x - mops[i].home.x
+                let minSep = tile * 1.05
+                if abs(dx) < minSep {
+                    let push = (minSep - abs(dx)) * 0.5
+                    let dir = dx >= 0 ? 1.0 : -1.0
+                    mops[i].home.x -= dir * push
+                    mops[j].home.x += dir * push
+                    mops[i].position.x = mops[i].home.x
+                    mops[j].position.x = mops[j].home.x
+                }
+            }
         }
 
         self.state = SimState(
@@ -498,7 +515,8 @@ public struct Sim: Equatable, Sendable {
         if bandit.onGround {
             let speed = abs(bandit.velocity.x)
             let walkPx = tuning.walkSpeed * tuning.tileSize
-            if speed <= 20 {
+            // Low idle threshold so any real stick input shows walk legs (not an idle glide).
+            if speed <= 8 {
                 bandit.anim = .idle
             } else if speed < walkPx * 0.85 {
                 bandit.anim = .walk
@@ -653,6 +671,7 @@ public struct Sim: Equatable, Sendable {
         }
 
         // Patrol after combat so sin-phase motion doesn't dodge the stomp frame.
+        let tile = tuning.tileSize
         for i in state.mops.indices where state.mops[i].alive {
             if state.mops[i].stun <= 0 {
                 let prevX = state.mops[i].position.x
@@ -660,6 +679,14 @@ public struct Sim: Equatable, Sendable {
                 let ox = sin(state.mops[i].phase) * state.mops[i].patrolSpan
                 state.mops[i].position.x = state.mops[i].home.x + ox
                 state.mops[i].position.y = state.mops[i].home.y
+                // Gentle seek: if the bandit is on the same deck, drift toward them so
+                // the street never goes quiet for 20s while MOPs idle out of reach.
+                let dy = abs(state.mops[i].position.y - bandit.position.y)
+                let toBandit = bandit.position.x - state.mops[i].position.x
+                if dy < tile * 1.35, abs(toBandit) > tile * 1.2, abs(toBandit) < tile * 9 {
+                    let step = min(abs(toBandit), tile * 2.1) * dt
+                    state.mops[i].position.x += (toBandit > 0 ? 1 : -1) * step
+                }
                 let dx = state.mops[i].position.x - prevX
                 if abs(dx) > 0.01 { state.mops[i].facing = dx >= 0 ? 1 : -1 }
             } else {
@@ -667,6 +694,23 @@ public struct Sim: Equatable, Sendable {
             }
             if state.mops[i].animHold <= 0 {
                 state.mops[i].anim = .walk
+            }
+        }
+        // Soft de-clump: same-deck MOPs push apart so packs don't read as one white blob.
+        for i in state.mops.indices where state.mops[i].alive {
+            for j in (i + 1)..<state.mops.count where state.mops[j].alive {
+                guard abs(state.mops[i].position.y - state.mops[j].position.y) < tile * 0.85 else { continue }
+                let dx = state.mops[j].position.x - state.mops[i].position.x
+                let minSep = tile * 0.9
+                if abs(dx) < minSep {
+                    let push = (minSep - abs(dx)) * 0.5
+                    let dir = dx >= 0 ? 1.0 : -1.0
+                    state.mops[i].position.x -= dir * push
+                    state.mops[j].position.x += dir * push
+                    // Ease homes apart so the next patrol frame doesn't snap them back together.
+                    state.mops[i].home.x -= dir * push * 0.35
+                    state.mops[j].home.x += dir * push * 0.35
+                }
             }
         }
 
