@@ -1,0 +1,29 @@
+{
+  "note": "Higgsfield shared raccoon + NCB packs. Empty characters fall back to spriterrific_ready.",
+  "characters": {
+    "bandit": {
+      "foot_y": 227,
+      "shared_with": "trash_stack",
+      "actions": {
+        "idle": { "path": "sprites/library/bandit/idle", "status": "placeholder" },
+        "idle_front": { "path": "sprites/library/bandit/idle_front", "status": "placeholder" },
+        "walk": { "path": "sprites/library/bandit/walk", "status": "placeholder" },
+        "run": { "path": "sprites/library/bandit/run", "status": "placeholder" },
+        "jump": { "path": "sprites/library/bandit/jump", "status": "placeholder" },
+        "pounce": { "path": "sprites/library/bandit/pounce", "status": "placeholder" },
+        "hurt": { "path": "sprites/library/bandit/hurt", "status": "placeholder" },
+        "death": { "path": "sprites/library/bandit/death", "status": "placeholder" },
+        "victory": { "path": "sprites/library/bandit/victory", "status": "placeholder" },
+        "pick_up": { "path": "sprites/library/bandit/pick_up", "status": "placeholder" },
+        "expr_happy": { "path": "sprites/library/bandit/expr_happy", "status": "placeholder" },
+        "expr_worried": { "path": "sprites/library/bandit/expr_worried", "status": "placeholder" },
+        "expr_smug": { "path": "sprites/library/bandit/expr_smug", "status": "placeholder" }
+      }
+    },
+    "mop_bot": { "foot_y": 227, "status": "placeholder" },
+    "mop_brute": { "foot_y": 227, "status": "placeholder" },
+    "mop_flyer": { "foot_y": 227, "status": "placeholder" },
+    "mop_mini_boss": { "foot_y": 227, "status": "placeholder" },
+    "mop_9000_boss": { "foot_y": 227, "status": "placeholder" }
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "premise": "Neon City hired OmniClean to scrub every alley spotless. Their polite MOP robots smile in sync, march in lockstep, and bag every stray that doesn't shine. Bandit — masked vigilante of the alleys, hero to the city's strays — steals back through each district to free the crew and put a dent in the MOP-9000's perfect city.",
+  "tagline": "One city's trash is one raccoon's treasure.",
+  "introPanels": [
+    {
+      "id": "party",
+      "caption": "Neon Docks after-hours: strays living large in the alley glow.",
+      "artHint": "raccoon crew partying in alley neon"
+    },
+    {
+      "id": "raid",
+      "caption": "OmniClean's MOPs arrived smiling. In perfect sync. All of them. Creepy.",
+      "artHint": "synchronized polite MOP robots swoop into alley in lockstep"
+    },
+    {
+      "id": "bagged",
+      "caption": "One polite 'excuse me' later, the crew was bagged for sanitation.",
+      "artHint": "crew stuffed into MOP bags by smiling robots"
+    },
+    {
+      "id": "escape",
+      "caption": "Bandit slipped the sweep. The alleys still needed a vigilante.",
+      "artHint": "Bandit escaping down wet alley with mask"
+    },
+    {
+      "id": "mask",
+      "caption": "Mask on. Hero to the strays. Time to un-clean the city.",
+      "artHint": "Bandit puts on the mask as alley vigilante"
+    }
+  ],
+  "districts": {
+    "neon_docks": {
+      "title": "Neon Docks",
+      "flavor": "Where the trash tide meets the neon — and OmniClean wants both spotless."
+    },
+    "arcade_row": {
+      "title": "Arcade Row",
+      "flavor": "High scores, higher stakes. The lights never blink — the MOPs do. Together."
+    },
+    "rooftops": {
+      "title": "Rooftops",
+      "flavor": "Jump the skyline. Don't look down. Definitely don't look at the scrubbers marching in step."
+    },
+    "sewer_grid": {
+      "title": "Sewer Grid",
+      "flavor": "OmniClean's dirty secret: the shine starts underground — and so does the resistance."
+    }
+  },
+  "crew": [
+    {
+      "id": "scrapz",
+      "name": "Scrapz",
+      "line": "If it's bolted down, it's a suggestion."
+    },
+    {
+      "id": "glitch",
+      "name": "Glitch",
+      "line": "I speak fluent static — and terrible advice."
+    },
+    {
+      "id": "fizz",
+      "name": "Fizz",
+      "line": "Shake me and I explode... with enthusiasm."
+    },
+    {
+      "id": "pip",
+      "name": "Pip",
+      "line": "Small paws, big heists."
+    }
+  ],
+  "mopChatter": [
+    {
+      "id": "pest",
+      "file": "mop_pest_detected.m4a",
+      "line": "Pest detected."
+    },
+    {
+      "id": "sanitize",
+      "file": "mop_sanitizing.m4a",
+      "line": "Sanitizing."
+    },
+    {
+      "id": "resist",
+      "file": "mop_do_not_resist.m4a",
+      "line": "Do not resist cleanliness."
+    },
+    {
+      "id": "sweep",
+      "file": "mop_sweep_protocol.m4a",
+      "line": "Sweep protocol engaged."
+    },
+    {
+      "id": "shine",
+      "file": "mop_please_hold_still.m4a",
+      "line": "Please hold still for polishing."
+    }
+  ],
+  "paTaunts": [
+    "OmniClean PA: Spotless is kindness. Strays are… a scheduling conflict.",
+    "OmniClean PA: Please remain orderly while we collect the irregulars.",
+    "OmniClean PA: Your shine rating just dropped. How unfortunate for you.",
+    "OmniClean PA: The MOP-9000 appreciates your cooperation. And your dustpan.",
+    "OmniClean PA: Resistance noted. Applying industrial-strength pep talk. Synchronize.",
+    "OmniClean PA: A masked pest is still a pest. Smile for the sweep."
+  ]
+}

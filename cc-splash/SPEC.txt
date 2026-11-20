@@ -1,0 +1,47 @@
+Cinder & Crown publisher splash — shared spec (Trash Stack source of truth)
+Branch reference: cinderandcrown/trash-stack @ cursor/trash-stack-feel-loop-497e
+File: TrashStack/PublisherIdentView.swift
+
+GOAL
+  Neon City Bandit splash must be visually and temporally identical to Trash Stack.
+  If NCB is landscape and TS is portrait: keep logo + text the same POINT size and
+  centered — never stretch to fill the scene.
+
+ASSET
+  Mute logo only (phoenix + crown, no wordmark).
+  Asset name: CinderCrownMute (@1x/@2x/@3x).
+  Canonical PNG md5: f4a3ffce2b58ddd4f12c010427782ac8 (1024² master / @3x).
+
+COPY
+  Line: "Cinder & Crown Creative Presents"
+  No wordmark under the logo. No copyright credit on-screen.
+
+COLORS
+  charcoal  RGB(0.06, 0.05, 0.05)  full-bleed background
+  cream     RGB(0.96, 0.93, 0.86)  presents line @ 95% opacity
+  crimson   #6E0F16              radial glow
+  gold      #F5A623              sweep / ember accents
+
+LAYOUT (points — identical on every device / orientation)
+  Logo:     168 × 168, centered, scaledToFit, no stretch
+  Title:    system/Georgia serif light, size 17, tracking 3.2
+  Spacing:  ~22 pt between logo and title (VStack)
+  Glow:     radial crimson under logo; gold sweep across mark (masked)
+
+TIMING (first launch, motion on)
+  Frame 0:          charcoal only (stamp first paint BEFORE decoding logo)
+  +1 runloop:       show logo art
+  Logo fade/scale:  0.28 s easeOut (0.92 → 1.0)
+  Sweep:            0.55 s easeInOut across the mark
+  Whoosh SFX:       with logo ignite (respect mute)
+  Title fade:       after 0.22 s, fade 0.22 s
+  Hold:             0.42 s
+  Fade out:         0.20 s + 0.18 s settle → title/game
+  Returning player: ~0.28 s blink (Reduce Motion / seen)
+  Smoke/CI hold:    long hold of final pose for screenshots (does not apply to players)
+
+SKIP
+  Tap anywhere skips immediately.
+
+FIRST FRAME
+  Must not delay on logo decode or ember setup. Charcoal first; art deferred.

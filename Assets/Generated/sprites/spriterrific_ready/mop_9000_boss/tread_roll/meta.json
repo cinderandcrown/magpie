@@ -1,0 +1,13 @@
+{
+  "frames": 27,
+  "fps": 24,
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "anchor": {
+    "x": 128,
+    "y": 227
+  },
+  "direction": "w",
+  "action": "tread_roll",
+  "source": "spriterrific"
+}
