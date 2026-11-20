@@ -3114,7 +3114,7 @@ public final class HeistScene: SKScene {
             guard isWin else { return 0 }
             let totalShinies = sim.state.shinies.count
             let got = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
-            let levelID = ProgressStore.neonDocksLevelID
+            let levelID = ProgressStore.levelID(for: pendingDistrict)
             let earned = progressStore.recordClear(
                 levelID: levelID,
                 shiniesCollected: got,

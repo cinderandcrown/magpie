@@ -1,0 +1,4 @@
+{
+  "root": "sprites/library",
+  "note": "Point root at sprites/library_sets/<name> to swap the whole bandit/MOP set at once. Layout: <root>/<character>/<action>/01.png (256×256)."
+}
