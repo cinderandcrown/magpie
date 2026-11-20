@@ -1,53 +1,51 @@
 # Shared sprite library (Higgsfield drop-in)
 
-The playable mascot is the **cyberpunk raccoon bandit** already shipping
-(goggles, cyan cables, hoodie with magenta trim). When Nicholas approves the
-Higgsfield remake (shared with Trash Stack), drop frames here — no gameplay
-rewire needed. Until then, `SpriteCycles` / `ArtLibrary` fall back to
+**Official bandit approved** (Nicholas) — cyberpunk raccoon: goggles with cyan
+lenses, magenta-trim hoodie, cyan cable backpack. Shared with Trash Stack.
+
+Animated 256×256 sets (bandit, MOP bot, MOP-9000) and 5 story panels ship as
+archives. Until they land, `SpriteCycles` / `ArtLibrary` fall back to
 `sprites/spriterrific_ready/`.
 
-## Bandit (shared with Trash Stack)
+## Whole-set swap
+
+Prefer dropping a complete set into `sprites/library_sets/<name>/` and pointing
+`sprites/active_set.json` at it (see `library_sets/README.md`). Replacing files
+in-place under `sprites/library/` also works — call `ArtLibrary.reload()` after.
+
+## Bandit layout
 
 ```
-sprites/library/bandit/<action>/01.png … NN.png
-sprites/library/bandit/<action>/meta.json   # optional { "fps": 12, "anchor": { "y": 227 } }
+<libraryRoot>/bandit/<action>/01.png … NN.png
+<libraryRoot>/bandit/<action>/meta.json   # optional { "fps": 12, "anchor": { "y": 227 } }
 ```
-
-Required / planned actions:
 
 | Folder | Use |
 | --- | --- |
-| `idle` | Side idle |
-| `idle_front` | Title / menu / hideout |
+| `idle` | Side idle (character-sheet “Side”) |
+| `idle_front` | Title / menu / hideout (“Hero Front”) |
 | `walk` / `run` | Locomotion |
 | `jump` | Jump / apex / fall |
-| `pounce` (or `attack`) | Pounce / belly-flop commit |
+| `pounce` (or `attack`) | Pounce / belly-flop |
 | `hurt` / `death` | Damage |
 | `victory` | Clear / results |
 | `pick_up` | Loot grab |
-| `expr_happy` / `expr_worried` / `expr_smug` | UI / story expressions |
+| `expr_happy` / `expr_cheer` | Grin / cheer |
+| `expr_smug` | Smug |
+| `expr_determined` | Determined |
+| `expr_worried` / `expr_panic` | Worried / panic |
+| `expr_game_over` | Game over |
 
 Frame names accepted: `01.png`, `frame_01.png`, or `1.png`.
 
-## NCB-only packs (placeholders until remade)
+## NCB packs
 
 ```
-sprites/library/mop_bot/          # basic MOP (falls back to spriterrific)
-sprites/library/mop_brute/        # heavy variant
-sprites/library/mop_flyer/        # aerial variant
-sprites/library/mop_mini_boss/    # level-5 mini-boss
-sprites/library/mop_9000_boss/    # finale stub
-sprites/library/loot/             # coins / gears / shinies (optional)
-sprites/library/hideout/          # upgrade bench props
-sprites/library/map/              # city map tiles / pins
-sprites/library/story/            # comic panel stills
+mop_bot/ mop_brute/ mop_flyer/ mop_mini_boss/ mop_9000_boss/
+loot/ hideout/ map/ story/
 ```
 
-## District parallax
+## District parallax / tiles
 
-```
-backgrounds/districts/<district_id>/{far,mid,near}.png
-```
-
-Examples: `neon_docks`, `arcade_row`, … Missing files use the classic
-`backgrounds/far_skyline.png` (etc.) pack.
+See `backgrounds/districts/README.md` and `sprites/tiles_district/README.md`.
+Heist 1 → downtown, heists 2–3 → docks, finale → factory.

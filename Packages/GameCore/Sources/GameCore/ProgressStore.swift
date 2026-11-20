@@ -92,7 +92,20 @@ public struct PlayerProgress: Equatable, Sendable, Codable {
 /// Local persistence for medals / district unlocks / Daily Heist day key.
 public struct ProgressStore: Sendable {
     public static let neonDocksLevelID = "neon_docks_01"
+    public static let arcadeRowLevelID = "arcade_row_01"
+    public static let rooftopsLevelID = "rooftops_01"
+    public static let sewerGridLevelID = "sewer_grid_01"
     public static let dailyLevelID = "daily_heist"
+
+    /// Primary level id for a district (heists 1–3 + finale).
+    public static func levelID(for district: DistrictID) -> String {
+        switch district {
+        case .neonDocks: return neonDocksLevelID
+        case .arcadeRow: return arcadeRowLevelID
+        case .rooftops: return rooftopsLevelID
+        case .sewerGrid: return sewerGridLevelID
+        }
+    }
     /// Par time (seconds) for the smoke rooftop / first docks clear medal.
     public static let defaultParSeconds: Double = 45
 
@@ -150,10 +163,20 @@ public struct ProgressStore: Sendable {
         // XP: +1 per newly earned medal slot this clear.
         let gained = max(0, existing.count - beforeCount)
         progress.xp += max(1, gained)
-        // Unlock Arcade Row after any Neon Docks clear with ≥1 medal.
-        if levelID.hasPrefix("neon_docks"), existing.count >= 1,
-           !progress.unlockedDistricts.contains(DistrictID.arcadeRow.rawValue) {
-            progress.unlockedDistricts.append(DistrictID.arcadeRow.rawValue)
+        // Heist unlock chain: Docks → Arcade Row → Rooftops → Sewer Grid (finale).
+        if existing.count >= 1 {
+            if levelID.hasPrefix("neon_docks"),
+               !progress.unlockedDistricts.contains(DistrictID.arcadeRow.rawValue) {
+                progress.unlockedDistricts.append(DistrictID.arcadeRow.rawValue)
+            }
+            if levelID.hasPrefix("arcade_row"),
+               !progress.unlockedDistricts.contains(DistrictID.rooftops.rawValue) {
+                progress.unlockedDistricts.append(DistrictID.rooftops.rawValue)
+            }
+            if levelID.hasPrefix("rooftops"),
+               !progress.unlockedDistricts.contains(DistrictID.sewerGrid.rawValue) {
+                progress.unlockedDistricts.append(DistrictID.sewerGrid.rawValue)
+            }
         }
         let didLevelUp = progress.rankLevel > priorLevel
         save(progress)

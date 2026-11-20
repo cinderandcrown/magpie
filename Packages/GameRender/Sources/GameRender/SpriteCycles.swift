@@ -33,8 +33,9 @@ public struct SpriteCycle {
     }
 
     public var footAnchorY: CGFloat {
-        // footY is pixel row from top of 256 frame; SK anchor y is from bottom.
-        let h = 256.0
+        // footY is pixel row from top of the frame; SK anchor y is from bottom.
+        // Prefer live texture height so 1024 library drops and 256 Spriterrific sheets both land.
+        let h = Double(max(textures.first?.size().height ?? 256, 1))
         return CGFloat(max(0, min(1, (h - 1 - footY) / h)))
     }
 }
@@ -45,21 +46,49 @@ public enum SpriteCycles {
     private static var indexFoot: [String: Double] = [:]
     private static var didLoadIndex = false
 
+    /// Active Higgsfield library root under `Generated/` (no trailing slash).
+    /// Default `sprites/library`. Swap the whole bandit/MOP set by pointing at
+    /// another folder that mirrors `<character>/<action>/NN.png` (e.g.
+    /// `sprites/library_sets/approved_256`).
+    public private(set) static var libraryRoot: String = "sprites/library"
+
+    /// Point every library lookup at a new folder and drop cached cycles.
+    public static func setLibraryRoot(_ relative: String) {
+        guard applyLibraryRoot(relative) else { return }
+        clearCache()
+    }
+
+    /// Update the library root without flushing (used while reading `active_set.json`).
+    @discardableResult
+    public static func applyLibraryRoot(_ relative: String) -> Bool {
+        let trimmed = relative.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !trimmed.isEmpty, trimmed != libraryRoot else { return false }
+        libraryRoot = trimmed
+        return true
+    }
+
+    /// Flush cycle + foot-index caches (call after dropping a new archive in place).
+    public static func clearCache() {
+        cache.removeAll(keepingCapacity: false)
+        indexFoot.removeAll(keepingCapacity: false)
+        didLoadIndex = false
+    }
+
     /// Load an action cycle. When `preferLibrary` is true, try
-    /// `sprites/library/<character>/` before `sprites/spriterrific_ready/`.
+    /// `<libraryRoot>/<character>/` before `sprites/spriterrific_ready/`.
     public static func cycle(
         character: String,
         action: String,
         maxFrames: Int = 64,
         preferLibrary: Bool = true
     ) -> SpriteCycle? {
-        let key = "\(character)/\(action)#lib=\(preferLibrary)"
+        let key = "\(libraryRoot)/\(character)/\(action)#lib=\(preferLibrary)"
         if let cached = cache[key] { return cached }
         loadIndexIfNeeded()
         let roots: [String]
         if preferLibrary {
             roots = [
-                "sprites/library/\(character)/\(action)",
+                "\(libraryRoot)/\(character)/\(action)",
                 "sprites/spriterrific_ready/\(character)/\(action)",
             ]
         } else {
@@ -219,8 +248,15 @@ public enum SpriteCycles {
     private static func loadIndexIfNeeded() {
         guard !didLoadIndex else { return }
         didLoadIndex = true
-        // Library manifest first (Higgsfield shared), then spriterrific index.
-        for rel in ["sprites/library/index", "sprites/spriterrific_ready/index"] {
+        // Apply optional active-set pointer before reading indexes.
+        ArtLibrary.applyActiveSetFromDisk()
+        // Active library manifest first, then default library, then spriterrific.
+        let indexRels = Array(Set([
+            "\(libraryRoot)/index",
+            "sprites/library/index",
+            "sprites/spriterrific_ready/index",
+        ]))
+        for rel in indexRels {
             guard let url = AssetManifest.fileURLPublic(relative: rel, extensions: ["json"]),
                   let data = try? Data(contentsOf: url),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

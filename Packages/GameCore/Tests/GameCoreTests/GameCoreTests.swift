@@ -800,11 +800,34 @@ final class GameCoreTests: XCTestCase {
         )
         XCTAssertEqual(earned.medals.count, 3)
         XCTAssertTrue(earned.isNewBest)
-        let progress = store.load()
+        var progress = store.load()
         XCTAssertEqual(progress.medalsByLevel[ProgressStore.neonDocksLevelID]?.count, 3)
         XCTAssertTrue(progress.isUnlocked(.arcadeRow))
+        XCTAssertFalse(progress.isUnlocked(.rooftops))
         XCTAssertEqual(progress.bestCombo, 3)
         XCTAssertEqual(progress.bestSecondsByLevel[ProgressStore.neonDocksLevelID], 30)
+
+        // Heist unlock chain: Arcade → Rooftops → Sewer Grid.
+        _ = store.recordClear(
+            levelID: ProgressStore.arcadeRowLevelID,
+            shiniesCollected: 2,
+            shiniesTotal: 4,
+            seconds: 40,
+            combo: 2
+        )
+        progress = store.load()
+        XCTAssertTrue(progress.isUnlocked(.rooftops))
+        XCTAssertFalse(progress.isUnlocked(.sewerGrid))
+        _ = store.recordClear(
+            levelID: ProgressStore.rooftopsLevelID,
+            shiniesCollected: 2,
+            shiniesTotal: 4,
+            seconds: 45,
+            combo: 2
+        )
+        progress = store.load()
+        XCTAssertTrue(progress.isUnlocked(.sewerGrid))
+        XCTAssertEqual(ProgressStore.levelID(for: .arcadeRow), ProgressStore.arcadeRowLevelID)
 
         let day = ProgressStore.dayKey(date: Date(timeIntervalSince1970: 1_700_000_000))
         XCTAssertFalse(day.isEmpty)
