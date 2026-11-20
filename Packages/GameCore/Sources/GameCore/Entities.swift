@@ -36,6 +36,8 @@ public struct BanditState: Equatable, Sendable {
     public var jumpCutArmed: Bool
     /// Frames remaining where near-apex still counts as a stomp window.
     public var apexStompFrames: Int
+    /// Frames after an airborne landing where overlapping a MOP still stomps (not hurts).
+    public var landStompGrace: Int
     /// While > 0, one-way platforms do not collide (drop-through).
     public var dropThrough: Double
 
@@ -65,6 +67,7 @@ public struct BanditState: Equatable, Sendable {
             landCooldown: 0,
             jumpCutArmed: false,
             apexStompFrames: 0,
+            landStompGrace: 0,
             dropThrough: 0
         )
     }

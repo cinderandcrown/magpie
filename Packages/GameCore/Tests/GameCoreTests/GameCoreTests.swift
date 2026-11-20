@@ -183,6 +183,102 @@ final class GameCoreTests: XCTestCase {
         XCTAssertTrue(stomped, "falling 0.4 MOP-widths off-center must still count as a stomp")
     }
 
+    /// Ledge walk-off straight onto a MOP must stomp, never side-bag (Nicholas 0:38 / 0:41).
+    func testLedgeFallOntoMopStompsNotHurts() throws {
+        let map = try TileMap.parse("""
+        ############
+        #..........#
+        #.@........#
+        #====......#
+        #.......M..#
+        #==========#
+        ############
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        guard let mopIdx = sim.state.mops.indices.first else {
+            return XCTFail("expected a MOP")
+        }
+        sim.state.mops[mopIdx].patrolSpan = 0
+        let mop = sim.state.mops[mopIdx]
+        // Stand on the ledge above, then walk off falling onto the MOP.
+        let tile = sim.tuning.tileSize
+        sim.state.bandit.position = Vec2(mop.position.x, mop.position.y + tile * 2.4)
+        sim.state.bandit.velocity = Vec2(0, -40)
+        sim.state.bandit.onGround = false
+        sim.state.bandit.invuln = 0
+        sim.state.bandit.hearts = 2
+        var stomped = false
+        var hurt = false
+        for _ in 0..<60 {
+            sim.state.events.removeAll()
+            sim.step(.idle)
+            if sim.state.events.contains(where: { $0.kind == .stomp }) || !sim.state.mops[mopIdx].alive {
+                stomped = true
+                break
+            }
+            if sim.state.events.contains(where: { $0.kind == .hurt }) {
+                hurt = true
+                break
+            }
+        }
+        XCTAssertTrue(stomped, "falling off a ledge onto a MOP must stomp")
+        XCTAssertFalse(hurt, "ledge fall onto MOP must not deal damage")
+        XCTAssertEqual(sim.state.bandit.hearts, 2)
+    }
+
+    /// Drop through a one-way then land on a MOP — stomp before hurt (Nicholas 0:29).
+    func testDropThroughOneWayOntoMopStomps() throws {
+        // Wider map so the MOP isn't stripped by the spawn clear zone (~2.2 tiles).
+        let map = try TileMap.parse("""
+        ##############
+        #............#
+        #.@..........#
+        #------------#
+        #..........M.#
+        #============#
+        ##############
+        """)
+        var sim = Sim(map: map, tuning: .default)
+        sim.state.phase = .playing
+        guard let mopIdx = sim.state.mops.indices.first else {
+            return XCTFail("expected a MOP under the one-way")
+        }
+        sim.state.mops[mopIdx].patrolSpan = 0
+        for _ in 0..<25 { sim.step(InputFrame()) }
+        XCTAssertTrue(sim.state.bandit.onGround)
+        // Walk onto the one-way above the MOP, then drop through + pounce.
+        let mop = sim.state.mops[mopIdx]
+        sim.state.bandit.position = Vec2(mop.position.x, sim.state.bandit.position.y)
+        sim.state.bandit.velocity = .zero
+        for _ in 0..<4 { sim.step(InputFrame()) }
+        for _ in 0..<6 { sim.step(InputFrame(moveY: -1)) }
+        XCTAssertGreaterThan(sim.state.bandit.dropThrough, 0)
+        sim.state.bandit.invuln = 0
+        sim.state.bandit.hearts = 2
+        sim.state.bandit.position.x = mop.position.x
+        sim.state.bandit.velocity.y = min(sim.state.bandit.velocity.y, -80)
+        sim.state.bandit.pouncing = true
+        sim.state.bandit.flopping = true
+        var stomped = false
+        var hurt = false
+        for _ in 0..<50 {
+            sim.state.events.removeAll()
+            sim.step(InputFrame(moveY: -1, pouncePressed: true))
+            if sim.state.events.contains(where: { $0.kind == .stomp }) || !sim.state.mops[mopIdx].alive {
+                stomped = true
+                break
+            }
+            if sim.state.events.contains(where: { $0.kind == .hurt }) {
+                hurt = true
+                break
+            }
+        }
+        XCTAssertTrue(stomped, "pounce/drop-through onto a MOP must stomp")
+        XCTAssertFalse(hurt, "drop-through onto MOP must not hurt")
+        XCTAssertEqual(sim.state.bandit.hearts, 2)
+    }
+
     func testWallJump() throws {
         let map = try TileMap.parse("""
         ######

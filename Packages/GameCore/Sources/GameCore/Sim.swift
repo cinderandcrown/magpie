@@ -216,8 +216,11 @@ public struct Sim: Equatable, Sendable {
 
         // Airborne before integrate/collide — walking must not look like a stomp
         // just because gravity briefly pulls vy negative on solid ground.
-        let wasAirborne = !b.onGround || b.flopping
+        let wasAirborne = !b.onGround || b.flopping || b.pouncing || b.dropThrough > 0
+        let groundedBefore = b.onGround
         integrate(input: input, bandit: &b, dt: dt)
+        // Capture fall speed before collide zeroes it on land — used for stomp vs hurt.
+        let preCollideVy = b.velocity.y
         // Stomp window: falling, OR within a few frames of apex (Nick feel pass).
         let feel = tuning.feel
         let apexSpeed = feel.apexHangSpeed * tuning.tileSize / 2.2
@@ -226,11 +229,26 @@ public struct Sim: Equatable, Sendable {
         } else if b.apexStompFrames > 0 {
             b.apexStompFrames -= 1
         }
-        if b.onGround { b.apexStompFrames = 0 }
+        // Don't clear apex on the pre-collide grounded flag — land frame still stomps.
+        if groundedBefore, !b.flopping, !b.pouncing { b.apexStompFrames = 0 }
+        // Pounce / belly-flop: always safe while diving (drop-through → MOP).
+        if b.pouncing || b.flopping {
+            b.invuln = max(b.invuln, 0.2)
+        }
         collide(bandit: &b)
-        // Any downward / landed-from-air contact can stomp — includes the land frame (vy≈0).
+        let justLanded = wasAirborne && b.onGround
+        if justLanded {
+            // ~6 frames after landing: overlap with a MOP still stomps, never side-bags.
+            b.landStompGrace = max(b.landStompGrace, 6)
+        } else if b.landStompGrace > 0 {
+            b.landStompGrace -= 1
+        }
+        // Any downward / landed-from-air / pounce / drop-through contact can stomp.
         let stompFalling = b.flopping
-            || (wasAirborne && (b.velocity.y <= 0 || b.apexStompFrames > 0))
+            || b.pouncing
+            || b.dropThrough > 0
+            || b.landStompGrace > 0
+            || (wasAirborne && (preCollideVy <= 0 || b.velocity.y <= 0 || b.apexStompFrames > 0))
         // Soft magnet: full pull on pounce/flop; short-range assist on normal falls.
         if b.pouncing || b.flopping {
             applyPounceMagnet(bandit: &b, reachMul: 1.0)
@@ -659,15 +677,18 @@ public struct Sim: Equatable, Sendable {
 
         // Stomp / hurt against the pre-patrol pose so the MOP doesn't slide out from
         // under the feet on the same frame (patrol used to break chains after combo 3).
+        // Stomp ALWAYS runs before hurt when stompFalling (incl. drop-through / land grace).
         var didStomp = false
         if stompFalling {
             for i in state.mops.indices where state.mops[i].alive {
                 let dx = abs(bandit.position.x - state.mops[i].position.x)
                 let feetY = bandit.position.y - halfH
-                let mopTop = state.mops[i].position.y + mopHalfH * 1.35
-                // Generous vertical: any downward contact from above / overlapping the MOP top.
-                let fromAbove = feetY <= mopTop + 14
-                    && bandit.position.y >= state.mops[i].position.y - mopHalfH * 0.35
+                let mopTop = state.mops[i].position.y + mopHalfH * 1.45
+                let mopBottom = state.mops[i].position.y - mopHalfH
+                // Any downward / land-frame overlap: feet at or above mop bottom, body overlapping top.
+                let fromAbove = feetY <= mopTop + 22
+                    && bandit.position.y >= mopBottom - 8
+                    && feetY >= mopBottom - 20
                 guard fromAbove, dx <= stompHalfW else { continue }
 
                 state.mops[i].alive = false
@@ -680,6 +701,8 @@ public struct Sim: Equatable, Sendable {
                 bandit.velocity.y = bounce
                 bandit.flopping = false
                 bandit.pouncing = false
+                bandit.onGround = false
+                bandit.landStompGrace = 0
                 bandit.jumpCutArmed = jumpHeld
                 // Stomp frames are always safe — no bagging on contact.
                 bandit.invuln = max(bandit.invuln, max(1.0, feel.invulnSeconds))
@@ -750,8 +773,15 @@ public struct Sim: Equatable, Sendable {
 
         if didStomp { return }
 
-        // Never side-bag while descending / flopping / near-apex — those frames are stomp dives.
-        if stompFalling || bandit.velocity.y < 0 || bandit.flopping || bandit.apexStompFrames > 0 {
+        // Never side-bag while descending / flopping / pouncing / land-grace / near-apex.
+        if stompFalling
+            || bandit.velocity.y < 0
+            || bandit.flopping
+            || bandit.pouncing
+            || bandit.dropThrough > 0
+            || bandit.landStompGrace > 0
+            || bandit.apexStompFrames > 0
+        {
             return
         }
 

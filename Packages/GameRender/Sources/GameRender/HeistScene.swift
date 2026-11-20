@@ -49,6 +49,9 @@ public final class HeistScene: SKScene {
     private var jumpHitZone: SKNode!
     private var pounceHitZone: SKNode!
     private var moveHitZone: SKNode!
+    /// Off by default — ProcessInfo `-ShowTouchZones` or UserDefaults `showTouchZones`.
+    private var showTouchDebug = false
+    private var touchDebugRoot: SKNode?
 
     private var titleRoot = SKNode()
     private var publisherIdentRoot: SKNode?
@@ -174,6 +177,8 @@ public final class HeistScene: SKScene {
         view.preferredFramesPerSecond = 60
         view.ignoresSiblingOrder = true
         view.shouldCullNonVisibleNodes = true
+        showTouchDebug = ProcessInfo.processInfo.arguments.contains("-ShowTouchZones")
+            || UserDefaults.standard.bool(forKey: "showTouchZones")
         #if DEBUG
         if smokeEnabled {
             view.showsFPS = false
@@ -844,9 +849,29 @@ public final class HeistScene: SKScene {
         btn.run(SKAction.sequence([down, up]), withKey: "press")
     }
 
-    /// Rebuild invisible hit plates: left ~38% = move, right ~38% split JUMP (top) / POUNCE (bottom).
+    /// Face-button visual size (matches `makeFaceButton(large:)`).
+    private func faceButtonVisualSize() -> CGSize {
+        let edge = CGFloat(max(112, tuning.feel.faceButtonMinPt))
+        return CGSize(width: edge, height: edge * 0.78)
+    }
+
+    /// Expanded hit rect around a face button — every drawn pixel + pad, including stroke.
+    private func paddedFaceHitRect(for btn: SKShapeNode) -> CGRect {
+        let vis = faceButtonVisualSize()
+        // Stroke (3) + glow (~2) sit outside the path; cover them + feel pad.
+        let pad = CGFloat(max(40, tuning.feel.faceButtonHitPad)) + 8
+        return CGRect(
+            x: btn.position.x - vis.width * 0.5 - pad,
+            y: btn.position.y - vis.height * 0.5 - pad,
+            width: vis.width + pad * 2,
+            height: vis.height + pad * 2
+        )
+    }
+
+    /// Rebuild hit plates from the *drawn* buttons + pad. Move zone stays left of face hits.
     private func layoutControlHitZones() {
-        guard moveHitZone != nil, jumpHitZone != nil, pounceHitZone != nil else { return }
+        guard moveHitZone != nil, jumpHitZone != nil, pounceHitZone != nil,
+              jumpBtn != nil, pounceBtn != nil else { return }
         let hw = size.width * 0.5
         let hh = size.height * 0.5
         let insets = safeInsets()
@@ -855,40 +880,114 @@ public final class HeistScene: SKScene {
         jumpHitZone.removeAllChildren()
         pounceHitZone.removeAllChildren()
 
-        let moveW = size.width * 0.38
-        let moveH = size.height * 0.55
-        let movePlate = SKShapeNode(rectOf: CGSize(width: moveW, height: moveH), cornerRadius: 8)
-        movePlate.fillColor = .clear
-        movePlate.strokeColor = .clear
-        movePlate.name = "movePlate"
-        moveHitZone.position = CGPoint(x: -hw + moveW * 0.5, y: -hh + moveH * 0.5 + bottomSafe * 0.2)
-        moveHitZone.addChild(movePlate)
-
-        let rightW = size.width * 0.40
-        let jumpH = size.height * 0.28
-        let pounceH = size.height * 0.26
-        let jumpPlate = SKShapeNode(rectOf: CGSize(width: rightW, height: jumpH), cornerRadius: 8)
-        jumpPlate.fillColor = .clear
-        jumpPlate.strokeColor = .clear
-        jumpPlate.name = "jumpPlate"
-        jumpHitZone.position = CGPoint(
-            x: hw - rightW * 0.5,
-            y: -hh + pounceH + jumpH * 0.5 + bottomSafe * 0.25
+        let jumpRect = paddedFaceHitRect(for: jumpBtn)
+        let pounceRect = paddedFaceHitRect(for: pounceBtn)
+        // Expand jump/pounce plates toward the right edge / each other so misses still land,
+        // but never cross the midline into the move side.
+        let faceLeft = min(jumpRect.minX, pounceRect.minX)
+        let jumpPlateRect = CGRect(
+            x: max(0, jumpRect.minX - 12),
+            y: jumpRect.minY,
+            width: hw - max(0, jumpRect.minX - 12) + 4,
+            height: jumpRect.height
         )
-        jumpHitZone.addChild(jumpPlate)
+        let pouncePlateRect = CGRect(
+            x: max(0, pounceRect.minX - 12),
+            y: pounceRect.minY,
+            width: hw - max(0, pounceRect.minX - 12) + 4,
+            height: pounceRect.height
+        )
+        placeHitPlate(on: jumpHitZone, rect: jumpPlateRect, name: "jumpPlate")
+        placeHitPlate(on: pounceHitZone, rect: pouncePlateRect, name: "pouncePlate")
 
-        let pouncePlate = SKShapeNode(rectOf: CGSize(width: rightW, height: pounceH), cornerRadius: 8)
-        pouncePlate.fillColor = .clear
-        pouncePlate.strokeColor = .clear
-        pouncePlate.name = "pouncePlate"
-        pounceHitZone.position = CGPoint(x: hw - rightW * 0.5, y: -hh + pounceH * 0.5 + bottomSafe * 0.15)
-        pounceHitZone.addChild(pouncePlate)
+        // Move: left third, hard-capped so it never overlaps face hit plates.
+        let moveMaxX = min(-size.width * 0.02, faceLeft - 8)
+        let moveW = max(80, moveMaxX - (-hw))
+        let moveH = size.height * 0.52
+        let moveRect = CGRect(
+            x: -hw,
+            y: -hh + bottomSafe * 0.15,
+            width: moveW,
+            height: moveH
+        )
+        placeHitPlate(on: moveHitZone, rect: moveRect, name: "movePlate")
+        refreshTouchDebugOverlay()
+    }
+
+    private func placeHitPlate(on zone: SKNode, rect: CGRect, name: String) {
+        zone.position = CGPoint(x: rect.midX, y: rect.midY)
+        let plate = SKShapeNode(rectOf: CGSize(width: rect.width, height: rect.height), cornerRadius: 10)
+        plate.fillColor = .clear
+        plate.strokeColor = .clear
+        plate.name = name
+        zone.addChild(plate)
     }
 
     private func hitInZone(_ zone: SKNode, pointInHUD p: CGPoint) -> Bool {
         // playHUD sits at the origin under hud — plate.contains expects zone-local coords.
         let local = CGPoint(x: p.x - zone.position.x, y: p.y - zone.position.y)
         return zone.children.contains { $0.contains(local) }
+    }
+
+    private func hitPaddedFaceButton(_ btn: SKShapeNode, pointInHUD p: CGPoint) -> Bool {
+        paddedFaceHitRect(for: btn).contains(p)
+    }
+
+    /// Debug overlay of real touch areas (off by default).
+    private func refreshTouchDebugOverlay() {
+        touchDebugRoot?.removeFromParent()
+        touchDebugRoot = nil
+        guard showTouchDebug, jumpBtn != nil, pounceBtn != nil, moveHitZone != nil else { return }
+        let root = SKNode()
+        root.name = "touchDebugRoot"
+        root.zPosition = 250
+        func addRect(_ rect: CGRect, color: SKColor, label: String) {
+            let n = SKShapeNode(rectOf: CGSize(width: rect.width, height: rect.height), cornerRadius: 6)
+            n.position = CGPoint(x: rect.midX, y: rect.midY)
+            n.fillColor = color.withAlphaComponent(0.22)
+            n.strokeColor = color
+            n.lineWidth = 2
+            n.glowWidth = 0
+            root.addChild(n)
+            let t = SKLabelNode(fontNamed: "AvenirNext-Bold")
+            t.text = label
+            t.fontSize = 11
+            t.fontColor = color
+            t.verticalAlignmentMode = .center
+            t.position = CGPoint(x: rect.midX, y: rect.midY)
+            root.addChild(t)
+        }
+        if let move = moveHitZone.children.first {
+            let r = CGRect(
+                x: moveHitZone.position.x - move.frame.width * 0.5,
+                y: moveHitZone.position.y - move.frame.height * 0.5,
+                width: move.frame.width,
+                height: move.frame.height
+            )
+            addRect(r, color: ArtCatalog.neonCyan, label: "MOVE")
+        }
+        addRect(paddedFaceHitRect(for: jumpBtn), color: ArtCatalog.neonLime, label: "JUMP")
+        addRect(paddedFaceHitRect(for: pounceBtn), color: ArtCatalog.neonPink, label: "POUNCE")
+        if let jump = jumpHitZone.children.first {
+            let r = CGRect(
+                x: jumpHitZone.position.x - jump.frame.width * 0.5,
+                y: jumpHitZone.position.y - jump.frame.height * 0.5,
+                width: jump.frame.width,
+                height: jump.frame.height
+            )
+            addRect(r, color: ArtCatalog.neonLime.withAlphaComponent(0.7), label: "JUMP+")
+        }
+        if let pounce = pounceHitZone.children.first {
+            let r = CGRect(
+                x: pounceHitZone.position.x - pounce.frame.width * 0.5,
+                y: pounceHitZone.position.y - pounce.frame.height * 0.5,
+                width: pounce.frame.width,
+                height: pounce.frame.height
+            )
+            addRect(r, color: ArtCatalog.neonPink.withAlphaComponent(0.7), label: "POUNCE+")
+        }
+        playHUD.addChild(root)
+        touchDebugRoot = root
     }
 
     private func setupHUD() {
@@ -2271,8 +2370,11 @@ public final class HeistScene: SKScene {
                 }
                 return
             }
-            // Right third zones first (JUMP / POUNCE) — large invisible plates, not tiny art.
-            if jumpTouch == nil, hitInZone(jumpHitZone, pointInHUD: p) || jumpBtn.contains(p) {
+            // Face buttons first — padded visual rect (covers stroke/glow), then expanded plates.
+            // Never let the move stick steal a JUMP/POUNCE tap (old left-half fallback did).
+            let onJump = hitPaddedFaceButton(jumpBtn, pointInHUD: p) || hitInZone(jumpHitZone, pointInHUD: p)
+            let onPounce = hitPaddedFaceButton(pounceBtn, pointInHUD: p) || hitInZone(pounceHitZone, pointInHUD: p)
+            if jumpTouch == nil, onJump {
                 jumpTouch = touch
                 jumpPressed = true
                 jumpHeld = true
@@ -2280,15 +2382,15 @@ public final class HeistScene: SKScene {
                 if !smokeEnabled { hapticLight.impactOccurred() }
                 continue
             }
-            if pounceTouch == nil, hitInZone(pounceHitZone, pointInHUD: p) || pounceBtn.contains(p) {
+            if pounceTouch == nil, onPounce {
                 pounceTouch = touch
                 pouncePressed = true
                 pressFaceButton(pounceBtn)
                 if !smokeEnabled { hapticMed.impactOccurred() }
                 continue
             }
-            // Left third (or left half fallback): stick appears at the finger.
-            if stickTouch == nil, hitInZone(moveHitZone, pointInHUD: p) || p.x < 0 {
+            // Move stick: only the left move plate (no "any x < 0" fallback — that ate JUMP).
+            if stickTouch == nil, hitInZone(moveHitZone, pointInHUD: p) {
                 stickTouch = touch
                 stickOrigin = p
                 stickBase.position = p
@@ -2309,7 +2411,7 @@ public final class HeistScene: SKScene {
             // Sliding onto JUMP / POUNCE from a miss still counts (forgiving).
             let p = touch.location(in: hud)
             if jumpTouch == nil, touch !== stickTouch, touch !== pounceTouch,
-               hitInZone(jumpHitZone, pointInHUD: p) {
+               hitPaddedFaceButton(jumpBtn, pointInHUD: p) || hitInZone(jumpHitZone, pointInHUD: p) {
                 jumpTouch = touch
                 jumpPressed = true
                 jumpHeld = true
@@ -2317,7 +2419,7 @@ public final class HeistScene: SKScene {
                 if !smokeEnabled { hapticLight.impactOccurred() }
             }
             if pounceTouch == nil, touch !== stickTouch, touch !== jumpTouch,
-               hitInZone(pounceHitZone, pointInHUD: p) {
+               hitPaddedFaceButton(pounceBtn, pointInHUD: p) || hitInZone(pounceHitZone, pointInHUD: p) {
                 pounceTouch = touch
                 pouncePressed = true
                 pressFaceButton(pounceBtn)
@@ -4087,24 +4189,37 @@ public final class HeistScene: SKScene {
             SKAction.scale(to: z * 1.06, duration: 0.08),
             SKAction.scale(to: z, duration: 0.18),
         ]), withKey: "maskPunch")
-        // MASK MODE stamp.
+        // MASK MODE banner — top of screen, small, clear of raccoon / +N popups.
+        overlay.childNode(withName: "maskModeBanner")?.removeFromParent()
+        let insets = safeInsets()
+        let topSafe = max(insets.top, 59) + 10
+        let banner = SKNode()
+        banner.name = "maskModeBanner"
+        banner.zPosition = 220
+        banner.position = CGPoint(x: 0, y: size.height * 0.5 - topSafe - 18)
+        banner.alpha = 0
+        banner.setScale(0.9)
+        let bg = SKShapeNode(rectOf: CGSize(width: min(size.width * 0.62, 220), height: 28), cornerRadius: 8)
+        bg.fillColor = SKColor(red: 0.02, green: 0.06, blue: 0.12, alpha: 0.82)
+        bg.strokeColor = ArtCatalog.neonCyan
+        bg.lineWidth = 1.5
+        banner.addChild(bg)
         let stamp = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         stamp.text = "MASK MODE"
-        stamp.fontSize = 34
+        stamp.fontSize = 14
         stamp.fontColor = ArtCatalog.neonCyan
-        stamp.zPosition = 280
-        stamp.setScale(1.6)
-        stamp.alpha = 0
-        overlay.addChild(stamp)
-        stamp.run(SKAction.sequence([
+        stamp.verticalAlignmentMode = .center
+        banner.addChild(stamp)
+        overlay.addChild(banner)
+        banner.run(SKAction.sequence([
             SKAction.group([
-                SKAction.fadeIn(withDuration: 0.06),
-                SKAction.scale(to: 1.0, duration: 0.1),
+                SKAction.fadeIn(withDuration: 0.08),
+                SKAction.scale(to: 1.0, duration: 0.12),
             ]),
-            SKAction.wait(forDuration: 0.28),
+            SKAction.wait(forDuration: 0.55),
             SKAction.group([
-                SKAction.fadeOut(withDuration: 0.16),
-                SKAction.scale(to: 0.85, duration: 0.16),
+                SKAction.fadeOut(withDuration: 0.2),
+                SKAction.moveBy(x: 0, y: 10, duration: 0.2),
             ]),
             SKAction.removeFromParent(),
         ]))
