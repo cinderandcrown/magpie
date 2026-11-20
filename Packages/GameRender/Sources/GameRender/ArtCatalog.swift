@@ -205,11 +205,21 @@ public enum ArtCatalog {
     public static func makeShinyNode() -> SKNode {
         let root = SKNode()
         root.name = "shiny"
+        // Prefer Higgsfield loot gem / coin; fall back to legacy shiny frames.
+        let libraryTex: SKTexture? = {
+            for name in ["gem", "gem-shard", "coin-magenta", "coin-gold"] {
+                if let t = downsampledTexture(relative: "sprites/library/loot/\(name)", maxPixel: 128) {
+                    return t
+                }
+            }
+            return nil
+        }()
         let frames = textures(AssetManifest.shinyFrames)
-        let n = SKSpriteNode(texture: frames.first, size: CGSize(width: 28, height: 28))
+        let tex = libraryTex ?? frames.first
+        let n = SKSpriteNode(texture: tex, size: CGSize(width: 28, height: 28))
         n.name = "shinySprite"
         applyDespill(n)
-        if frames.count > 1 {
+        if libraryTex == nil, frames.count > 1 {
             n.run(SKAction.repeatForever(SKAction.animate(with: frames, timePerFrame: 0.16)))
         }
         root.addChild(n)
@@ -429,12 +439,27 @@ public enum ArtCatalog {
 
     /// 16-mask side-view ground autotile set (`sprites/tiles_side/mask_XX.png`).
     /// Bits: N=1 E=2 S=4 W=8 (solid neighbour present). No per-tile outline strokes.
-    public static func makePlatformTileSet(tileSize: CGSize) -> SKTileSet {
+    /// When `district` has a Higgsfield `platform.png`, use it for solid fills so
+    /// Downtown / Docks / Factory each read their own plate (masks still vary edges).
+    public static func makePlatformTileSet(
+        tileSize: CGSize,
+        district: DistrictID? = nil
+    ) -> SKTileSet {
         warmSideAutotiles()
+        let districtPlatform: SKTexture? = {
+            guard let district else { return nil }
+            return ArtLibrary.districtTileTexture(district, name: "platform", maxPixel: 128)
+        }()
         var groups: [SKTileGroup] = []
         groups.reserveCapacity(16)
         for mask in 0..<16 {
-            let tex = sideAutotileTexture(mask: mask) ?? solidFallbackTexture(tileSize: tileSize)
+            // Prefer district platform for fully-surrounded / top-walkable masks so
+            // the heist ground matches the parallax district; keep side masks for edges.
+            let useDistrict = districtPlatform != nil && (mask == 15 || mask == 14 || mask == 13 || mask == 11 || mask == 7)
+            let tex = (useDistrict ? districtPlatform : nil)
+                ?? sideAutotileTexture(mask: mask)
+                ?? districtPlatform
+                ?? solidFallbackTexture(tileSize: tileSize)
             let def = SKTileDefinition(texture: tex, size: tileSize)
             def.name = String(format: "side_mask_%02d", mask)
             let group = SKTileGroup(tileDefinition: def)

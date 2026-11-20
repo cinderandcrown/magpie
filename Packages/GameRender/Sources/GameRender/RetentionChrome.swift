@@ -19,7 +19,9 @@ public enum RetentionChrome {
         root.addChild(wash)
 
         // Stylized neon city board (not a flat button list).
-        let board = SKShapeNode(rectOf: CGSize(width: min(340, size.width * 0.86), height: min(420, size.height * 0.58)), cornerRadius: 18)
+        let boardW = min(340, size.width * 0.86)
+        let boardH = min(420, size.height * 0.58)
+        let board = SKShapeNode(rectOf: CGSize(width: boardW, height: boardH), cornerRadius: 18)
         board.fillColor = SKColor(red: 0.05, green: 0.04, blue: 0.14, alpha: 0.96)
         board.strokeColor = ArtCatalog.neonCyan
         board.lineWidth = 2
@@ -27,6 +29,20 @@ public enum RetentionChrome {
         board.name = "mapBoard"
         board.position = CGPoint(x: 0, y: 10)
         root.addChild(board)
+
+        // Higgsfield city map under the district nodes when present.
+        if let mapTex = ArtCatalog.downsampledTexture(
+            relative: "sprites/library/map/city-map",
+            maxPixel: 768
+        ) {
+            let art = SKSpriteNode(texture: mapTex)
+            let fit = min((boardW - 24) / max(art.size.width, 1), (boardH - 24) / max(art.size.height, 1))
+            art.setScale(fit)
+            art.alpha = 0.55
+            art.zPosition = 0
+            art.name = "cityMapArt"
+            board.addChild(art)
+        }
 
         let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         title.text = "NEON CITY"

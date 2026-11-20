@@ -1,0 +1,10 @@
+{
+  "frames": 1,
+  "fps": 8,
+  "anchor": {
+    "x": 512,
+    "y": 820
+  },
+  "direction": "w",
+  "source": "higgsfield"
+}

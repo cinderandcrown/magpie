@@ -396,16 +396,22 @@ public final class HeistScene: SKScene {
             into parent: SKNode,
             y: CGFloat,
             z: CGFloat,
-            neonBoost: Bool
+            neonBoost: Bool,
+            mirrorTile: Bool = false
         ) {
             let width = max(node.size.width, 1)
             // Cover the camera lead without over-tiling the full map width.
             let cover = min(mapW, size.width / Self.worldZoom * 4) + width
             let copies = max(2, Int(ceil(cover / width)) + 1)
+            // Mirror-tile far plates edge-to-edge; mid/near keep a slight overlap.
+            let stride = mirrorTile ? width : width * 0.92
             for i in 0..<copies {
                 let plate = node.copy() as? SKSpriteNode ?? SKSpriteNode(texture: node.texture, size: node.size)
-                plate.position = CGPoint(x: CGFloat(i) * width * 0.92, y: y)
+                plate.position = CGPoint(x: CGFloat(i) * stride, y: y)
                 plate.zPosition = z
+                if mirrorTile, i % 2 == 1 {
+                    plate.xScale = -1
+                }
                 // Keep storefront neon readable for the midrun palette gate — do NOT
                 // wash toward muted purple-gray (that hid magenta/teal and dimmed the city).
                 if neonBoost {
@@ -424,12 +430,12 @@ public final class HeistScene: SKScene {
         }
 
         // Raise skyline into the midrun sample band (y 18–62% of the frame).
-        // District plates: backgrounds/districts/<id>/{far,mid,near}.png when present,
+        // District plates: backgrounds/districts/<artFolder>/{far,mid,near}.png when present,
         // else classic skyline pack (ArtLibrary placeholders until Higgsfield districts land).
         let midY = viewH * 0.18
         let district = pendingDistrict
         if let far = ArtLibrary.districtLayer(district, layer: .far, height: h, maxPixel: maxPx) {
-            tileLayer(far, into: parallaxFar, y: midY + 60, z: -30, neonBoost: false)
+            tileLayer(far, into: parallaxFar, y: midY + 60, z: -30, neonBoost: false, mirrorTile: true)
         }
         let gridW = min(max(mapW * 0.5, size.width / Self.worldZoom * 3), 1800)
         let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.55)
@@ -531,7 +537,7 @@ public final class HeistScene: SKScene {
     private func buildTiles() {
         let tile = CGFloat(tuning.tileSize)
         let tileSize = CGSize(width: tile, height: tile)
-        let tileSet = ArtCatalog.makePlatformTileSet(tileSize: tileSize)
+        let tileSet = ArtCatalog.makePlatformTileSet(tileSize: tileSize, district: pendingDistrict)
         let groups = tileSet.tileGroups
         guard groups.count >= 16 else { return }
 
@@ -592,8 +598,11 @@ public final class HeistScene: SKScene {
             }
         }
 
-        // Kenney CC0 crates/pipes as sparse decoration — never as collision face / under-ledge drips.
-        let propTextures = ArtCatalog.sidePropTextures()
+        // District Higgsfield props first; Kenney CC0 crates/pipes as fallback.
+        // Never as collision face / under-ledge drips.
+        let districtProps = ArtLibrary.districtDecorTextures(pendingDistrict)
+        let propTextures = districtProps.isEmpty ? ArtCatalog.sidePropTextures() : districtProps
+        let useDistrictProps = !districtProps.isEmpty
         var propI = 0
         for y in 0..<sim.map.height {
             for x in 0..<sim.map.width {
@@ -611,9 +620,11 @@ public final class HeistScene: SKScene {
                     n.position = CGPoint(x: pos.x, y: pos.y + tile * 0.55)
                     n.zPosition = 3.2
                     n.alpha = 0.92
-                    // Kill any baked green tint from Kenney sheets (no green drips).
-                    n.color = SKColor(red: 0.72, green: 0.68, blue: 0.78, alpha: 1)
-                    n.colorBlendFactor = 0.55
+                    if !useDistrictProps {
+                        // Kill any baked green tint from Kenney sheets (no green drips).
+                        n.color = SKColor(red: 0.72, green: 0.68, blue: 0.78, alpha: 1)
+                        n.colorBlendFactor = 0.55
+                    }
                     world.addChild(n)
                 }
 

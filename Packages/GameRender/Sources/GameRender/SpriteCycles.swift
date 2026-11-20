@@ -33,8 +33,9 @@ public struct SpriteCycle {
     }
 
     public var footAnchorY: CGFloat {
-        // footY is pixel row from top of 256 frame; SK anchor y is from bottom.
-        let h = 256.0
+        // footY is pixel row from top of the frame; SK anchor y is from bottom.
+        // Prefer live texture height so 1024 library drops and 256 Spriterrific sheets both land.
+        let h = Double(max(textures.first?.size().height ?? 256, 1))
         return CGFloat(max(0, min(1, (h - 1 - footY) / h)))
     }
 }
