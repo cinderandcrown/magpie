@@ -249,6 +249,13 @@ public struct SmokeBrain: Equatable, Sendable {
             }
             // Hunt whenever Mask is off and a Mask still (04 / 04b) is still pending.
             if !b.maskMode, (!maskOk || !mask2Ok) {
+                if b.maskCharges > 0 {
+                    return steerFromExit(
+                        InputFrame(moveX: 1, maskPressed: true),
+                        sim: sim,
+                        tx: tx
+                    )
+                }
                 return steerFromExit(maskReentryHuntInput(sim: sim, tx: tx, ty: ty), sim: sim, tx: tx)
             }
             // Hold Mask for the screenshot — keep a street patrol so MOPs don't pile on
@@ -548,6 +555,11 @@ public struct SmokeBrain: Equatable, Sendable {
         let feetY = b.position.y - halfH
         let elevated = feetY > streetY + tile * 0.35
         let onOneWay = standingOnOneWay(sim: sim, halfH: halfH)
+
+        // Fun-pass: spend Mask as soon as the meter fills (stomps grant charges).
+        if !b.maskMode, b.maskCharges > 0 {
+            return InputFrame(moveX: 1, maskPressed: true, jumpHeld: false)
+        }
 
         // Prefer street-deck MOPs for the second Mask (opening pack / patrols).
         let streetMops = sim.state.mops.filter {
