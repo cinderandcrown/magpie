@@ -1655,6 +1655,8 @@ public final class HeistScene: SKScene {
     }
 
     private func setPaused(_ on: Bool, system: Bool = false) {
+        // Scene may not have finished didMove yet (unit probes / early resign).
+        guard sim != nil else { return }
         let playing: Bool = {
             if case .playing = sim.state.phase { return true }
             return false
@@ -1662,19 +1664,18 @@ public final class HeistScene: SKScene {
         guard playing || runPaused else { return }
         // Manual pause button is ignored under smoke; harness flags drive pause beats instead.
         if on {
-            if runPaused { return }
+            if runPaused {
+                pauseFromSystem = system || pauseFromSystem
+                clearLatchedPlayInput()
+                return
+            }
             runPaused = true
             pauseFromSystem = system
             resumeCountdown = 0
             skipFreezeSample = true
             pauseCountLabel?.alpha = 0
             pauseCountLabel?.text = ""
-            releaseStickInput()
-            jumpHeld = false
-            jumpPressed = false
-            pouncePressed = false
-            jumpTouch = nil
-            pounceTouch = nil
+            clearLatchedPlayInput()
             pauseRoot.isHidden = false
             layoutUI()
             if smokeEnabled { writeSmokeStatus() }
@@ -1688,8 +1689,23 @@ public final class HeistScene: SKScene {
         }
     }
 
+    /// Drop stick / face-button latch without requiring HUD nodes.
+    private func clearLatchedPlayInput() {
+        releaseStickInput()
+        jumpHeld = false
+        jumpPressed = false
+        pouncePressed = false
+        jumpTouch = nil
+        pounceTouch = nil
+    }
+
     /// Auto-pause from SwiftUI / UIKit lifecycle (resign active, background).
+    /// Idempotent — always clears latched input even before `sim` / HUD exist.
     public func pauseFromAppLifecycle() {
+        clearLatchedPlayInput()
+        pauseFromSystem = true
+        guard sim != nil else { return }
+        if runPaused { return }
         setPaused(true, system: true)
     }
 
