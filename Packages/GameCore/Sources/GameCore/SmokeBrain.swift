@@ -558,7 +558,7 @@ public struct SmokeBrain: Equatable, Sendable {
 
         // Fun-pass: spend Mask as soon as the meter fills (stomps grant charges).
         if !b.maskMode, b.maskCharges > 0 {
-            return InputFrame(moveX: 1, maskPressed: true, jumpHeld: false)
+            return InputFrame(moveX: 1, jumpHeld: false, maskPressed: true)
         }
 
         // Prefer street-deck MOPs for the second Mask (opening pack / patrols).
