@@ -1,0 +1,175 @@
+{
+  "bundleId": "com.cinderandcrown.magpie",
+  "leaderboards": [
+    {
+      "referenceName": "Daily Heist",
+      "vendorIdentifier": "daily_heist",
+      "defaultFormatter": "INTEGER",
+      "submissionType": "BEST_SCORE",
+      "scoreSortType": "DESC",
+      "scoreRangeStart": "0",
+      "scoreRangeEnd": "999999",
+      "recurrenceDuration": "P1D",
+      "recurrenceRule": "FREQ=DAILY;INTERVAL=1",
+      "recurrenceStartDate": "2026-01-01T00:00:00Z",
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "Daily Heist",
+          "formatterSuffix": " pts",
+          "formatterSuffixSingular": " pt"
+        }
+      ]
+    },
+    {
+      "referenceName": "Most Wanted",
+      "vendorIdentifier": "most_wanted_weekly",
+      "defaultFormatter": "INTEGER",
+      "submissionType": "BEST_SCORE",
+      "scoreSortType": "DESC",
+      "scoreRangeStart": "0",
+      "scoreRangeEnd": "9999999",
+      "recurrenceDuration": "P7D",
+      "recurrenceRule": "FREQ=WEEKLY;INTERVAL=1;BYDAY=MO",
+      "recurrenceStartDate": "2026-01-05T00:00:00Z",
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "Most Wanted",
+          "formatterSuffix": " pts",
+          "formatterSuffixSingular": " pt"
+        }
+      ]
+    },
+    {
+      "referenceName": "Best Combo",
+      "vendorIdentifier": "best_combo",
+      "defaultFormatter": "INTEGER",
+      "submissionType": "BEST_SCORE",
+      "scoreSortType": "DESC",
+      "scoreRangeStart": "0",
+      "scoreRangeEnd": "9999",
+      "localizations": [
+        {
+          "locale": "en-US",
+          "name": "Best Combo",
+          "formatterSuffix": "x",
+          "formatterSuffixSingular": "x"
+        }
+      ]
+    }
+  ],
+  "achievements": [
+    {
+      "referenceName": "First Heist",
+      "vendorIdentifier": "first_heist",
+      "points": 5,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "First Heist", "beforeEarnedDescription": "Clear any heist.", "afterEarnedDescription": "You cleared your first heist." }]
+    },
+    {
+      "referenceName": "Three Stars",
+      "vendorIdentifier": "three_star_heist",
+      "points": 10,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Three Stars", "beforeEarnedDescription": "Earn all three medals on a heist.", "afterEarnedDescription": "Full medal clear." }]
+    },
+    {
+      "referenceName": "Untouchable",
+      "vendorIdentifier": "no_damage_heist",
+      "points": 15,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Untouchable", "beforeEarnedDescription": "Clear a heist without taking damage.", "afterEarnedDescription": "Not a scratch." }]
+    },
+    {
+      "referenceName": "Ghost Buster",
+      "vendorIdentifier": "beat_friend_ghost",
+      "points": 10,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Ghost Buster", "beforeEarnedDescription": "Beat a friend's Daily Heist ghost.", "afterEarnedDescription": "You outran a friend's ghost." }]
+    },
+    {
+      "referenceName": "Daily Streak 3",
+      "vendorIdentifier": "daily_streak_3",
+      "points": 5,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Hot Streak", "beforeEarnedDescription": "Clear Daily Heist 3 days in a row.", "afterEarnedDescription": "3-day Daily streak." }]
+    },
+    {
+      "referenceName": "Daily Streak 7",
+      "vendorIdentifier": "daily_streak_7",
+      "points": 10,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Week of Crime", "beforeEarnedDescription": "Clear Daily Heist 7 days in a row.", "afterEarnedDescription": "7-day Daily streak." }]
+    },
+    {
+      "referenceName": "Daily Streak 30",
+      "vendorIdentifier": "daily_streak_30",
+      "points": 25,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Most Dedicated", "beforeEarnedDescription": "Clear Daily Heist 30 days in a row.", "afterEarnedDescription": "30-day Daily streak." }]
+    },
+    {
+      "referenceName": "Most Wanted Top 10",
+      "vendorIdentifier": "most_wanted_top10",
+      "points": 20,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Most Wanted", "beforeEarnedDescription": "Finish a week in the Most Wanted top 10.", "afterEarnedDescription": "Top 10 Most Wanted." }]
+    },
+    {
+      "referenceName": "Mask On",
+      "vendorIdentifier": "first_mask_mode",
+      "points": 5,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Mask On", "beforeEarnedDescription": "Trigger Mask Mode once.", "afterEarnedDescription": "Mask Mode unlocked in the alleys." }]
+    },
+    {
+      "referenceName": "Crew Rescue",
+      "vendorIdentifier": "first_crew_rescue",
+      "points": 5,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Crew Rescue", "beforeEarnedDescription": "Free a caged crewmate.", "afterEarnedDescription": "You freed a crewmate." }]
+    },
+    {
+      "referenceName": "Arcade Clear",
+      "vendorIdentifier": "clear_arcade_row",
+      "points": 10,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Arcade Clear", "beforeEarnedDescription": "Clear Arcade Row.", "afterEarnedDescription": "Arcade Row cleared." }]
+    },
+    {
+      "referenceName": "Rooftop Clear",
+      "vendorIdentifier": "clear_rooftops",
+      "points": 10,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Skyline Thief", "beforeEarnedDescription": "Clear Rooftops.", "afterEarnedDescription": "Rooftops cleared." }]
+    },
+    {
+      "referenceName": "Daily Champion",
+      "vendorIdentifier": "daily_rank_1",
+      "points": 25,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Daily Champion", "beforeEarnedDescription": "Finish #1 on a Daily Heist board.", "afterEarnedDescription": "You owned today's heist." }]
+    },
+    {
+      "referenceName": "Self Improve",
+      "vendorIdentifier": "beat_own_ghost",
+      "points": 5,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Self Improve", "beforeEarnedDescription": "Beat your own Daily Heist ghost.", "afterEarnedDescription": "You beat yesterday's you." }]
+    },
+    {
+      "referenceName": "Bandit of Both Worlds",
+      "vendorIdentifier": "bandit_of_both_worlds",
+      "points": 20,
+      "showBeforeEarned": true,
+      "localizations": [{ "locale": "en-US", "name": "Bandit of Both Worlds", "beforeEarnedDescription": "Earn this in Neon City Bandit or Trash Stack.", "afterEarnedDescription": "Shared across Neon City Bandit and Trash Stack." }]
+    }
+  ],
+  "crossGame": {
+    "partnerBundleId": "com.cinderandcrown.trashstack",
+    "sharedAchievementVendorId": "bandit_of_both_worlds",
+    "reward": "Unlock a shared bandit outfit in the other game when either app reports the achievement.",
+    "preferredMethod": "Game Center game group (same Apple developer team). Fallback: CloudKit public record + URL scheme deep-link claim."
+  }
+}

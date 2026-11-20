@@ -288,6 +288,183 @@ def wait_for_build(
         sleep(30)
 
 
+
+def load_gc_catalog(path: str) -> dict[str, Any]:
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def get_game_center_detail(client: Client, app_id: str) -> dict[str, Any] | None:
+    try:
+        page = client.get(f"/v1/apps/{app_id}/gameCenterDetail")
+        return page.get("data")
+    except ApiError as error:
+        if error.status == 404:
+            return None
+        raise
+
+
+def ensure_game_center_detail(client: Client, app_id: str) -> str:
+    existing = get_game_center_detail(client, app_id)
+    if existing:
+        return existing["id"]
+    created = client.post(
+        "/v1/gameCenterDetails",
+        {
+            "data": {
+                "type": "gameCenterDetails",
+                "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
+            }
+        },
+    )
+    return created["data"]["id"]
+
+
+def ensure_leaderboards(client: Client, detail_id: str, boards: list[dict[str, Any]]) -> list[str]:
+    notes: list[str] = []
+    for board in boards:
+        vendor = board["vendorIdentifier"]
+        # Idempotent-ish: list and skip when vendor already present.
+        try:
+            page = client.get(
+                f"/v1/gameCenterDetails/{detail_id}/gameCenterLeaderboards",
+                {"limit": "200"},
+            )
+            found = False
+            for row in page.get("data", []):
+                if row.get("attributes", {}).get("referenceName") == board.get("referenceName") or row.get(
+                    "attributes", {}
+                ).get("vendorIdentifier") == vendor:
+                    notes.append(f"leaderboard {vendor}: already there")
+                    found = True
+                    break
+            if found:
+                continue
+        except ApiError as error:
+            notes.append(f"leaderboard list warning ({error.status})")
+        attrs = {
+            "defaultFormatter": board.get("defaultFormatter", "INTEGER"),
+            "referenceName": board["referenceName"],
+            "submissionType": board.get("submissionType", "BEST_SCORE"),
+            "scoreSortType": board.get("scoreSortType", "DESC"),
+            "vendorIdentifier": vendor,
+        }
+        for key in (
+            "scoreRangeStart",
+            "scoreRangeEnd",
+            "recurrenceDuration",
+            "recurrenceRule",
+            "recurrenceStartDate",
+        ):
+            if board.get(key) is not None:
+                attrs[key] = board[key]
+        try:
+            created = client.post(
+                "/v1/gameCenterLeaderboards",
+                {
+                    "data": {
+                        "type": "gameCenterLeaderboards",
+                        "attributes": attrs,
+                        "relationships": {
+                            "gameCenterDetail": {"data": {"type": "gameCenterDetails", "id": detail_id}}
+                        },
+                    }
+                },
+            )
+            lb_id = created["data"]["id"]
+            for loc in board.get("localizations", []):
+                client.post(
+                    "/v1/gameCenterLeaderboardLocalizations",
+                    {
+                        "data": {
+                            "type": "gameCenterLeaderboardLocalizations",
+                            "attributes": {
+                                "locale": loc["locale"],
+                                "name": loc["name"],
+                                "formatterSuffix": loc.get("formatterSuffix", ""),
+                                "formatterSuffixSingular": loc.get("formatterSuffixSingular", ""),
+                            },
+                            "relationships": {
+                                "gameCenterLeaderboard": {
+                                    "data": {"type": "gameCenterLeaderboards", "id": lb_id}
+                                }
+                            },
+                        }
+                    },
+                )
+            notes.append(f"leaderboard {vendor}: created")
+        except ApiError as error:
+            notes.append(f"leaderboard {vendor}: {error.status} {error.detail}")
+    return notes
+
+
+def ensure_achievements(client: Client, detail_id: str, achievements: list[dict[str, Any]]) -> list[str]:
+    notes: list[str] = []
+    existing_names: set[str] = set()
+    try:
+        page = client.get(
+            f"/v1/gameCenterDetails/{detail_id}/gameCenterAchievements",
+            {"limit": "200"},
+        )
+        for row in page.get("data", []):
+            attrs = row.get("attributes", {})
+            if attrs.get("vendorIdentifier"):
+                existing_names.add(attrs["vendorIdentifier"])
+            if attrs.get("referenceName"):
+                existing_names.add(attrs["referenceName"])
+    except ApiError:
+        pass
+    for ach in achievements:
+        vendor = ach["vendorIdentifier"]
+        if vendor in existing_names or ach["referenceName"] in existing_names:
+            notes.append(f"achievement {vendor}: already there")
+            continue
+        try:
+            created = client.post(
+                "/v1/gameCenterAchievements",
+                {
+                    "data": {
+                        "type": "gameCenterAchievements",
+                        "attributes": {
+                            "referenceName": ach["referenceName"],
+                            "vendorIdentifier": vendor,
+                            "points": ach.get("points", 5),
+                            "showBeforeEarned": ach.get("showBeforeEarned", True),
+                            "repeatable": False,
+                        },
+                        "relationships": {
+                            "gameCenterDetail": {"data": {"type": "gameCenterDetails", "id": detail_id}}
+                        },
+                    }
+                },
+            )
+            ach_id = created["data"]["id"]
+            for loc in ach.get("localizations", []):
+                client.post(
+                    "/v1/gameCenterAchievementLocalizations",
+                    {
+                        "data": {
+                            "type": "gameCenterAchievementLocalizations",
+                            "attributes": {
+                                "locale": loc["locale"],
+                                "name": loc["name"],
+                                "beforeEarnedDescription": loc.get("beforeEarnedDescription", ""),
+                                "afterEarnedDescription": loc.get("afterEarnedDescription", ""),
+                            },
+                            "relationships": {
+                                "gameCenterAchievement": {
+                                    "data": {"type": "gameCenterAchievements", "id": ach_id}
+                                }
+                            },
+                        }
+                    },
+                )
+            notes.append(f"achievement {vendor}: created")
+        except ApiError as error:
+            notes.append(f"achievement {vendor}: {error.status} {error.detail}")
+    return notes
+
+
 def client_from_environment() -> Client:
     missing = [name for name in ("ASC_KEY_ID", "ASC_ISSUER_ID", "ASC_KEY_PATH") if not os.environ.get(name)]
     if missing:
@@ -323,6 +500,13 @@ def main(arguments: list[str]) -> int:
     wait.add_argument("--build", required=True)
     wait.add_argument("--timeout", type=float, default=30 * 60)
 
+    gc = commands.add_parser(
+        "ensure-game-center",
+        help="enable Game Center and upsert leaderboards/achievements from catalog.json (config only)",
+    )
+    gc.add_argument("--bundle-id", required=True)
+    gc.add_argument("--catalog", default="Assets/GameCenter/catalog.json")
+
     check_app = commands.add_parser("check-app", help="exit 0 if the ASC app record exists, else print create fields")
     check_app.add_argument("--bundle-id", required=True)
 
@@ -353,6 +537,25 @@ def main(arguments: list[str]) -> int:
             group_id, created = ensure_internal_group(client, app_id, options.name)
             print(f"Internal group “{options.name}”: {'created' if created else 'already there'}. It gets every build.")
             print(add_account_holder(client, group_id))
+            return 0
+        if options.command == "ensure-game-center":
+            app_id = require_app(client, options.bundle_id)
+            catalog = load_gc_catalog(options.catalog)
+            detail_id = ensure_game_center_detail(client, app_id)
+            print(f"Game Center detail {detail_id} for {options.bundle_id}.")
+            for line in ensure_leaderboards(client, detail_id, catalog.get("leaderboards", [])):
+                print(line)
+            for line in ensure_achievements(client, detail_id, catalog.get("achievements", [])):
+                print(line)
+            cross = catalog.get("crossGame") or {}
+            if cross:
+                print(
+                    "Cross-game badge:",
+                    cross.get("sharedAchievementVendorId"),
+                    "→",
+                    cross.get("preferredMethod"),
+                )
+            print("Config only — no submission or release.")
             return 0
         if options.command == "wait-build":
             app_id = require_app(client, options.bundle_id)

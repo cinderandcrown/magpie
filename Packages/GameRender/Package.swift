@@ -14,11 +14,12 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../GameCore"),
+        .package(path: "../Services"),
     ],
     targets: [
         .target(
             name: "GameRender",
-            dependencies: ["GameCore"]
+            dependencies: ["GameCore", "Services"]
         ),
         .testTarget(
             name: "GameRenderTests",

@@ -257,25 +257,40 @@ public enum RetentionChrome {
         board.addChild(streak)
 
         let boardStub = SKLabelNode(fontNamed: "AvenirNext-Medium")
-        boardStub.text = "City board · live soon"
+        boardStub.text = progress.bestDailyScore > 0
+            ? "Best today  \(progress.bestDailyScore) pts"
+            : "Game Center board · time + loot + clean"
         boardStub.fontSize = 11
-        boardStub.fontColor = SKColor(white: 0.55, alpha: 1)
+        boardStub.fontColor = SKColor(white: 0.7, alpha: 1)
         boardStub.position = CGPoint(x: 0, y: 8)
         boardStub.name = "dailyLeaderboard"
         board.addChild(boardStub)
 
-        // Smaller mascot offset so it doesn't cover the board stub text.
-        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 72, height: 72))
+        let mascot = ArtCatalog.makeBanditFrontMascot(size: CGSize(width: 56, height: 56))
         mascot.name = "dailyBandit"
-        mascot.position = CGPoint(x: 0, y: -70)
+        mascot.position = CGPoint(x: 0, y: -42)
         board.addChild(mascot)
 
         let play = makeChromeButton(title: "RUN HEIST", color: ArtCatalog.neonLime, name: "dailyPlay", wide: true)
-        play.position = CGPoint(x: 0, y: -145)
+        play.position = CGPoint(x: 0, y: -100)
         board.addChild(play)
 
+        let raceBest = makeChromeButton(title: "RACE #1", color: ArtCatalog.neonCyan, name: "dailyRaceBest")
+        raceBest.position = CGPoint(x: -70, y: -148)
+        board.addChild(raceBest)
+        let raceOwn = makeChromeButton(title: "RACE ME", color: ArtCatalog.neonOrange, name: "dailyRaceOwn")
+        raceOwn.position = CGPoint(x: 70, y: -148)
+        board.addChild(raceOwn)
+
+        let lb = makeChromeButton(title: "BOARD", color: ArtCatalog.neonCyan, name: "dailyLeaderboardBtn")
+        lb.position = CGPoint(x: -70, y: -192)
+        board.addChild(lb)
+        let challenge = makeChromeButton(title: "CHALLENGE", color: ArtCatalog.neonPink, name: "dailyChallenge")
+        challenge.position = CGPoint(x: 70, y: -192)
+        board.addChild(challenge)
+
         let back = makeChromeButton(title: "BACK", color: ArtCatalog.neonPink, name: "dailyBack")
-        back.position = CGPoint(x: 0, y: -size.height * 0.38)
+        back.position = CGPoint(x: 0, y: -size.height * 0.40)
         root.addChild(back)
         return root
     }

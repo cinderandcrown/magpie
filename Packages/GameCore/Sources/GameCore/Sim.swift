@@ -85,17 +85,22 @@ public struct Sim: Equatable, Sendable {
         }
         var mops: [MopEnemy] = []
         var mopID = 0
+        var rng = SeededRNG(seed: seed)
         for (i, c) in map.findAll(.mopSpawn).enumerated() {
             let p = map.worldStandOnDeckBelow(ofX: c.0, markerY: c.1, tileSize: tile)
             // Keep a short clear zone at spawn so the first hop isn't an instant bag —
             // but leave easy MOPs close (≈2.2 tiles) for first-minute wins.
             if abs(p.x - start.x) < tile * 2.2 { continue }
             if cps.contains(where: { abs(p.x - $0.position.x) < tile * 2.5 }) { continue }
+            // Daily Heist seed can skip ~12% of far spawns so each day feels different
+            // without rewriting the reachability-proven ASCII.
+            if mopID >= 8, rng.nextDouble() < 0.12 { continue }
             // Opening pack: short readable patrol so hop-stomps chain into Mask fast.
-            let span = tile * (mopID < 8 ? 0.7 : 2.2)
+            let span = tile * (mopID < 8 ? 0.7 : 2.2) * (0.85 + rng.nextDouble() * 0.3)
             // Wide phase desync so neighbors don't mirror-walk on top of each other.
+            let phase = Double(mopID) * 1.7 + Double(i) * 0.37 + rng.nextDouble() * 2.4
             mops.append(MopEnemy(
-                id: mopID, position: p, home: p, patrolSpan: span, phase: Double(mopID) * 1.7 + Double(i) * 0.37,
+                id: mopID, position: p, home: p, patrolSpan: span, phase: phase,
                 alive: true, respawn: 0, anim: .walk, animHold: 0, facing: 1, stun: 0
             ))
             mopID += 1

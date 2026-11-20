@@ -2,6 +2,7 @@
 
 #if canImport(SpriteKit) && canImport(UIKit)
 import GameCore
+import Services
 import SpriteKit
 import UIKit
 
@@ -129,6 +130,17 @@ public final class HeistScene: SKScene {
     private var maskGradePulse: CGFloat = 0
     private var lastAwardedMedals = 0
     private var retentionMode: String? = nil // "map" | "daily"
+    /// Daily Heist run (UTC-seeded layout + GC score + ghost).
+    private var isDailyRun = false
+    private var dailyDayKey = ProgressStore.dayKey()
+    private var ghostRecorder = GhostRecorder()
+    private var racingGhostSamples: [GhostSamplePoint] = []
+    private var racingGhostKind: GhostKind?
+    private var ghostVisual: SKSpriteNode?
+    private var tookDamageThisRun = false
+    private var sawMaskThisRun = false
+    private var gameCenter: GameCenterServing = GameCenterService.shared
+    private var ghostStore: GhostStoreServing = CloudKitGhostStore.shared
     /// Gameplay pause (not SKScene.isPaused — that freezes the whole tree).
     private var runPaused = false
     private var pauseFromSystem = false
@@ -1339,6 +1351,7 @@ public final class HeistScene: SKScene {
         RetentionChrome.present(daily)
         retentionMode = "daily"
         smokeStatus.daily = true
+        gameCenter.setAccessPointVisible(true, showHighlights: true)
         writeSmokeStatus()
     }
 
@@ -2086,12 +2099,87 @@ public final class HeistScene: SKScene {
     }
 
     private func requestBeginPlay() {
+        isDailyRun = false
+        racingGhostSamples = []
+        racingGhostKind = nil
         // Smoke skips the district card so title→play timing stays in the freeze budget.
         if smokeEnabled {
             beginPlay()
             return
         }
         presentDistrictCardThenPlay()
+    }
+
+    /// Daily Heist: UTC-seeded Neon Docks grammar + optional ghost race.
+    private func startDailyHeist(racing: GhostKind?) {
+        hideRetention()
+        isDailyRun = true
+        dailyDayKey = ProgressStore.dayKey()
+        tookDamageThisRun = false
+        sawMaskThisRun = false
+        ghostRecorder.reset()
+        racingGhostKind = racing
+        do {
+            let map = try DailyHeist.loadMap()
+            let seed = DailyHeist.seed(dayKey: dailyDayKey)
+            sim = Sim(map: map, tuning: tuning, seed: seed)
+            pendingDistrict = .neonDocks
+            rebuildWorldEntitiesAfterDailyReload()
+        } catch {
+            // Fall through to current map if daily load fails.
+        }
+        Task { await prepareRacingGhost(kind: racing) }
+        beginPlay()
+    }
+
+    private func rebuildWorldEntitiesAfterDailyReload() {
+        shinyNodes.values.forEach { $0.removeFromParent() }
+        shinyNodes.removeAll()
+        mopNodes.values.forEach { $0.removeFromParent() }
+        mopNodes.removeAll()
+        crewNodes.values.forEach { $0.removeFromParent() }
+        crewNodes.removeAll()
+        for s in sim.state.shinies {
+            let n = ArtCatalog.makeShinyNode()
+            n.position = cg(s.position)
+            n.zPosition = 20
+            world.addChild(n)
+            shinyNodes[s.id] = n
+        }
+        for m in sim.state.mops {
+            let n = ArtCatalog.makeMopNode()
+            n.position = cg(m.position)
+            n.zPosition = 30
+            world.addChild(n)
+            mopNodes[m.id] = n
+        }
+        for c in sim.state.crewCages {
+            let n = makeCrewCageNode(crewID: c.crewID)
+            n.position = cg(c.position)
+            n.zPosition = 28
+            world.addChild(n)
+            crewNodes[c.id] = n
+        }
+    }
+
+    private func prepareRacingGhost(kind: GhostKind?) async {
+        guard let kind else {
+            racingGhostSamples = []
+            return
+        }
+        let run: GhostRun?
+        switch kind {
+        case .own:
+            run = await ghostStore.loadOwnBest(dayKey: dailyDayKey)
+        case .worldBest:
+            run = await ghostStore.loadWorldBest(dayKey: dailyDayKey)
+        case .friend:
+            // Friend picker arrives with GC Challenges UI; for now race world best as stand-in.
+            run = await ghostStore.loadWorldBest(dayKey: dailyDayKey)
+        }
+        racingGhostSamples = run?.samples.map {
+            GhostSamplePoint(t: $0.t, x: $0.x, y: $0.y, facing: $0.facing)
+        } ?? []
     }
 
     private func showTitleScreen() {
@@ -2120,6 +2208,13 @@ public final class HeistScene: SKScene {
         mopAlerted.removeAll()
         celebratedFirstStomp = false
         celebratedEarlyWin = false
+        if !isDailyRun {
+            tookDamageThisRun = false
+            sawMaskThisRun = false
+            ghostRecorder.reset()
+        }
+        ensureGhostVisual()
+        gameCenter.setAccessPointVisible(false, showHighlights: false)
         midSurpriseFired = false
         lastStompElapsed = -1
         nextLullNudgeAt = 8
@@ -2247,11 +2342,31 @@ public final class HeistScene: SKScene {
                     hideRetention()
                     return
                 }
-                if hitNames.contains("dailyPlay") {
+                if hitNames.contains("dailyPlay")
+                    || hitNames.contains("dailyRaceOwn")
+                    || hitNames.contains("dailyRaceBest")
+                    || hitNames.contains("dailyRaceFriend") {
                     JuiceSound.shared.playUITap()
-                    hideRetention()
-                    progressStore.recordDailyClear(dayKey: ProgressStore.dayKey())
-                    requestBeginPlay()
+                    let kind: GhostKind? = {
+                        if hitNames.contains("dailyRaceOwn") { return .own }
+                        if hitNames.contains("dailyRaceBest") { return .worldBest }
+                        if hitNames.contains("dailyRaceFriend") { return .friend }
+                        return nil
+                    }()
+                    startDailyHeist(racing: kind)
+                    return
+                }
+                if hitNames.contains("dailyChallenge") {
+                    JuiceSound.shared.playUITap()
+                    gameCenter.challengeFriends(
+                        leaderboardID: GameCenterIDs.dailyHeist,
+                        message: "Beat my Daily Heist score!"
+                    )
+                    return
+                }
+                if hitNames.contains("dailyLeaderboardBtn") {
+                    JuiceSound.shared.playUITap()
+                    gameCenter.presentLeaderboard(id: GameCenterIDs.dailyHeist)
                     return
                 }
                 for d in DistrictID.allCases {
@@ -2987,6 +3102,7 @@ public final class HeistScene: SKScene {
                     },
                 ]))
             case .hurt:
+                tookDamageThisRun = true
                 JuiceSound.shared.playHurt()
                 damageFlash()
                 shake(0.35)
@@ -3114,6 +3230,29 @@ public final class HeistScene: SKScene {
             guard isWin else { return 0 }
             let totalShinies = sim.state.shinies.count
             let got = sim.state.bandit.carriedShinies + sim.state.bandit.bankedShinies
+            if isDailyRun {
+                let score = DailyScore.compute(
+                    seconds: seconds,
+                    shiniesCollected: got,
+                    shiniesTotal: totalShinies,
+                    tookDamage: tookDamageThisRun,
+                    combo: combo
+                )
+                let streak = progressStore.recordDailyClear(dayKey: dailyDayKey, score: score)
+                _ = progressStore.recordClear(
+                    levelID: ProgressStore.dailyLevelID,
+                    shiniesCollected: got,
+                    shiniesTotal: totalShinies,
+                    seconds: seconds,
+                    combo: combo
+                )
+                gameCenter.submitScore(score, leaderboardID: GameCenterIDs.dailyHeist)
+                gameCenter.submitScore(score, leaderboardID: GameCenterIDs.mostWantedWeekly)
+                gameCenter.submitScore(combo, leaderboardID: GameCenterIDs.bestCombo)
+                reportDailyAchievements(score: score, streak: streak, medals: 0, gotAllLoot: got >= totalShinies)
+                persistDailyGhost(score: score, seconds: seconds)
+                return got >= totalShinies && !tookDamageThisRun ? 3 : (got >= totalShinies / 2 ? 2 : 1)
+            }
             let levelID = ProgressStore.levelID(for: pendingDistrict)
             let earned = progressStore.recordClear(
                 levelID: levelID,
@@ -3126,8 +3265,17 @@ public final class HeistScene: SKScene {
             lastAwardedMedals = earned.medals.count
             smokeStatus.medals = earned.medals.count
             smokeStatus.combo = max(smokeStatus.combo, combo)
+            reportCampaignAchievements(
+                levelID: levelID,
+                medals: earned.medals.count,
+                noDamage: !tookDamageThisRun
+            )
             return earned.medals.count
         }()
+
+        if isWin {
+            gameCenter.setAccessPointVisible(true, showHighlights: true)
+        }
 
         // Score: shinies ×100 + combo ×50 + time bonus under par + star bonus.
         let par = ProgressStore.defaultParSeconds
@@ -3397,6 +3545,15 @@ public final class HeistScene: SKScene {
             bandit.zPosition = 20
         }
 
+        if isDailyRun, sim.state.phase == .playing {
+            ghostRecorder.capture(
+                elapsed: sim.state.elapsed,
+                position: b.position,
+                facing: b.facing
+            )
+        }
+        updateRacingGhostVisual(elapsed: sim.state.elapsed)
+
         for s in sim.state.shinies {
             guard let node = shinyNodes[s.id] else { continue }
             if shinyCollecting.contains(s.id) { continue }
@@ -3482,6 +3639,7 @@ public final class HeistScene: SKScene {
             skyFill.color = ArtCatalog.nightSky
             skyFill.colorBlendFactor = 1
             if !lastMaskMode {
+                sawMaskThisRun = true
                 applyMaskParallaxGrade(active: true, pulse: 1)
             }
         } else {
@@ -4309,6 +4467,96 @@ public final class HeistScene: SKScene {
         }
         for _ in 0..<3 { bandit.emitMaskTrail() }
         hitSpark(at: sim.state.bandit.position, color: ArtCatalog.neonCyan)
+    }
+
+    // MARK: - Daily Heist ghosts + Game Center
+
+    private func ensureGhostVisual() {
+        if ghostVisual == nil {
+            let g = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.35), size: SpriteCycles.banditDisplaySize)
+            g.name = "dailyGhost"
+            g.zPosition = 18
+            g.alpha = 0
+            world.addChild(g)
+            ghostVisual = g
+        }
+        ghostVisual?.isHidden = racingGhostSamples.isEmpty
+        ghostVisual?.alpha = racingGhostSamples.isEmpty ? 0 : 0.55
+        ghostVisual?.color = ArtCatalog.neonCyan
+        ghostVisual?.colorBlendFactor = 0.85
+    }
+
+    private func updateRacingGhostVisual(elapsed: Double) {
+        guard let ghost = ghostVisual, !racingGhostSamples.isEmpty else {
+            ghostVisual?.alpha = 0
+            return
+        }
+        guard let (pos, facing) = GhostPlayback.pose(samples: racingGhostSamples, at: elapsed) else {
+            ghost.alpha = 0
+            return
+        }
+        ghost.position = CGPoint(x: CGFloat(pos.x), y: CGFloat(pos.y) - bodyCenterToFeet)
+        ghost.xScale = facing >= 0 ? 1 : -1
+        ghost.alpha = 0.55
+        ghost.isHidden = false
+    }
+
+    private func persistDailyGhost(score: Int, seconds: Double) {
+        let playerID = gameCenter.localPlayerID ?? "local"
+        let name = gameCenter.localDisplayName ?? "Bandit"
+        let samples = ghostRecorder.samples.map {
+            GhostSample(t: $0.t, x: $0.x, y: $0.y, facing: $0.facing)
+        }
+        let run = GhostRun(
+            dayKey: dailyDayKey,
+            playerID: playerID,
+            displayName: name,
+            score: score,
+            seconds: Float(seconds),
+            samples: samples
+        )
+        Task { await ghostStore.saveOwnBest(run) }
+        if racingGhostKind == .own {
+            unlockAchievement(GameCenterIDs.beatOwnGhost)
+        }
+        if racingGhostKind == .friend || racingGhostKind == .worldBest {
+            unlockAchievement(GameCenterIDs.beatFriendGhost)
+        }
+    }
+
+    private func reportDailyAchievements(score: Int, streak: Int, medals: Int, gotAllLoot: Bool) {
+        _ = score
+        unlockAchievement(GameCenterIDs.firstHeist)
+        if gotAllLoot && !tookDamageThisRun { unlockAchievement(GameCenterIDs.threeStarHeist) }
+        if !tookDamageThisRun { unlockAchievement(GameCenterIDs.noDamageHeist) }
+        if streak >= 3 { unlockAchievement(GameCenterIDs.dailyStreak3) }
+        if streak >= 7 { unlockAchievement(GameCenterIDs.dailyStreak7) }
+        if streak >= 30 { unlockAchievement(GameCenterIDs.dailyStreak30) }
+        if sim.state.bandit.maskMode || sawMaskThisRun { unlockAchievement(GameCenterIDs.firstMaskMode) }
+        _ = medals
+    }
+
+    private func reportCampaignAchievements(levelID: String, medals: Int, noDamage: Bool) {
+        unlockAchievement(GameCenterIDs.firstHeist)
+        if medals >= 3 { unlockAchievement(GameCenterIDs.threeStarHeist) }
+        if noDamage { unlockAchievement(GameCenterIDs.noDamageHeist) }
+        if levelID.hasPrefix("arcade_row") { unlockAchievement(GameCenterIDs.clearArcadeRow) }
+        if levelID.hasPrefix("rooftops") { unlockAchievement(GameCenterIDs.clearRooftops) }
+        if sim.state.bandit.maskMode || sawMaskThisRun { unlockAchievement(GameCenterIDs.firstMaskMode) }
+        if sim.state.crewCages.contains(where: \.freed) {
+            unlockAchievement(GameCenterIDs.firstCrewRescue)
+        }
+    }
+
+    private func unlockAchievement(_ id: String) {
+        var progress = progressStore.load()
+        guard !progress.unlockedAchievementIDs.contains(id) else {
+            gameCenter.reportAchievement(id: id, percentComplete: 100)
+            return
+        }
+        progress.unlockedAchievementIDs.append(id)
+        progressStore.save(progress)
+        gameCenter.reportAchievement(id: id, percentComplete: 100)
     }
 }
 #endif
