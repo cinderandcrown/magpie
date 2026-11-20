@@ -121,7 +121,7 @@ final class GameCoreTests: XCTestCase {
         ######
         """)
         var tuning = Tuning.default
-        XCTAssertEqual(tuning.feel.jumpBufferSeconds, 0.15, accuracy: 0.001)
+        XCTAssertEqual(tuning.feel.jumpBufferSeconds, 0.12, accuracy: 0.001)
         var sim = Sim(map: map, tuning: tuning)
         sim.state.phase = .playing
         sim.step(InputFrame(jumpPressed: true, jumpHeld: true))

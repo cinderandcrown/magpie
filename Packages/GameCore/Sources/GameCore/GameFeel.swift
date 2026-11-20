@@ -47,8 +47,8 @@ public struct GameFeel: Equatable, Sendable {
     public var jumpCutFraction: Double = 0.5
     /// Leave-ledge grace (~100 ms) so late jumps still fire.
     public var coyoteSeconds: Double = 0.10
-    /// Early JUMP buffer (~150 ms) so pre-land taps still fire.
-    public var jumpBufferSeconds: Double = 0.15
+    /// Early JUMP buffer (~120 ms) so pre-land taps still fire.
+    public var jumpBufferSeconds: Double = 0.12
     /// Max horizontal nudge (px) around ledge corners on head bump / near-miss land.
     public var cornerCorrectPx: Double = 6
 

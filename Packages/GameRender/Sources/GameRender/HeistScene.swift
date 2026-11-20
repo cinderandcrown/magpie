@@ -202,9 +202,10 @@ public final class HeistScene: SKScene {
         }
 
         ArtCatalog.warmAtlases()
-        // Pre-warm KO / Mask / dust so first hurt/Mask entry doesn't hitch ~170ms.
+        // Pre-warm KO / Mask / dust / Higgsfield juice so first hurt/stomp doesn't hitch.
         _ = ArtCatalog.texture(.raccoonMaskMode)
         _ = ArtCatalog.texture(.raccoonBellyFlop)
+        JuiceFX.warm()
         _ = ArtCatalog.softCircleTexture()
         // Preload gameplay textures while title is up so beginPlay stays within the 250ms budget.
         ArtCatalog.preloadGameplayTextures()
@@ -798,21 +799,26 @@ public final class HeistScene: SKScene {
         stickKnob.alpha = 0.35
         playHUD.addChild(stickKnob)
 
-        jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime, large: true)
+        jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime, large: true, iconName: "jump")
         jumpBtn.name = "jumpBtn"
         playHUD.addChild(jumpBtn)
-        pounceBtn = makeFaceButton(title: "POUNCE", color: ArtCatalog.neonPink, large: true)
+        pounceBtn = makeFaceButton(title: "POUNCE", color: ArtCatalog.neonPink, large: true, iconName: "pounce")
         pounceBtn.name = "pounceBtn"
         playHUD.addChild(pounceBtn)
     }
 
-    private func makeFaceButton(title: String, color: SKColor, large: Bool = false) -> SKShapeNode {
+    private func makeFaceButton(
+        title: String,
+        color: SKColor,
+        large: Bool = false,
+        iconName: String? = nil
+    ) -> SKShapeNode {
         let edge: CGFloat
         let font: CGFloat
         if large {
             // Thumb-sized face (≥112 pt). Invisible zones add the forgiving miss padding.
             edge = CGFloat(max(112, tuning.feel.faceButtonMinPt))
-            font = title.count > 5 ? 15 : 18
+            font = title.count > 5 ? 12 : 14
         } else {
             edge = 92
             font = 13
@@ -827,13 +833,29 @@ public final class HeistScene: SKScene {
         b.lineWidth = 3
         b.glowWidth = 2
         b.zPosition = 200
-        let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        t.text = title
-        t.fontSize = font
-        t.fontColor = color
-        t.verticalAlignmentMode = .center
-        t.name = "btnLabel"
-        b.addChild(t)
+        if large, let iconName, let tex = JuiceFX.buttonIcon(iconName) {
+            let icon = SKSpriteNode(texture: tex, size: CGSize(width: edge * 0.42, height: edge * 0.42))
+            icon.name = "btnIcon"
+            icon.position = CGPoint(x: 0, y: h * 0.12)
+            icon.zPosition = 1
+            b.addChild(icon)
+            let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+            t.text = title
+            t.fontSize = font
+            t.fontColor = color
+            t.verticalAlignmentMode = .center
+            t.position = CGPoint(x: 0, y: -h * 0.32)
+            t.name = "btnLabel"
+            b.addChild(t)
+        } else {
+            let t = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+            t.text = title
+            t.fontSize = font
+            t.fontColor = color
+            t.verticalAlignmentMode = .center
+            t.name = "btnLabel"
+            b.addChild(t)
+        }
         return b
     }
 
@@ -2825,18 +2847,26 @@ public final class HeistScene: SKScene {
             case .jump:
                 JuiceSound.shared.playJump()
                 if !smokeEnabled { hapticLight.impactOccurred() }
-                squash(0.68, 1.48)
+                squash(0.62, 1.55)
                 shake(0.32)
                 dust(at: e.position, count: 7, color: ArtCatalog.neonCyan)
                 jumpSpark(at: e.position)
+                JuiceFX.play(
+                    .footDust, at: cg(e.position), in: world,
+                    size: 56, z: 47, timePerFrame: 1.0 / 28.0, blendAdd: true
+                )
             case .land:
                 // Raw sim land for CI double-land gate (before audible debounce).
                 JuiceSound.shared.logRawLand()
                 JuiceSound.shared.playLand()
-                squash(1.52, 0.52)
+                squash(1.58, 0.48)
                 shake(0.48)
                 dust(at: e.position, count: 16, color: ArtCatalog.neonOrange)
                 landRing(at: e.position)
+                JuiceFX.play(
+                    .footDust, at: cg(e.position), in: world,
+                    size: 72, z: 47, timePerFrame: 1.0 / 26.0, blendAdd: true
+                )
             case .pounce:
                 JuiceSound.shared.playPounce()
                 if !smokeEnabled { hapticMed.impactOccurred() }
@@ -2864,9 +2894,18 @@ public final class HeistScene: SKScene {
                 squash(1.72, 0.34)
                 impactFlash(intensity: sim.state.bandit.combo >= 3 ? 0.6 : 0.42)
                 zoomPunch(1.05)
-                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 22)
-                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 14)
-                dust(at: e.position, count: 20, color: ArtCatalog.neonPink)
+                let stompPos = cg(e.position)
+                JuiceFX.play(
+                    .stompBurst, at: stompPos, in: world,
+                    size: 96, z: 58, timePerFrame: 1.0 / 28.0, blendAdd: true
+                )
+                JuiceFX.play(
+                    .mopDeath, at: stompPos, in: world,
+                    size: 88, z: 57, timePerFrame: 1.0 / 26.0, blendAdd: false
+                )
+                neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 10)
+                neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 6)
+                dust(at: e.position, count: 12, color: ArtCatalog.neonPink)
                 impactRing(at: e.position, color: ArtCatalog.neonPink)
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
@@ -3590,7 +3629,8 @@ public final class HeistScene: SKScene {
         sub.verticalAlignmentMode = .center
         sub.position = CGPoint(x: 0, y: -10)
         root.addChild(sub)
-        root.position = CGPoint(x: 0, y: size.height * 0.28)
+        let topSafe = max(safeInsets().top, 59) + 48
+        root.position = CGPoint(x: 0, y: size.height * 0.5 - topSafe)
         root.alpha = 0
         root.setScale(0.85)
         overlay.addChild(root)
@@ -3603,23 +3643,26 @@ public final class HeistScene: SKScene {
             SKAction.wait(forDuration: 3.2),
             SKAction.group([
                 SKAction.fadeOut(withDuration: 0.35),
-                SKAction.moveBy(x: 0, y: 24, duration: 0.35),
+                SKAction.moveBy(x: 0, y: 16, duration: 0.35),
             ]),
             SKAction.removeFromParent(),
         ]))
     }
 
     private func showPlayToast(_ text: String, color: SKColor, hold: TimeInterval) {
+        // Top band — never cover the raccoon or +N stomp popups mid-screen.
+        let insets = safeInsets()
+        let topSafe = max(insets.top, 59) + 36
         let toast = SKLabelNode(fontNamed: "AvenirNext-Heavy")
         toast.text = text
-        toast.fontSize = 18
+        toast.fontSize = 15
         toast.fontColor = color
         toast.verticalAlignmentMode = .center
         toast.horizontalAlignmentMode = .center
         toast.zPosition = 290
         toast.alpha = 0
         toast.setScale(0.7)
-        toast.position = CGPoint(x: 0, y: size.height * 0.18)
+        toast.position = CGPoint(x: 0, y: size.height * 0.5 - topSafe)
         overlay.addChild(toast)
         toast.run(SKAction.sequence([
             SKAction.group([

@@ -203,14 +203,19 @@ public enum ArtCatalog {
     }
 
     public static func makeShinyNode() -> SKNode {
+        let root = SKNode()
+        root.name = "shiny"
         let frames = textures(AssetManifest.shinyFrames)
         let n = SKSpriteNode(texture: frames.first, size: CGSize(width: 28, height: 28))
-        n.name = "shiny"
+        n.name = "shinySprite"
         applyDespill(n)
         if frames.count > 1 {
             n.run(SKAction.repeatForever(SKAction.animate(with: frames, timePerFrame: 0.16)))
         }
-        return n
+        root.addChild(n)
+        // Higgsfield neon glow loop (frames 2–6) — additive, behind the gear.
+        JuiceFX.attachPickupGlow(to: root, size: 52)
+        return root
     }
 
     public static func makeLogoNode(lite: Bool = false) -> SKNode {

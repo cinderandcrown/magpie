@@ -47,6 +47,18 @@ Side views face WEST; ready frames are foot-baseline-normalized 256². `disco_da
 | `sprites/tiles_side/mask_00.png`…`mask_15.png` | Original neon industrial 16-mask autotiles for this project | Proprietary — Cinder and Crown LLC |
 | `sprites/props_side/prop_*.png` | [Kenney Platformer Pack Industrial](https://kenney.nl/assets/platformer-pack-industrial) | **CC0 1.0** — decoration only (crates/pipes/girders) |
 
+## Higgsfield UI / VFX (Nov 20 2026)
+
+| Asset | Source | License | In-game credits |
+| --- | --- | --- | --- |
+| `ui/buttons/jump.png`, `ui/buttons/pounce.png` | Higgsfield (Cinder & Crown Ultra plan); see `fx/higgsfield/LICENSE.md` | Commercial use OK; **no attribution required** | Optional |
+| `fx/higgsfield/stomp-burst/*` (6 frames) | same | same | Optional |
+| `fx/higgsfield/mop-death/*` (6 frames) | same | same | Optional |
+| `fx/higgsfield/foot-dust/*` (4 frames) | same | same | Optional |
+| `fx/higgsfield/pickup-glow/*` (6 frames; loop 2–6) | same | same | Optional |
+
+Full origin record: `Assets/Generated/fx/higgsfield/LICENSE.md`.
+
 ## Backgrounds / tiles / UI / audio
 
 | Asset | Source | License |

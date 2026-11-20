@@ -18,3 +18,10 @@ Mission 0 ships **no** third-party art, audio, or fonts. Placeholder visuals are
 | `Assets/Audio/music/**` | ElevenLabs Music v2.5 soundtrack (8 looped `.m4a` + README). | Cinder & Crown / ElevenLabs ToS | 2026-11-16 |
 | `Assets/Generated/sprites/tiles_side/**` | Original neon industrial 16-mask side-view autotiles. | Cinder & Crown LLC | 2026-11-16 |
 | `Assets/Generated/sprites/props_side/**` | https://kenney.nl/assets/platformer-pack-industrial — Kenney | CC0 1.0 | 2026-11-16 |
+
+## Higgsfield juice (UI / VFX)
+
+| File | Source URL | License | Date |
+| --- | --- | --- | --- |
+| `Assets/Generated/ui/buttons/*.png` + `Assets/Generated/fx/higgsfield/**` | Higgsfield (Nicholas Ultra plan), Cinder & Crown prompts — see `Assets/Generated/fx/higgsfield/LICENSE.md` | Higgsfield commercial use; no attribution required | 2026-11-20 |
+

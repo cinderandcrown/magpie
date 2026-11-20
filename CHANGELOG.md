@@ -3,8 +3,9 @@
 ## Unreleased
 
 ### Gameplay
+- **Higgsfield juice (feel loop):** JUMP/POUNCE icons on the face buttons (same big hit pads + press squash); stomp-burst + mop-death on kills; foot-dust on jump/land; pickup-glow loop on shinies. FX are short one-shots, warmed at scene start. Jump buffer tuned to ~120 ms; play toasts sit at the top so they never cover the raccoon.
 - **Feedback-5 fixes (Nicholas iPhone):** JUMP/POUNCE hit boxes now match the drawn buttons (+ pad); move zone no longer steals right-side taps; debug touch overlay via `-ShowTouchZones`. Pounce/drop-through and ledge falls onto MOPs always stomp (land grace + invuln while diving). MASK MODE banner moved to the top, smaller, clear of +N popups.
-- **Phone feel (Nicholas):** thumb-sized JUMP/POUNCE (112 pt) + huge invisible hit zones (left ~38% move, right ~40% jump/pounce), multitouch on, press squash + haptic; coyote 100 ms / jump buffer 150 ms; stomp box 2.0× sprite wide with fall magnet + land-frame stomps; easy opening MOP pack + street shinies; combo shows from x1.
+- **Phone feel (Nicholas):** thumb-sized JUMP/POUNCE (112 pt) + huge invisible hit zones (left ~38% move, right ~40% jump/pounce), multitouch on, press squash + haptic; coyote 100 ms / jump buffer 120 ms; stomp box 2.0× sprite wide with fall magnet + land-frame stomps; easy opening MOP pack + street shinies; combo shows from x1.
 - **Feel pass 3 (post-daaed6f):** MOPs no longer stack into one white blob (wider patrol + de-clump + gentle seek); walk/run reads on screen (faster sheets, lean, foot dust); quiet stretches get a “POUNCE A MOP!” nudge.
 - **Feel pass 2 (post-76646e9):** snappier accel/turn (less robotic), slightly tighter fall, louder jump/land/stomp, harder stomp hit-stop (~65–80 ms) + white flash + zoom punch, speed-scaled camera follow, post-Mask “NOW → EXIT” toast with amplified beacon, mid-surprise earlier (~26 s / tile 28).
 - **Punchy juice (feel pass):** every jump / land / stomp / pickup gets hit-stop, harder screen shake, squash-stretch, dust/sparks/impact rings, and SFX. Jump arcs fall faster (less float); coyote 0.12 s + jump buffer 0.14 s kept.
