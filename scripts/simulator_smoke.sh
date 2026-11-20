@@ -21,6 +21,39 @@ MIN_VIDEO_SECS="${SMOKE_MIN_VIDEO_SECS:-60}"
 FORCED_MASK=0
 FORCED_FAIL=0
 mkdir -p "$OUT_DIR"
+REC_PID=""
+VIDEO_OUT="${OUT_DIR}/smoke-gameplay.mp4"
+
+# Always stop simctl recordVideo so the mp4 finalizes (even on midrun timeout / FAIL).
+finalize_recorder() {
+  local pid="${REC_PID:-}"
+  [[ -n "$pid" ]] || return 0
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -INT "$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+    # simctl needs a moment to flush the .mp4 (sidecar .sb-* is incomplete until then).
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.5
+    done
+    wait "$pid" 2>/dev/null || true
+  fi
+  # If the primary path is empty but a sidecar remains, promote the largest sidecar.
+  if [[ -n "${VIDEO_OUT:-}" ]]; then
+    if [[ ! -s "$VIDEO_OUT" ]]; then
+      local side
+      side="$(ls -1t "${VIDEO_OUT}".sb-* 2>/dev/null | head -1 || true)"
+      if [[ -n "$side" && -s "$side" ]]; then
+        echo "WARN: promoting recorder sidecar $(basename "$side") → $(basename "$VIDEO_OUT")" >&2
+        mv -f "$side" "$VIDEO_OUT" || cp -f "$side" "$VIDEO_OUT" || true
+      fi
+    fi
+    rm -f "${VIDEO_OUT}".sb-* 2>/dev/null || true
+  fi
+  REC_PID=""
+}
+trap finalize_recorder EXIT
 
 arm_force() {
   local kind="$1"
@@ -568,8 +601,7 @@ while true; do
   sleep 2
 done
 
-kill -INT "$REC_PID" 2>/dev/null || true
-wait "$REC_PID" 2>/dev/null || true
+finalize_recorder
 sleep 2
 require_app "end"
 

@@ -403,6 +403,10 @@ public struct SmokeBrain: Equatable, Sendable {
         var moveX: Double
         var jumpPressed = false
         var jumpHeld = false
+        var pouncePressed = false
+        var dashPressed = false
+        var maskPressed = false
+        var grabPressed = false
         // Explicit L/R reversals + brief releases so the smoke clip proves facing/stop.
         if phase < 50 {
             moveX = 1.0
@@ -433,48 +437,44 @@ public struct SmokeBrain: Equatable, Sendable {
         // Pre-midrun: patrol the neon corridor (not the spawn lip) so midrun stills see
         // storefront magenta; leave MOPs alive; never race past the canal to EXIT.
         if !midrunOk {
+            // Stay on the safe teaching runway (before first pit / MOP pack).
             let canalX = sim.map.findAll(.water).map(\.0).min() ?? 45
-            let leftCap = 18
-            let rightCap = max(32, min(40, canalX - 8))
+            let leftCap = 8
+            let rightCap = max(leftCap + 8, min(canalX - 5, 26))
             if tx >= rightCap {
-                moveX = -0.85
+                moveX = -0.55
                 jumpPressed = false
                 jumpHeld = false
             } else if tx <= leftCap {
-                // Prefer right-facing run into the neon band (framing + storefronts).
-                moveX = 0.95
-                jumpPressed = b.onGround && (phase == 170 || phase == 190)
-                jumpHeld = jumpPressed || (!b.onGround && b.velocity.y > 0)
-            } else if let mop = nearestMop(sim: sim) {
-                let dx = mop.position.x - b.position.x
-                // Soft reverse instead of hop-stomp — keep packs for the stomp-chain beat.
-                if dx > 0, dx < tile * 3.5 {
-                    moveX = -0.45
-                    jumpPressed = false
-                    jumpHeld = false
-                } else if dx < 0, dx > -tile * 2.5 {
-                    moveX = 0.9
-                }
+                moveX = 1.0
+                jumpPressed = false
+                jumpHeld = false
+            } else {
+                // Auto-runner showcase: keep pressing right so midrun stills show motion.
+                moveX = 1.0
             }
         } else if let mop = nearestMop(sim: sim) {
             let dx = mop.position.x - b.position.x
-            if dx > 0, dx < tile * 4.0, b.onGround || b.coyote > 0 {
-                jumpPressed = true
-                jumpHeld = true
-                moveX = max(moveX, 0.95)
+            // Hunt: jump then pounce to stomp.
+            if abs(dx) < tile * 5.0 {
+                moveX = dx >= 0 ? 1.0 : -0.35
+                if b.onGround || b.coyote > 0 {
+                    jumpPressed = true
+                    jumpHeld = true
+                } else if !b.pouncing, !b.flopping, b.velocity.y < 40 {
+                    pouncePressed = true
+                }
             }
         }
 
-        if gapAhead(sim: sim, tx: tx, ty: ty), !hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
+        // Always jump gaps / pits — never walk into water.
+        if gapAhead(sim: sim, tx: tx, ty: ty) || hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
             jumpPressed = b.onGround || b.coyote > 0
             jumpHeld = true
-            moveX = max(moveX, 0.85)
-        }
-        if hazardAhead(sim: sim, tx: tx, ty: ty, reach: 2) {
-            // Jump the hazard — never reverse into the left water pit by spawn.
-            jumpPressed = b.onGround || b.coyote > 0
-            jumpHeld = true
-            moveX = max(moveX, 0.85)
+            moveX = max(moveX, 1.0)
+            if !b.onGround, !b.pouncing, !b.flopping, b.velocity.y < 20 {
+                pouncePressed = true
+            }
         }
         if tx <= 5 {
             moveX = max(moveX, 0.9)
@@ -496,10 +496,6 @@ public struct SmokeBrain: Equatable, Sendable {
         }
 
         // First ~30s street beat: cycle the full right-thumb cluster for the smoke clip.
-        var dashPressed = false
-        var maskPressed = false
-        var grabPressed = false
-        var pouncePressed = false
         let elapsed = sim.state.elapsed
         if elapsed < 32, act != .seekDeath, act != .finishPush {
             // DASH burst (~8s) — cooldown ring + i-frames through a MOP lane.
@@ -559,6 +555,16 @@ public struct SmokeBrain: Equatable, Sendable {
         // Fun-pass: spend Mask as soon as the meter fills (stomps grant charges).
         if !b.maskMode, b.maskCharges > 0 {
             return InputFrame(moveX: 1, jumpHeld: false, maskPressed: true)
+        }
+
+        // Never walk into pits while hunting.
+        if gapAhead(sim: sim, tx: tx, ty: ty) || hazardAhead(sim: sim, tx: tx, ty: ty, reach: 3) {
+            return InputFrame(
+                moveX: 1,
+                jumpPressed: b.onGround || b.coyote > 0,
+                jumpHeld: true,
+                pouncePressed: !b.onGround && !b.pouncing && !b.flopping
+            )
         }
 
         // Prefer street-deck MOPs for the second Mask (opening pack / patrols).

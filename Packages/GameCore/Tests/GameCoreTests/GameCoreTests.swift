@@ -797,6 +797,8 @@ final class GameCoreTests: XCTestCase {
         """)
         var sim = Sim(map: map, tuning: .default)
         sim.state.phase = .playing
+        // Clear spawn i-frames so the side-bump is testable immediately.
+        sim.state.bandit.invuln = 0
         XCTAssertFalse(sim.state.mops.isEmpty)
         // Walk into MOP
         var sawHurt = false
@@ -1356,9 +1358,12 @@ final class GameCoreTests: XCTestCase {
         tuning.hearts = 3
         var sim = Sim(map: map, tuning: tuning, seed: 3)
         sim.state.phase = .playing
+        sim.state.bandit.invuln = 0
+        XCTAssertEqual(sim.state.bandit.hearts, 3)
         XCTAssertFalse(sim.state.mops.isEmpty)
         // Sprint into the MOP from the left (ground contact = hurt, not stomp).
         var hurt = false
+        let heartsBefore = sim.state.bandit.hearts
         for _ in 0..<120 {
             sim.step(InputFrame(moveX: 1))
             if sim.state.events.contains(where: { if case .hurt = $0.kind { return true }; return false }) {
@@ -1367,6 +1372,8 @@ final class GameCoreTests: XCTestCase {
             }
         }
         XCTAssertTrue(hurt, "expected a side-bump hurt")
+        XCTAssertEqual(sim.state.bandit.hearts, heartsBefore - 1, "side hit costs exactly one heart")
+        XCTAssertGreaterThan(sim.state.bandit.invuln, 0.5, "hurt must grant i-frames")
         let vx = sim.state.bandit.velocity.x
         XCTAssertNotEqual(vx, 0, accuracy: 1)
         // Facing must match knockback travel (not the pre-hit run direction).

@@ -163,6 +163,9 @@ public struct Sim: Equatable, Sendable {
     public mutating func startRun() {
         guard case .title = state.phase else { return }
         state.phase = .playing
+        // Spawn safety: brief i-frames so the teaching stretch never bags on frame 1.
+        state.bandit.invuln = max(state.bandit.invuln, 1.5)
+        state.bandit.hearts = max(state.bandit.hearts, tuning.hearts)
     }
 
     public mutating func retry() {
@@ -172,6 +175,8 @@ public struct Sim: Equatable, Sendable {
         let seed = self.seed &+ 1
         self = Sim(map: map, tuning: tuning, seed: seed, variant: variant)
         state.phase = .playing
+        state.bandit.invuln = max(state.bandit.invuln, 1.5)
+        state.bandit.hearts = tuning.hearts
     }
 
     public mutating func step(_ input: InputFrame) {
@@ -927,7 +932,7 @@ public struct Sim: Equatable, Sendable {
 
         if didStomp { return }
 
-        // DASH breaks through MOPs (short invuln burst that clears the lane).
+        // DASH / Mask break through MOPs — shake only (not a stomp) so objective/smoke counts stay honest.
         if bandit.dashTimer > 0 || bandit.maskMode {
             for i in state.mops.indices where state.mops[i].alive {
                 let dx = abs(bandit.position.x - state.mops[i].position.x)
@@ -939,34 +944,36 @@ public struct Sim: Equatable, Sendable {
                     state.mops[i].animHold = 0.8
                     bandit.combo = min(tuning.comboCap, bandit.combo + 1)
                     bandit.comboTimer = tuning.comboGroundGrace
-                    state.events.append(SimEvent(kind: .stomp, position: state.mops[i].position))
                     state.events.append(SimEvent(kind: .shake, position: state.mops[i].position))
+                    state.events.append(SimEvent(kind: .dust, position: state.mops[i].position))
                 }
             }
             return
         }
 
         // Side hits hurt unless stomping / pouncing / i-frames.
-        // Descending without a stomp window still bags — stomps must be the survival tool.
+        // One heart per contact, then knockback + invuln — never multi-hit the same frame.
         if bandit.flopping || bandit.pouncing || bandit.dropThrough > 0 {
+            return
+        }
+        if bandit.invuln > 0 || bandit.anim == .hurt {
             return
         }
 
         for i in state.mops.indices where state.mops[i].alive {
             let dx = abs(bandit.position.x - state.mops[i].position.x)
             let dy = abs(bandit.position.y - state.mops[i].position.y)
-            let immune = bandit.invuln > 0
             // Hurt box stays smaller than the MOP sprite; grounded / rising beside them.
-            if dx <= hurtHalfW, dy <= mopHalfH * 1.35, !immune {
-                bandit.hearts -= 1
-                bandit.invuln = feel.invulnSeconds
+            if dx <= hurtHalfW, dy <= mopHalfH * 1.35 {
+                bandit.hearts = max(0, bandit.hearts - 1)
+                bandit.invuln = max(feel.invulnSeconds, 1.0)
                 bandit.combo = 0
                 bandit.comboTimer = 0
                 var away = bandit.position.x >= state.mops[i].position.x ? 1.0 : -1.0
                 let tile = tuning.tileSize
                 let minSafe = tile * 2
                 let maxSafe = Double(map.width) * tile - tile * 2
-                var nx = bandit.position.x + away * tile * 1.2
+                var nx = bandit.position.x + away * tile * 1.35
                 if nx < minSafe {
                     away = 1
                     nx = minSafe

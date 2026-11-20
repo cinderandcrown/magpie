@@ -2515,6 +2515,9 @@ public final class HeistScene: SKScene {
         JuiceSound.shared.playUITap()
         JuiceSound.shared.startLevelMusic()
         mopAlerted.removeAll()
+        tutorialStep = 0
+        tutorialStomps = 0
+        celebratedFirstStomp = false
         sim.retry()
         hideOutcome()
         snapCameraToHero()
@@ -2523,6 +2526,7 @@ public final class HeistScene: SKScene {
         if !smoke.diedOnce {
             resetHeroFramingSamples()
         }
+        refreshObjectiveChip(forceBanner: true)
         updateHUDVisibility()
     }
 
@@ -4274,18 +4278,19 @@ public final class HeistScene: SKScene {
 
     private func refreshObjectiveChip(forceBanner: Bool = false) {
         let stompsNeeded = 3
-        // Prefer live stomp count from events tracked locally (all Int — avoid Int/Double ternaries).
-        let done = tutorialStomps
+        // Progress is only real air-stomps (tutorialStomps) — never invent 3/3.
+        let done = max(0, min(tutorialStomps, stompsNeeded))
         let text: String
         switch tutorialStep {
         case 0:
-            text = "JUMP the gap"
+            // Teaching stretch: still show the stomp goal at 0/3 so the chip never lies.
+            text = "JUMP · Stomp MOPs \(done)/\(stompsNeeded)"
         case 1:
-            text = "Stomp MOPs \(min(done, stompsNeeded))/\(stompsNeeded)"
+            text = "Stomp MOPs \(done)/\(stompsNeeded)"
         case 2:
             text = sim.state.bandit.maskCharges > 0 || sim.state.bandit.maskMode
                 ? "TAP MASK — smash mode!"
-                : "Stomp MOPs \(min(done, stompsNeeded))/\(stompsNeeded)"
+                : "Stomp MOPs \(done)/\(stompsNeeded)"
         default:
             text = "Crack the VAULT"
         }

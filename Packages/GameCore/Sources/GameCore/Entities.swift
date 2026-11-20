@@ -81,7 +81,7 @@ public struct BanditState: Equatable, Sendable {
             maskTimer: 0,
             maskCharges: 0,
             hearts: hearts,
-            invuln: 0,
+            invuln: 1.5,
             carriedShinies: 0,
             bankedShinies: 0,
             anim: .idle,
