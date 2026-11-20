@@ -1684,6 +1684,17 @@ public final class BanditVisual: SKNode {
             playOnce(deathTextures, action: "death", fallbackTPF: 0.05)
         case .pickUp:
             playOnce(pickUpTextures, action: "pick_up", fallbackTPF: 0.04)
+        case .slide:
+            // DASH / slide burst — reuse run frames at a snappy rate when no dedicated sheet.
+            if !sheetDriven { startRunCycle() }
+            let slideSrc = runTextures.isEmpty ? walkTextures : runTextures
+            let slideTrim = slideSrc.count > 10 ? Array(slideSrc.prefix(10)) : slideSrc
+            if slideTrim.count > 1 {
+                playLoop(slideTrim, action: "run", fallbackTPF: 0.035)
+            } else {
+                sprite.texture = runTextures.first ?? walkTextures.first ?? idleTex
+                driveTextures = []
+            }
         case .idle:
             if !sheetDriven { startIdleMotion() }
             playLoop(idleTextures, action: "idle", fallbackTPF: 0.12)
