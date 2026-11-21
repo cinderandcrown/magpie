@@ -3377,6 +3377,8 @@ public final class HeistScene: SKScene {
                         smoke.sawStomp = true
                     }
                     // Harness: dump Bandit into canal water for the death beat if seekDeath stalls.
+                    // Force phase=failed immediately — teleport alone can miss a sim tick before
+                    // the harness hard-timeout (seen when soft-arm and hard-fail shared a loop).
                     if SmokeBrain.smokeFlagExists("smoke_force_fail.txt"),
                        case .playing = sim.state.phase
                     {
@@ -3391,7 +3393,11 @@ public final class HeistScene: SKScene {
                         sim.state.bandit.invuln = 0
                         sim.state.bandit.maskMode = false
                         sim.state.bandit.maskTimer = 0
+                        sim.state.bandit.hearts = 0
+                        sim.state.phase = .failed(.fellInWater)
                         smoke.act = .seekDeath
+                        smoke.diedOnce = true
+                        smokeStatus.died = true
                     }
                     // Pin Mask open only while the harness is actively capturing 04 / 04b
                     // (smoke_capture_mask.txt). Do NOT pin from midrun→stomp-chain — that

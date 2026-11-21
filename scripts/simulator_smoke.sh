@@ -547,8 +547,15 @@ while true; do
     echo "WARN: death soft-timeout (status=$status)" >&2
     arm_force fail "smoke_force_fail.txt"
     DEATH_FORCED=1
+    # Give force_fail a clean window — never hard-fail on the same tick we arm.
+    DEATH_WAIT_START="$(date +%s)"
   fi
-  if (( now - DEATH_WAIT_START >= 90 )); then
+  # 90s before force, or 25s after force_fail is armed.
+  local_limit=90
+  if [[ "$DEATH_FORCED" -eq 1 ]]; then
+    local_limit=25
+  fi
+  if (( now - DEATH_WAIT_START >= local_limit )); then
     echo "FAIL: timeout waiting for death (status=$status)" >&2
     shot "$OUT_DIR/fail-death-timeout.png" || true
     exit 1
