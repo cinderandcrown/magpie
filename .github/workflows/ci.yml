@@ -221,6 +221,20 @@ jobs:
               raise SystemExit(f"FAIL: SE aspect {se_ar:.3f} not SE-class (want ~{expect:.3f})")
           if se[0] not in (750, 1500) and not (700 <= se[0] <= 1600 and abs(se_ar - expect) < 0.05):
               raise SystemExit(f"FAIL: unexpected SE size {se[0]}x{se[1]}")
+          # Require the shutter-time smoke status (titleHidden=1 + playing).
+          from pathlib import Path
+          st = Path("smoke-artifacts/layout-se-play-status.txt")
+          if not st.is_file():
+              raise SystemExit("FAIL: missing layout-se-play-status.txt")
+          line = st.read_text()
+          print("layout-se-play-status:", line.strip()[:220])
+          if "phase=playing" not in line or "titleHidden=1" not in line:
+              raise SystemExit(f"FAIL: SE play still not live gameplay ({line[:160]!r})")
+          if "elapsed=" in line:
+              import re
+              m = re.search(r"elapsed=([0-9.]+)", line)
+              if not m or float(m.group(1)) < 2.5:
+                  raise SystemExit(f"FAIL: SE play elapsed too low ({line[:160]!r})")
           PY
 
       - name: Upload smoke artifacts

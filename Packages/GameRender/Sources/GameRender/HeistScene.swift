@@ -4963,6 +4963,8 @@ public final class HeistScene: SKScene {
         smokeStatus.worldTY = wty
         smokeStatus.worldTXMax = max(smokeStatus.worldTXMax, wtx)
         smokeStatus.stallSec = smoke.progressStallSeconds
+        // Layout shots must wait for the title art to actually leave the screen.
+        smokeStatus.titleHidden = titleRoot.isHidden
         smokeStatus.write()
     }
 

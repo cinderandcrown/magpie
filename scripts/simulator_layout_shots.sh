@@ -209,22 +209,42 @@ shot_device() {
   local dname
   dname="$(device_name "$udid" || true)"
   echo "layout shot: $label ($udid) $dname"
+  xcrun simctl shutdown "$udid" 2>/dev/null || true
+  sleep 1
   xcrun simctl boot "$udid" 2>/dev/null || true
-  # Cap boot wait — a hung bootstatus previously burned the 60m job timeout.
-  python3 - "$udid" <<'PY' || true
+  # Cap boot wait; on timeout shut down and retry once (SE create often needs this).
+  if ! python3 - "$udid" <<'PY'
 import subprocess, sys
 udid = sys.argv[1]
 try:
-    subprocess.run(
+    r = subprocess.run(
         ["xcrun", "simctl", "bootstatus", udid, "-b"],
-        timeout=90,
+        timeout=120,
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    raise SystemExit(0 if r.returncode == 0 else 1)
 except subprocess.TimeoutExpired:
     print(f"WARN: bootstatus timed out for {udid}", file=sys.stderr)
+    raise SystemExit(1)
 PY
+  then
+    echo "WARN: retrying boot for $udid" >&2
+    xcrun simctl shutdown "$udid" 2>/dev/null || true
+    sleep 2
+    xcrun simctl boot "$udid" 2>/dev/null || true
+    python3 - "$udid" <<'PY' || true
+import subprocess, sys
+udid = sys.argv[1]
+try:
+    subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"], timeout=120, check=False,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+except subprocess.TimeoutExpired:
+    print(f"ERROR: bootstatus failed twice for {udid}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+  fi
   xcrun simctl uninstall "$udid" com.cinderandcrown.magpie 2>/dev/null || true
   xcrun simctl install "$udid" "$APP"
   # Erase leftover smoke flags from a prior install on this udid.
@@ -258,7 +278,7 @@ PY
     if [[ -n "$docs" && -f "$docs/smoke_status.txt" ]]; then
       local status
       status="$(cat "$docs/smoke_status.txt" 2>/dev/null || true)"
-      if [[ "$status" == *"phase=playing"* && "$status" == *"boot=ready"* ]]; then
+      if [[ "$status" == *"phase=playing"* && "$status" == *"boot=ready"* && "$status" == *"titleHidden=1"* ]]; then
         if python3 -c 'import re,sys; s=open(sys.argv[1]).read();
 m=re.search(r"elapsed=([0-9.]+)", s); t=re.search(r"worldTX=([0-9]+)", s);
 sys.exit(0 if m and float(m.group(1))>=3.0 and t and int(t.group(1))>=10 else 1)' \
@@ -288,14 +308,20 @@ sys.exit(0 if m and float(m.group(1))>=3.0 and t and int(t.group(1))>=10 else 1)
   if [[ -n "$docs" && -f "$docs/smoke_status.txt" ]]; then
     local pre
     pre="$(cat "$docs/smoke_status.txt" 2>/dev/null || true)"
-    if [[ "$pre" != *"phase=playing"* ]]; then
-      echo "ERROR: $label status left playing before shot ($pre)" >&2
+    if [[ "$pre" != *"phase=playing"* || "$pre" != *"titleHidden=1"* ]]; then
+      echo "ERROR: $label not on live playfield before shot ($pre)" >&2
       return 1
     fi
   fi
   xcrun simctl io "$udid" screenshot "$out" || xcrun simctl io "$udid" screenshot --display=1 "$out"
+  if [[ -n "$docs" && -f "$docs/smoke_status.txt" ]]; then
+    cp -f "$docs/smoke_status.txt" "$OUT_DIR/layout-${label}-status.txt" || true
+  fi
   sleep 2.5
   xcrun simctl io "$udid" screenshot "$play" || true
+  if [[ -n "$docs" && -f "$docs/smoke_status.txt" ]]; then
+    cp -f "$docs/smoke_status.txt" "$OUT_DIR/layout-${label}-play-status.txt" || true
+  fi
   for f in "$out" "$play"; do
     [[ -f "$f" ]] || continue
     echo "layout size $f: $(png_size "$f")"
