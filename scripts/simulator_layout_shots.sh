@@ -80,16 +80,57 @@ shot_device() {
   echo "wrote $out"
 }
 
+pick_any_iphone() {
+  python3 - <<'PY'
+import json, subprocess
+raw = subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"], text=True)
+devices = json.loads(raw)["devices"]
+cands = []
+for runtime, items in devices.items():
+    if "iOS" not in runtime:
+        continue
+    for d in items:
+        name = d.get("name", "")
+        if "iPhone" not in name:
+            continue
+        if "Duo" in name or "Fold" in name:
+            continue
+        # Prefer compact / Pro-class phones for HUD evidence.
+        rank = 2
+        low = name.lower()
+        if "se" in low:
+            rank = 0
+        elif "pro" in low and "max" not in low:
+            rank = 1
+        cands.append((rank, name, d["udid"]))
+cands.sort()
+if not cands:
+    raise SystemExit(1)
+print(cands[0][2])
+print(cands[0][1], file=__import__("sys").stderr)
+PY
+}
+
 PRO_UDID="$(pick_named "iphone 16 pro" || pick_named "iphone 17 pro" || true)"
 SE_UDID="$(pick_named "iphone se" || true)"
+FALLBACK_UDID=""
+if [[ -z "${PRO_UDID:-}" || -z "${SE_UDID:-}" ]]; then
+  FALLBACK_UDID="$(pick_any_iphone || true)"
+fi
 
 if [[ -n "${PRO_UDID:-}" ]]; then
   shot_device "16pro" "$PRO_UDID"
+elif [[ -n "${FALLBACK_UDID:-}" ]]; then
+  echo "WARN: no iPhone 16/17 Pro — falling back to available iPhone for layout-16pro" >&2
+  shot_device "16pro" "$FALLBACK_UDID"
 else
-  echo "WARN: no iPhone 16/17 Pro simulator — skip layout-16pro" >&2
+  echo "WARN: no iPhone simulator for layout-16pro" >&2
 fi
 if [[ -n "${SE_UDID:-}" ]]; then
   shot_device "se" "$SE_UDID"
+elif [[ -n "${FALLBACK_UDID:-}" && "${FALLBACK_UDID}" != "${PRO_UDID:-}" ]]; then
+  echo "WARN: no iPhone SE — falling back to available iPhone for layout-se" >&2
+  shot_device "se" "$FALLBACK_UDID"
 else
   echo "WARN: no iPhone SE simulator — skip layout-se" >&2
 fi
