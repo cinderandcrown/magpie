@@ -112,4 +112,52 @@ final class SmokeWorldProgressTests: XCTestCase {
         _ = maxTXBeforeDeath
         _ = prematureWin
     }
+
+    /// Regression: teaching-runway soft-hold keeps stomps=0 for midrun, then ≥4 stomps ahead.
+    func testMidrunHoldThenStompChain() throws {
+        SmokeBrain.clearSmokeFlags()
+        defer { SmokeBrain.clearSmokeFlags() }
+        SmokeBrain.setSmokeFlag("smoke_proceed.txt", present: true)
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 7)
+        var brain = SmokeBrain()
+        sim.startRun()
+        var maxTX = 0
+        var stomps = 0
+        let hz = sim.tuning.simHz
+        for _ in 0..<Int(12 * hz) {
+            let cue = brain.next(sim: sim)
+            if case .playing = sim.state.phase {
+                sim.step(cue.input)
+                for e in sim.state.events {
+                    if case .stomp = e.kind { stomps += 1; brain.noteStomp() }
+                }
+                maxTX = max(maxTX, Int(floor(sim.state.bandit.position.x / sim.tuning.tileSize)))
+            }
+        }
+        let firstMop = map.findAll(.mopSpawn).map(\.0).min() ?? 99
+        XCTAssertEqual(stomps, 0, "pre-midrun must not stomp")
+        XCTAssertLessThan(maxTX, firstMop, "pre-midrun maxTX=\(maxTX) must stay before first mop \(firstMop)")
+
+        SmokeBrain.setSmokeFlag("smoke_midrun_ok.txt", present: true)
+        let base = stomps
+        for _ in 0..<Int(75 * hz) {
+            let cue = brain.next(sim: sim)
+            if cue.retry {
+                if case .won = sim.state.phase {
+                    sim = Sim(map: map, tuning: .default, seed: 11)
+                    sim.startRun()
+                }
+                continue
+            }
+            if case .playing = sim.state.phase {
+                sim.step(cue.input)
+                for e in sim.state.events {
+                    if case .stomp = e.kind { stomps += 1; brain.noteStomp() }
+                }
+            }
+            if stomps >= base + 4 { break }
+        }
+        XCTAssertGreaterThanOrEqual(stomps, base + 4, "need +4 stomps after midrun, got \(stomps) (base \(base))")
+    }
 }
