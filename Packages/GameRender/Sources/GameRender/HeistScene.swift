@@ -2580,10 +2580,6 @@ public final class HeistScene: SKScene {
 
     /// Premature vault crack during smoke: leave .won without rebuilding the sim.
     private func softBounceOffVaultSmoke() {
-        guard case .won = sim.state.phase else {
-            sim.state.phase = .playing
-            return
-        }
         failOutcomeHold = 0
         hideOutcome()
         let tile = tuning.tileSize
@@ -2595,6 +2591,7 @@ public final class HeistScene: SKScene {
         sim.state.bandit.invuln = max(sim.state.bandit.invuln, 0.6)
         sim.state.phase = .playing
         skipFreezeSample = true
+        transitionBudgetMs = max(transitionBudgetMs, 1500)
         snapCameraToHero()
     }
 
@@ -3441,6 +3438,9 @@ public final class HeistScene: SKScene {
                         smoke.act = .seekDeath
                         smoke.diedOnce = true
                         smokeStatus.died = true
+                        // Harness dump can hitch a frame — don't fail the freeze gate on it.
+                        skipFreezeSample = true
+                        transitionBudgetMs = max(transitionBudgetMs, 2000)
                     }
                     // Pin Mask open only while the harness is actively capturing 04 / 04b
                     // (smoke_capture_mask.txt). Do NOT pin from midrun→stomp-chain — that

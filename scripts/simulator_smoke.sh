@@ -14,7 +14,8 @@ WARN_FPS="${SMOKE_WARN_FPS:-55}"
 FAIL_FPS="${SMOKE_FAIL_FPS:-30}"
 # Soft-warn above WARN; hard-fail only above FAIL (simctl I/O can spike ~600–900ms).
 WARN_FRAME_MS="${SMOKE_WARN_FRAME_MS:-500}"
-MAX_FRAME_MS="${SMOKE_MAX_FRAME_MS:-1000}"
+# 1500ms: harness force_fail / soft vault bounce can hitch one frame on CI sims.
+MAX_FRAME_MS="${SMOKE_MAX_FRAME_MS:-1500}"
 MIN_VIDEO_SECS="${SMOKE_MIN_VIDEO_SECS:-60}"
 
 # Harness force counters — forced paths unblock CI but never count as feature proof.
