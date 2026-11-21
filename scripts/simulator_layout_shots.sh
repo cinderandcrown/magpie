@@ -246,9 +246,15 @@ PY
     : > "$docs/smoke_proceed.txt"
   fi
   # Wait for live play past the teaching runway (not title / publisher ident).
-  # Cap ~45s — enough for ident+title+runway; do not burn the job timeout.
+  # SE is slower through publisher ident — allow ~75s; Pro usually ready sooner.
   local ready=0
-  for _ in $(seq 1 90); do
+  local max_poll=150
+  [[ "$label" == "se" ]] && max_poll=160
+  for _ in $(seq 1 "$max_poll"); do
+    if [[ -n "$docs" ]]; then
+      # Keep proceed armed (ident→title can recreate Documents).
+      : > "$docs/smoke_proceed.txt"
+    fi
     if [[ -n "$docs" && -f "$docs/smoke_status.txt" ]]; then
       local status
       status="$(cat "$docs/smoke_status.txt" 2>/dev/null || true)"
@@ -265,15 +271,28 @@ sys.exit(0 if m and float(m.group(1))>=3.0 and t and int(t.group(1))>=10 else 1)
     sleep 0.5
   done
   if [[ "$ready" -ne 1 ]]; then
-    echo "WARN: $label never reached mid-play status — capture may be title" >&2
+    echo "ERROR: $label never reached mid-play (phase=playing) — refusing title still" >&2
     if [[ -n "$docs" ]]; then
       echo "status=$(cat "$docs/smoke_status.txt" 2>/dev/null || echo none)" >&2
     fi
+    xcrun simctl terminate "$udid" com.cinderandcrown.magpie 2>/dev/null || true
+    kill "$launch_pid" 2>/dev/null || true
+    xcrun simctl shutdown "$udid" 2>/dev/null || true
+    return 1
   fi
   if [[ -n "$docs" ]]; then
     : > "$docs/smoke_midrun_ok.txt"
   fi
   sleep 1.5
+  # Re-check status immediately before the shutter — never ship TAP TO START.
+  if [[ -n "$docs" && -f "$docs/smoke_status.txt" ]]; then
+    local pre
+    pre="$(cat "$docs/smoke_status.txt" 2>/dev/null || true)"
+    if [[ "$pre" != *"phase=playing"* ]]; then
+      echo "ERROR: $label status left playing before shot ($pre)" >&2
+      return 1
+    fi
+  fi
   xcrun simctl io "$udid" screenshot "$out" || xcrun simctl io "$udid" screenshot --display=1 "$out"
   sleep 2.5
   xcrun simctl io "$udid" screenshot "$play" || true
@@ -285,6 +304,10 @@ sys.exit(0 if m and float(m.group(1))>=3.0 and t and int(t.group(1))>=10 else 1)
       rm -f "$f"
     fi
   done
+  if [[ ! -s "$play" ]]; then
+    echo "ERROR: $label missing gameplay play still" >&2
+    return 1
+  fi
   # SE aspect gate (750×1334 or 1500×2668).
   if [[ "$label" == "se" ]]; then
     for f in "$out" "$play"; do

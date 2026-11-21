@@ -2480,6 +2480,10 @@ public final class HeistScene: SKScene {
     }
 
     private func showTitleScreen() {
+        // Never leave play toasts / objective chip on the title art.
+        clearPlayToasts()
+        objectiveBanner?.removeFromParent()
+        objectiveBanner = nil
         titleRoot.isHidden = false
         if let rain = titleRoot.childNode(withName: "//titleRain") as? SKEmitterNode {
             rain.isPaused = false
