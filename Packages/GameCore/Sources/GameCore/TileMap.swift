@@ -139,15 +139,15 @@ public struct TileMap: Equatable, Sendable {
 
 /// Downtown Heist 1 — short auto-runner (~60–90s) with a beat every 2–3s ending at the vault.
 public enum NeonDocksLevel {
-    /// Downtown Heist 1 — continuous street deck to the vault (one short hop near the end).
-    /// Forward-only smoke must stomp mid-pack then finishPush without a death-retry loop.
+    /// Downtown Heist 1 — teaching runway, then a dense street MOP pack, short end hop to vault.
+    /// Smoke midrun soft-holds before the pack (stomps=0); stomp-chain needs ≥4 MOPs ahead after.
     public static let ascii = """
     ################################################################
     #..............................................................#
     #..............................................................#
     #............................*..........*......................#
     #......................................====....................#
-    #.@.......................*.M.*.M.*.P.*.M.*.M.*.*.R.M.*.M..E...#
+    #.@......................*.M.M.M.M.P.M.M.M.M.*.R.M.M.*.M...E...#
     #############################################====###############
     #############################################~~~~###############
     #......................................----....................#

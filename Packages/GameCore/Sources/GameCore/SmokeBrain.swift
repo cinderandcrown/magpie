@@ -271,13 +271,15 @@ public struct SmokeBrain: Equatable, Sendable {
         return input
     }
 
-    /// Forward-only auto-runner director: jump gaps, pounce MOPs, optional Mask spend.
+    /// Forward-biased auto-runner: jump gaps, pounce MOPs, optional Mask spend.
+    /// Pre-midrun soft-holds on the teaching runway so the MOP pack stays ahead for stomp-chain.
     private func forwardRunInput(sim: Sim, tx: Int, ty: Int, allowMask: Bool) -> InputFrame {
         let b = sim.state.bandit
         let tile = sim.tuning.tileSize
         let halfH = 14.0
         let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? b.position.y
         let elevated = b.position.y > streetY + tile * 1.0 || standingOnOneWay(sim: sim, halfH: halfH)
+        let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
 
         // Drop mid ledges / one-ways so Mask re-entry and stomps happen on the street deck.
         if elevated {
@@ -297,6 +299,28 @@ public struct SmokeBrain: Equatable, Sendable {
             return InputFrame(moveX: moveX, moveY: -1, jumpPressed: false, jumpHeld: false)
         }
 
+        // Teaching runway: hold before the first MOP so midrun stills snap with stomps=0
+        // and the whole street pack remains ahead for the +3 stomp-chain gate.
+        if !midrunOk, act != .seekDeath, act != .finishPush {
+            let firstMopX = sim.map.findAll(.mopSpawn).map(\.0).min() ?? 28
+            let rightCap = max(12, firstMopX - 4)
+            let leftCap = 6
+            var moveX: Double = 1.0
+            var jumpPressed = false
+            var jumpHeld = false
+            if tx >= rightCap {
+                moveX = tx > rightCap + 1 ? -0.55 : 0.2
+            } else if tx <= leftCap {
+                moveX = 1.0
+            }
+            if gapAhead(sim: sim, tx: tx, ty: ty) || hazardAhead(sim: sim, tx: tx, ty: ty, reach: 2) {
+                jumpPressed = b.onGround || b.coyote > 0
+                jumpHeld = true
+                moveX = max(moveX, 0.85)
+            }
+            return InputFrame(moveX: moveX, jumpPressed: jumpPressed, jumpHeld: jumpHeld || jumpPressed)
+        }
+
         var moveX: Double = 1.0
         var jumpPressed = false
         var jumpHeld = false
@@ -314,8 +338,16 @@ public struct SmokeBrain: Equatable, Sendable {
 
         if let mop = nearestMop(sim: sim) {
             let dx = mop.position.x - b.position.x
+            // Ease into the stomp window — full-speed overshoot used to burn the pack.
+            if dx < -tile * 0.4, dx > -tile * 5.0 {
+                moveX = -0.85
+            } else if dx >= -tile * 0.4, dx < tile * 2.2 {
+                moveX = 0.45
+            } else if dx >= tile * 2.2, dx < tile * 7.0 {
+                moveX = 0.85
+            }
             // Stomp window: slightly behind → ahead. Always pounce while falling onto a mop.
-            if dx > -tile * 1.2, dx < tile * 6.0 {
+            if dx > -tile * 1.5, dx < tile * 6.0 {
                 if b.onGround || b.coyote > 0 {
                     jumpPressed = true
                     jumpHeld = true

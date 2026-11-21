@@ -3304,10 +3304,18 @@ public final class HeistScene: SKScene {
                 if cue.start { beginPlay() }
                 if cue.retry { doRetry() }
                 input = cue.input
-                // Keep auto-run bias even under smoke if the director is idle.
-                if abs(input.moveX) < 0.1 { input.moveX = 1 }
-                // Auto-runner never moonwalks — seekDeath may still ease left into a canal lip.
-                if input.moveX < 0, smoke.act != .seekDeath {
+                let midrunOk = SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
+                // Pre-midrun: honor soft-hold / short reverse so the MOP pack stays ahead.
+                // Post-midrun: allow brief left only while hunting a mop (stomp window).
+                // seekDeath may ease left into a canal lip.
+                let allowReverse = !midrunOk
+                    || smoke.act == .seekDeath
+                    || (smoke.act == .play && input.moveX < 0)
+                if abs(input.moveX) < 0.1, midrunOk || smoke.act == .finishPush || smoke.act == .seekDeath {
+                    input.moveX = 1
+                } else if abs(input.moveX) < 0.1, !midrunOk {
+                    // Soft-hold on the teaching runway — do not shove past the MOP pack.
+                } else if input.moveX < 0, !allowReverse {
                     input.moveX = 1
                 }
                 flashSmokeFaceButtons(from: input)
