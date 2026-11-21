@@ -293,14 +293,12 @@ public struct Sim: Equatable, Sendable {
     private mutating func integrate(input: InputFrame, bandit: inout BanditState, dt: Double) {
         let feel = tuning.feel
         let move = max(-1, min(1, input.moveX))
-        // Facing follows travel: stick intent first, then velocity. Never moonwalk.
-        // (Prior vx-only threshold left facing stale while moveX shoved the runner.)
-        if bandit.animHold > 0, bandit.anim == .hurt, abs(bandit.velocity.x) > 4 {
+        // Facing follows travel velocity first so auto-run never moonwalks when stick
+        // and vx briefly disagree. Stick wins only when nearly stopped.
+        if abs(bandit.velocity.x) > 2 {
             bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
         } else if abs(move) > feel.stickDeadZone {
             bandit.facing = move >= 0 ? 1 : -1
-        } else if abs(bandit.velocity.x) > 2 {
-            bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
         }
 
         // Accel from time-to-speed: reach runPx in groundAccelTime; stop in groundStopTime.

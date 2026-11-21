@@ -2562,10 +2562,9 @@ public final class HeistScene: SKScene {
         tutorialStomps = 0
         celebratedFirstStomp = false
         lastObjectiveTip = ""
-        toastQueue.removeAll()
-        toastShowing = false
-        activeToastNode?.removeFromParent()
-        activeToastNode = nil
+        clearPlayToasts()
+        objectiveBanner?.removeFromParent()
+        objectiveBanner = nil
         sim.retry()
         hideOutcome()
         snapCameraToHero()
@@ -2573,26 +2572,46 @@ public final class HeistScene: SKScene {
         // to EXIT and must not wipe (or re-sample) the live-play band.
         if !smoke.diedOnce {
             resetHeroFramingSamples()
+        } else if smokeEnabled {
+            // Mark the post-death clean start→vault run for the evidence clip cut.
+            let wall = smokeWallStart > 0 ? CACurrentMediaTime() - smokeWallStart : 0
+            let line = String(format: "clean_run_t0=%.3f\n", wall)
+            try? line.write(to: SmokeStatus.docsURL.appendingPathComponent("smoke_clean_run.txt"),
+                            atomically: true, encoding: .utf8)
         }
         refreshObjectiveChip(forceBanner: true)
         updateHUDVisibility()
     }
 
     /// Premature vault crack during smoke: leave .won without rebuilding the sim.
+    /// Nudge only a couple tiles left — a 20-tile teleport looked like "stuck at vault forever".
     private func softBounceOffVaultSmoke() {
         failOutcomeHold = 0
         hideOutcome()
+        clearPlayToasts()
         let tile = tuning.tileSize
         let exitX = sim.map.findFirst(.exit)?.0 ?? (sim.map.width - 2)
-        let parkX = Double(max(14, exitX - 20)) * tile
+        let parkX = Double(max(8, exitX - 3)) * tile
         let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? sim.state.bandit.position.y
-        sim.state.bandit.position = Vec2(parkX, streetY)
-        sim.state.bandit.velocity = .zero
-        sim.state.bandit.invuln = max(sim.state.bandit.invuln, 0.6)
+        if sim.state.bandit.position.x > parkX {
+            sim.state.bandit.position.x = parkX
+        }
+        sim.state.bandit.position.y = streetY
+        sim.state.bandit.velocity = Vec2(-tuning.feel.runSpeed * tile * 0.35, 0)
+        sim.state.bandit.facing = -1
+        sim.state.bandit.invuln = max(sim.state.bandit.invuln, 0.35)
         sim.state.phase = .playing
         skipFreezeSample = true
         transitionBudgetMs = max(transitionBudgetMs, 1500)
         snapCameraToHero()
+    }
+
+    private func clearPlayToasts() {
+        toastQueue.removeAll()
+        toastShowing = false
+        activeToastNode?.removeAllActions()
+        activeToastNode?.removeFromParent()
+        activeToastNode = nil
     }
 
     /// Instantly park the camera on the hero so the first frames aren't focus=(0,0) → negative heroX.
@@ -3740,6 +3759,9 @@ public final class HeistScene: SKScene {
     }
 
     private func showOutcome() {
+        clearPlayToasts()
+        objectiveBanner?.removeFromParent()
+        objectiveBanner = nil
         outcomeRoot.isHidden = false
         layoutUI()
         guard let card = outcomeRoot.childNode(withName: "outcomeCard"),
@@ -4064,9 +4086,10 @@ public final class HeistScene: SKScene {
         let b = sim.state.bandit
         // Physics uses body center; foot-anchored sprites need the feet on the deck.
         bandit.position = CGPoint(x: CGFloat(b.position.x), y: CGFloat(b.position.y) - bodyCenterToFeet)
-        // Sprite facing follows travel velocity (sheets face west — BanditVisual flips for east).
+        // Sprite facing follows travel velocity first (sheets face west — flip for east).
+        // Prefer vx over stick so auto-run never moonwalks when moveX and vx briefly disagree.
         let faceDir: Double = {
-            if abs(b.velocity.x) > 3 { return b.velocity.x >= 0 ? 1 : -1 }
+            if abs(b.velocity.x) > 2 { return b.velocity.x >= 0 ? 1 : -1 }
             return b.facing
         }()
         bandit.setFacing(faceDir)
@@ -4379,12 +4402,13 @@ public final class HeistScene: SKScene {
         let done = max(0, min(tutorialStomps, stompsNeeded))
         // Chip stays a short progress label — tips fire once as toasts (no forever stack).
         let text: String
+        // Chip is short progress only — tips fire once as auto-dismiss toasts (~2s).
         switch tutorialStep {
         case 0, 1:
             text = "Stomp MOPs \(done)/\(stompsNeeded)"
         case 2:
             if sim.state.bandit.maskCharges > 0 || sim.state.bandit.maskMode {
-                text = "MASK ready"
+                text = "To the vault"
                 if lastObjectiveTip != "mask" {
                     lastObjectiveTip = "mask"
                     showPlayToast("TAP MASK — smash mode!", color: ArtCatalog.neonCyan, hold: 2.0)

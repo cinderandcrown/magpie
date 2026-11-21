@@ -1013,14 +1013,50 @@ if vals[-1] + 0.5 < need_s * 0.5:
 print(f"OK monotonic wallElapsed samples={len(vals)} last={vals[-1]:.1f}s")
 PY
 
-rm -f "$OUT_DIR/smoke-30s.mp4"
-# Nicholas feel-loop clip: ~30s of live play (skip title/ident), from continuous take.
+rm -f "$OUT_DIR/smoke-30s.mp4" "$OUT_DIR/smoke-clean-run.mp4"
+# Prefer the post-death clean start→vault segment (smoke_clean_run.txt wall clock).
+# Fallback: early live-play window. Reviewers watch smoke-clean-run.mp4 for vault clear.
+CLEAN_MARK="$(data_container)/Documents/smoke_clean_run.txt"
+if [[ -f "$CLEAN_MARK" ]]; then
+  cp -f "$CLEAN_MARK" "$OUT_DIR/smoke_clean_run.txt" || true
+fi
 if [[ -f "$OUT_DIR/smoke-gameplay.mp4" ]]; then
-  ffmpeg -y -ss 18 -t 30 -i "$OUT_DIR/smoke-gameplay.mp4" \
-    -c:v libx264 -an -pix_fmt yuv420p -movflags +faststart "$OUT_DIR/smoke-30s.mp4" 2>/dev/null \
-    || ffmpeg -y -ss 12 -t 30 -i "$OUT_DIR/smoke-gameplay.mp4" \
+  python3 - "$OUT_DIR/smoke-gameplay.mp4" "$OUT_DIR" "$CLEAN_MARK" <<'PY' || true
+import re, subprocess, sys
+from pathlib import Path
+video, out_dir, mark = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+t0 = None
+if mark.is_file():
+    m = re.search(r"clean_run_t0=([0-9.]+)", mark.read_text())
+    if m:
+        t0 = float(m.group(1))
+# Recorder starts ~at title; wallElapsed starts at beginPlay — pad a little early.
+ss = max(0.0, (t0 - 1.5) if t0 is not None else 18.0)
+# Enough runway for start→vault (~8–20s) plus VAULT CRACKED card.
+dur = 22.0 if t0 is not None else 30.0
+clean = out_dir / "smoke-clean-run.mp4"
+feel = out_dir / "smoke-30s.mp4"
+for dest, start, length in ((clean, ss, dur), (feel, ss, min(dur, 30.0))):
+    cmd = [
+        "ffmpeg", "-y", "-ss", f"{start:.2f}", "-t", f"{length:.2f}",
+        "-i", str(video), "-c:v", "libx264", "-an", "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart", str(dest),
+    ]
+    subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+print(f"clean-run cut ss={ss:.1f}s dur={dur:.1f}s t0={t0}")
+PY
+  # Absolute fallback if python cut failed.
+  if [[ ! -s "$OUT_DIR/smoke-30s.mp4" ]]; then
+    ffmpeg -y -ss 18 -t 30 -i "$OUT_DIR/smoke-gameplay.mp4" \
       -c:v libx264 -an -pix_fmt yuv420p -movflags +faststart "$OUT_DIR/smoke-30s.mp4" 2>/dev/null \
-    || true
+      || ffmpeg -y -ss 12 -t 30 -i "$OUT_DIR/smoke-gameplay.mp4" \
+        -c:v libx264 -an -pix_fmt yuv420p -movflags +faststart "$OUT_DIR/smoke-30s.mp4" 2>/dev/null \
+      || true
+  fi
+  if [[ -s "$OUT_DIR/smoke-clean-run.mp4" ]]; then
+    # Prefer clean vault clear as the review feel-loop when available.
+    cp -f "$OUT_DIR/smoke-clean-run.mp4" "$OUT_DIR/smoke-30s.mp4"
+  fi
 fi
 cp -f "$OUT_DIR/00-publisher-ident.png" "$OUT_DIR/00-ident.png"
 cp -f "$OUT_DIR/01-title.png" "$OUT_DIR/01-launch.png"

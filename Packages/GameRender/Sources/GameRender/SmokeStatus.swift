@@ -120,17 +120,18 @@ public struct SmokeStatus: Equatable, Sendable {
         )
     }
 
-    public static var fileURL: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+    public static var docsURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return docs.appendingPathComponent("smoke_status.txt")
+    }
+
+    public static var fileURL: URL {
+        docsURL.appendingPathComponent("smoke_status.txt")
     }
 
     /// Append-only timer samples for CI monotonicity check.
     public static var timerLogURL: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return docs.appendingPathComponent("smoke_timer_log.txt")
+        docsURL.appendingPathComponent("smoke_timer_log.txt")
     }
 
     public func write() {
