@@ -262,7 +262,14 @@ PY
     fi
     sleep 0.25
   done
+  # Wait for publisher ident to finish (boot=ready) BEFORE arming proceed.
   if [[ -n "$docs" ]]; then
+    for _ in $(seq 1 80); do
+      if [[ -f "$docs/smoke_status.txt" ]] && grep -q 'boot=ready' "$docs/smoke_status.txt" 2>/dev/null; then
+        break
+      fi
+      sleep 0.5
+    done
     : > "$docs/smoke_proceed.txt"
   fi
   # Wait for live play past the teaching runway (not title / publisher ident).
