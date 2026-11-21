@@ -371,6 +371,20 @@ public struct SmokeBrain: Equatable, Sendable {
             moveX = 1.0
         }
 
+        // Stay off the vault until the death beat — premature won→retry hitch spikes maxFrameMs.
+        // Keep the window tight so late street MOPs (exit-4) stay stompable.
+        if midrunOk, !diedOnce, act != .seekDeath, act != .finishPush {
+            let exitX = sim.map.findFirst(.exit)?.0 ?? (sim.map.width - 2)
+            if tx >= exitX - 2 {
+                moveX = -1.0
+                jumpPressed = false
+                jumpHeld = false
+                pouncePressed = false
+            } else if tx >= exitX - 5 {
+                moveX = min(moveX, 0.35)
+            }
+        }
+
         return InputFrame(
             moveX: moveX,
             jumpPressed: jumpPressed,

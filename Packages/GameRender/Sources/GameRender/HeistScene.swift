@@ -3302,15 +3302,22 @@ public final class HeistScene: SKScene {
             if smokeEnabled {
                 let cue = smoke.next(sim: sim)
                 if cue.start { beginPlay() }
-                if cue.retry { doRetry() }
+                if cue.retry {
+                    // Premature vault bounce: skip freeze sample — full retry audio/sim reset
+                    // was spiking maxFrameMs (~4s) and failing the smoke freeze gate.
+                    skipFreezeSample = true
+                    transitionBudgetMs = max(transitionBudgetMs, 2500)
+                    doRetry()
+                }
                 input = cue.input
                 let midrunOk = SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
                 // Pre-midrun: honor soft-hold / short reverse so the MOP pack stays ahead.
-                // Post-midrun: allow brief left only while hunting a mop (stomp window).
+                // Post-midrun: allow left for mop hunt + vault retreat until death beat.
                 // seekDeath may ease left into a canal lip.
                 let allowReverse = !midrunOk
                     || smoke.act == .seekDeath
-                    || (smoke.act == .play && input.moveX < 0)
+                    || smoke.act == .play
+                    || smoke.act == .showcaseMask
                 if abs(input.moveX) < 0.1, midrunOk || smoke.act == .finishPush || smoke.act == .seekDeath {
                     input.moveX = 1
                 } else if abs(input.moveX) < 0.1, !midrunOk {
