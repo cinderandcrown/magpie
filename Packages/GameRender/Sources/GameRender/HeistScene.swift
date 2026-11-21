@@ -9,7 +9,8 @@ import UIKit
 /// Side-view neon docks heist wired to `Assets/Generated/` via AssetManifest.
 public final class HeistScene: SKScene {
     /// Zoom so playfield + skyline fill portrait (no empty black letterbox bands).
-    public static let worldZoom: CGFloat = 1.85
+    /// Camera zoom — lower so the auto-runner sees gaps/MOPs ahead (bandit ~15–18% width).
+    public static let worldZoom: CGFloat = 1.05
     private var tileMapNode: SKTileMapNode?
 
     private var sim: Sim!
@@ -106,6 +107,9 @@ public final class HeistScene: SKScene {
     /// Camera side-switch hysteresis — ignore brief facing flips for lead direction.
     private var cameraFacingHoldUntil: TimeInterval = 0
     private var cameraWantFace: CGFloat = 1
+    /// Screen-space lift so the street deck clears the bottom control strip.
+    private var controlStripLift: CGFloat = 0
+    private var controlStripNode: SKShapeNode?
     private var maskMusicOn = false
     /// MOP ids that already barked `mop_bot_alert` this approach.
     private var mopAlerted: Set<Int> = []
@@ -500,11 +504,12 @@ public final class HeistScene: SKScene {
         let light = ArtCatalog.neonSearchlight(height: h * 0.5)
         light.position = CGPoint(x: mapW * 0.3, y: midY + 40)
         parallaxMid.addChild(light)
-        if let near = ArtLibrary.districtLayer(district, layer: .near, height: h * 0.9, maxPixel: maxPx) {
-            tileLayer(near, into: parallaxNear, y: midY - 40, z: -10, neonBoost: false)
+        // Keep near plates behind / below the walkable deck so floor bands don't stack on the street.
+        if let near = ArtLibrary.districtLayer(district, layer: .near, height: h * 0.75, maxPixel: maxPx) {
+            tileLayer(near, into: parallaxNear, y: midY - 90, z: -10, neonBoost: false)
         }
         let steam = ArtCatalog.streetSteamEmitter(width: size.width / Self.worldZoom)
-        steam.position = CGPoint(x: 0, y: -viewH * 0.12)
+        steam.position = CGPoint(x: 0, y: -viewH * 0.18)
         parallaxNear.addChild(steam)
 
         let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: size.width / Self.worldZoom, height: h))
@@ -2115,30 +2120,41 @@ public final class HeistScene: SKScene {
         let rightSafe = max(insets.right, 0)
         stickBase.isHidden = true
         stickKnob.isHidden = true
-        // Right-thumb cluster: JUMP / POUNCE outer, DASH / MASK (when ready) inner.
-        let edge = CGFloat(max(100, tuning.feel.faceButtonMinPt * 0.92))
+        // Controls live in a dedicated bottom strip — clear of the playfield floor.
+        let edge = CGFloat(max(88, tuning.feel.faceButtonMinPt * 0.78))
         let outerX = hw - edge * 0.52 - rightSafe
-        let innerX = outerX - edge * 0.95
-        let baseY = -hh + 78 + bottomSafe * 0.35
-        jumpBtn.position = CGPoint(x: outerX, y: baseY + 118)
-        pounceBtn.position = CGPoint(x: outerX, y: baseY + 18)
-        dashBtn.position = CGPoint(x: innerX, y: baseY + 78)
-        maskBtn.position = CGPoint(x: innerX, y: baseY + 168)
+        let innerX = outerX - edge * 0.92
+        let controlStripH = edge * 1.55 + bottomSafe
+        controlStripLift = controlStripH * 0.42
+        let baseY = -hh + bottomSafe + edge * 0.42
+        if controlStripNode == nil {
+            let strip = SKShapeNode()
+            strip.name = "controlStrip"
+            strip.fillColor = SKColor(white: 0.04, alpha: 0.72)
+            strip.strokeColor = SKColor(white: 1, alpha: 0.08)
+            strip.lineWidth = 1
+            strip.zPosition = 150
+            playHUD.addChild(strip)
+            controlStripNode = strip
+        }
+        controlStripNode?.path = CGPath(
+            rect: CGRect(x: -hw, y: -hh, width: size.width, height: controlStripH),
+            transform: nil
+        )
+        controlStripNode?.isHidden = playHUD.isHidden
+        jumpBtn.position = CGPoint(x: outerX, y: baseY + edge * 0.95)
+        pounceBtn.position = CGPoint(x: outerX, y: baseY)
+        dashBtn.position = CGPoint(x: innerX, y: baseY + edge * 0.48)
+        maskBtn.position = CGPoint(x: innerX, y: baseY + edge * 1.15)
         grabBtn.isHidden = true
         layoutControlHitZones()
         refreshActionButtonChrome()
-        let hudTop = hh - topSafe - 28
-        let hudX = -hw + 22 + leftSafe
-        // Compact two-row pill — loot/hearts on top, combo/timer below.
-        hudPill.position = CGPoint(x: hudX + 78, y: hudTop - 10)
-        hudPill.isHidden = playHUD.isHidden
-        hudCarried.position = CGPoint(x: hudX, y: hudTop + 6)
-        hudHearts.position = CGPoint(x: hudX + 72, y: hudTop + 6)
-        hudCombo.position = CGPoint(x: hudX, y: hudTop - 14)
-        hudTime.position = CGPoint(x: hudX + 110, y: hudTop - 14)
-        // Progress bar centered under the notch / above objective chip.
-        let barW: CGFloat = min(size.width * 0.55, CGFloat(240))
-        let barY = hudTop + 22
+
+        // Top HUD bands (top→bottom): progress | stats+pause | objective chip — no overlap.
+        let hudTop = hh - topSafe - 10
+        let hudX = -hw + 18 + leftSafe
+        let barW: CGFloat = min(size.width * 0.42, CGFloat(200))
+        let barY = hudTop
         progressTrack?.position = CGPoint(x: 0, y: barY)
         progressTrack?.path = CGPath(
             roundedRect: CGRect(x: -barW * 0.5, y: -3, width: barW, height: 6),
@@ -2147,6 +2163,14 @@ public final class HeistScene: SKScene {
             transform: nil
         )
         updateProgressBar(barWidth: barW, barY: barY)
+
+        let statsY = hudTop - 22
+        hudPill.position = CGPoint(x: hudX + 70, y: statsY - 4)
+        hudPill.isHidden = playHUD.isHidden
+        hudCarried.position = CGPoint(x: hudX, y: statsY + 6)
+        hudHearts.position = CGPoint(x: hudX + 68, y: statsY + 6)
+        hudCombo.position = CGPoint(x: hudX, y: statsY - 12)
+        hudTime.position = CGPoint(x: hudX + 96, y: statsY - 12)
         for label in [hudCarried, hudHearts, hudCombo, hudTime] {
             if let outline = label.childNode(withName: "hudOutline") as? SKLabelNode {
                 outline.text = label.text
@@ -2156,9 +2180,13 @@ public final class HeistScene: SKScene {
             }
         }
         if let pauseBtn {
-            pauseBtn.position = CGPoint(x: hw - 52 - rightSafe, y: hudTop - 4)
+            pauseBtn.position = CGPoint(x: hw - 44 - rightSafe, y: statsY)
             let pl = pauseBtn.childNode(withName: "btnLabel") as? SKLabelNode
-            pl?.fontSize = 11
+            pl?.fontSize = 10
+        }
+        // Objective chip sits below the stats row (never over PAUSE / stars).
+        if let chip = objectiveBanner {
+            chip.position = CGPoint(x: 0, y: statsY - 36)
         }
         #if DEBUG
         fpsLabel.position = CGPoint(x: -hw + 16, y: -hh + 16 + bottomSafe * 0.25)
@@ -2552,14 +2580,16 @@ public final class HeistScene: SKScene {
         let viewH = size.height / Self.worldZoom
         // 0.20×viewW → hero ~30% when facing right (20–45% framing band).
         let lead = cameraFacing * 0.20 * viewW
+        // Lift the camera so the street clears the bottom control strip.
+        let liftWorld = controlStripLift / Self.worldZoom
         var target = CGPoint(
             x: CGFloat(b.position.x) + lead,
-            y: CGFloat(b.position.y) + 56
+            y: CGFloat(b.position.y) + 56 + liftWorld * 0.35
         )
         let minX = viewW * 0.18
         let maxX = max(minX, mapW - viewW * 0.18)
-        let minY = viewH * 0.38
-        let maxY = max(minY, mapH - viewH * 0.25)
+        let minY = viewH * 0.42 + liftWorld * 0.25
+        let maxY = max(minY, mapH - viewH * 0.22)
         target.x = min(max(target.x, minX), maxX)
         target.y = min(max(target.y, minY), maxY)
         return target
@@ -3276,6 +3306,10 @@ public final class HeistScene: SKScene {
                 input = cue.input
                 // Keep auto-run bias even under smoke if the director is idle.
                 if abs(input.moveX) < 0.1 { input.moveX = 1 }
+                // Auto-runner never moonwalks — seekDeath may still ease left into a canal lip.
+                if input.moveX < 0, smoke.act != .seekDeath {
+                    input.moveX = 1
+                }
                 flashSmokeFaceButtons(from: input)
             }
 
@@ -4107,12 +4141,11 @@ public final class HeistScene: SKScene {
             hudCombo.text = ""
             hudCombo.isHidden = true
         }
+        // Always show the heist clock (sim elapsed) — wall-clock smoke harness time is not level time.
         if smokeEnabled, smokeWallStart > 0 {
             smokeWallElapsed = CACurrentMediaTime() - smokeWallStart
-            hudTime.text = String(format: "⏱ %.0fs", smokeWallElapsed)
-        } else {
-            hudTime.text = String(format: "⏱ %.0fs", sim.state.elapsed)
         }
+        hudTime.text = String(format: "⏱ %.0fs", sim.state.elapsed)
         for label in [hudCarried, hudHearts, hudCombo, hudTime] {
             (label.childNode(withName: "hudOutline") as? SKLabelNode)?.text = label.text
             (label.childNode(withName: "hudGlow") as? SKLabelNode)?.text = label.text
@@ -4311,10 +4344,12 @@ public final class HeistScene: SKScene {
             title.fontColor = ArtCatalog.neonLime
             title.verticalAlignmentMode = .center
             root.addChild(title)
-            let topSafe = max(safeInsets().top, 59) + 52
+            // Positioned under the stats row in layoutUI — start with a safe default.
+            let topSafe = max(safeInsets().top, 59) + 78
             root.position = CGPoint(x: 0, y: size.height * 0.5 - topSafe)
             overlay.addChild(root)
             objectiveBanner = root
+            layoutUI()
         }
         if let title = objectiveBanner?.childNode(withName: "objText") as? SKLabelNode {
             if title.text != text {

@@ -293,16 +293,16 @@ public struct Sim: Equatable, Sendable {
     private mutating func integrate(input: InputFrame, bandit: inout BanditState, dt: Double) {
         let feel = tuning.feel
         let move = max(-1, min(1, input.moveX))
-        // Stick owns facing while held; otherwise face the direction of travel so knockback
-        // / coast never reads as moonwalking. Hurt pose locks facing to the knockback.
+        // Facing always follows travel velocity (auto-runner never moonwalks).
+        // Hurt pose still faces the knockback impulse; otherwise prefer vx, then stick.
         if bandit.animHold > 0, bandit.anim == .hurt {
             if abs(bandit.velocity.x) > 4 {
                 bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
             }
+        } else if abs(bandit.velocity.x) > 8 {
+            bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
         } else if abs(move) > feel.stickDeadZone {
             bandit.facing = move >= 0 ? 1 : -1
-        } else if abs(bandit.velocity.x) > 10 {
-            bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
         }
 
         // Accel from time-to-speed: reach runPx in groundAccelTime; stop in groundStopTime.
