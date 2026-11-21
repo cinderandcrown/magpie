@@ -120,10 +120,9 @@ public struct SmokeBrain: Equatable, Sendable {
             return (input, start, retry)
 
         case .won:
-            // Only bounce a premature vault crack before midrun/stomps are done.
-            // After death→retry→finishPush, keep the win so CI can snap results.
-            let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
-            if !diedOnce, !midrunOk {
+            // Bounce ANY vault crack until the death beat finished — keeps stomps/mask
+            // ahead of results even if the bot races past the MOP pack to EXIT.
+            if !diedOnce {
                 retry = true
                 act = .play
                 maskShowcaseFrames = 0
@@ -198,14 +197,8 @@ public struct SmokeBrain: Equatable, Sendable {
         let captureMask = Self.smokeFlagExists("smoke_capture_mask.txt")
             || Self.smokeFlagExists("smoke_force_mask.txt")
 
-        // Fun-pass auto-runner: soft-hold only on full heists near a real vault (not tiny unit maps).
-        // After death (finishPush) or once harness is past Mask capture, charge the vault.
-        if act != .finishPush, !diedOnce, sim.map.findFirst(.exit) != nil, exitX >= 20,
-           tx >= exitX - 7, !captureMask
-        {
-            // Soft hold just left of the vault door until finishPush / capture — keep facing right.
-            return InputFrame(moveX: 0.15, jumpPressed: false, jumpHeld: false)
-        }
+        // No exit soft-hold: premature vault cracks bounce until diedOnce (see .won).
+        // Soft-holding at EXIT skipped the MOP pack after rooftop (stomps=0 forever).
 
         // Beat 1 — run the teaching runway forward until midrun still lands.
         if !midrunOk, sim.state.elapsed < 90, act != .seekDeath, act != .finishPush {
@@ -303,11 +296,12 @@ public struct SmokeBrain: Equatable, Sendable {
 
         if let mop = nearestMop(sim: sim) {
             let dx = mop.position.x - b.position.x
-            if dx > -tile * 0.5, dx < tile * 5.0 {
+            // Stomp window: slightly behind → ahead. Always pounce while falling onto a mop.
+            if dx > -tile * 1.2, dx < tile * 6.0 {
                 if b.onGround || b.coyote > 0 {
                     jumpPressed = true
                     jumpHeld = true
-                } else if !b.pouncing, !b.flopping, b.velocity.y < 50 {
+                } else if !b.pouncing, !b.flopping, b.velocity.y < 80 {
                     pouncePressed = true
                 }
             }
@@ -763,12 +757,12 @@ public struct SmokeBrain: Equatable, Sendable {
             jumpHeld = true
             moveX = b.onWallRight ? -0.25 : 0.75
         } else if b.onGround || b.coyote > 0 {
-            // Hop toward the post-canal latch tower (Neon Docks ~x 55–65).
-            let latchX = sim.map.findFirst(.latch).map(\.0) ?? 60
+            // Climb the nearest floating deck ahead — never race past the street MOP pack to EXIT.
+            let latchX = sim.map.findFirst(.latch).map(\.0)
+            let roofTarget = latchX ?? min(tx + 8, (sim.map.findFirst(.exit)?.0 ?? tx + 12) - 12)
             jumpPressed = tick % 18 == 0 || sim.map.isSolid(sim.map.tile(atX: tx + 1, y: ty))
             jumpHeld = jumpPressed || (!b.onGround && b.velocity.y > 0)
-            if tx < latchX - 2 { moveX = 1.0 }
-            else if tx > latchX + 8 { moveX = -0.4 }
+            if tx < roofTarget { moveX = 1.0 }
             else { moveX = 0.55 }
         } else {
             jumpHeld = b.velocity.y > 0

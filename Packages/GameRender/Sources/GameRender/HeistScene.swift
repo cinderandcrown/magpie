@@ -2184,9 +2184,9 @@ public final class HeistScene: SKScene {
             let pl = pauseBtn.childNode(withName: "btnLabel") as? SKLabelNode
             pl?.fontSize = 10
         }
-        // Objective chip sits below the stats row (never over PAUSE / stars).
+        // Objective chip well below stats + PAUSE (iPhone SE / 16 Pro safe).
         if let chip = objectiveBanner {
-            chip.position = CGPoint(x: 0, y: statsY - 36)
+            chip.position = CGPoint(x: 0, y: statsY - 52)
         }
         #if DEBUG
         fpsLabel.position = CGPoint(x: -hw + 16, y: -hh + 16 + bottomSafe * 0.25)
