@@ -193,7 +193,6 @@ public struct SmokeBrain: Equatable, Sendable {
         let ty = Int(floor(b.position.y / tile))
 
         let midrunOk = Self.smokeFlagExists("smoke_midrun_ok.txt")
-        let exitX = sim.map.findFirst(.exit)?.0 ?? (sim.map.width - 2)
         let captureMask = Self.smokeFlagExists("smoke_capture_mask.txt")
             || Self.smokeFlagExists("smoke_force_mask.txt")
 
