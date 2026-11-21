@@ -205,7 +205,14 @@ public struct SmokeBrain: Equatable, Sendable {
         }
 
         // Track live-play stalls for the harness 8s no-progress gate.
-        noteProgress(tx: tx, dt: sim.tuning.dt, playing: true)
+        // Stomp attempts on the same tile are not a soft-lock — keep the gate quiet.
+        if let mop = nearestMop(sim: sim), abs(mop.position.x - b.position.x) < tile * 5 {
+            progressIdleTX = tx
+            progressIdleFrames = 0
+            progressStallSeconds = 0
+        } else {
+            noteProgress(tx: tx, dt: sim.tuning.dt, playing: true)
+        }
 
         // Past the vault lip / right wall with no death yet — drop into seekDeath so
         // the 8s no-progress gate doesn't kill a finished runway.
