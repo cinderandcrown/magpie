@@ -207,10 +207,22 @@ public struct SmokeBrain: Equatable, Sendable {
         // Track live-play stalls for the harness 8s no-progress gate.
         noteProgress(tx: tx, dt: sim.tuning.dt, playing: true)
 
+        // Past the vault lip / right wall with no death yet — drop into seekDeath so
+        // the 8s no-progress gate doesn't kill a finished runway.
+        let exitX = sim.map.findFirst(.exit)?.0 ?? (sim.map.width - 2)
+        if act != .finishPush, !diedOnce, tx >= exitX - 1, progressStallSeconds > 2.5 {
+            act = .seekDeath
+            return seekDeathInput(sim: sim, tx: tx, ty: ty)
+        }
+
         // Harness rooftop clip: climb while prefer_roof is set (even during showcaseMask).
         // After ~4s on the same latch column, bail to street so the video isn't dead air.
+        // Never climb past living street MOPs — stomp first so CI chain can land.
         if Self.smokeFlagExists("smoke_prefer_roof.txt"),
            act != .seekDeath, act != .finishPush {
+            if let mop = nearestMop(sim: sim), mop.position.x - b.position.x < tile * 8 {
+                return forwardRunInput(sim: sim, tx: tx, ty: ty, allowMask: false)
+            }
             if progressStallSeconds > 4.0 {
                 return forwardRunInput(sim: sim, tx: tx, ty: ty, allowMask: false)
             }

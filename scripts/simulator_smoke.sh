@@ -387,7 +387,25 @@ shot "$OUT_DIR/02-midrun.png"
 # Release midrun so subsequent stomps count.
 write_flag "smoke_midrun_ok.txt"
 
-# 02r — climb for rooftop-route clip AFTER the street midrun still (keeps magenta palette honest).
+# 03 — street stomps BEFORE rooftop so the forward-only bot still has MOPs ahead.
+STOMP_BASE="$(STATUS_LINE="$(read_status)" python3 -c 'import os,re; m=re.search(r"stomps=([0-9]+)", os.environ["STATUS_LINE"]); print(int(m.group(1)) if m else 0)')"
+export STOMP_BASE
+wait_status_strict "stomp" "import os,re,sys; s=os.environ['STATUS_LINE']; m=re.search(r'stomps=([0-9]+)', s); base=int(os.environ.get('STOMP_BASE','0')); sys.exit(0 if (m and int(m.group(1))>=base+1 and 'phase=playing' in s) else 1)" 120
+shot "$OUT_DIR/03-mop-stomp.png"
+
+# 03b — three NEW stomps during this beat (not sticky combo high-water).
+CHAIN_BASE="$(STATUS_LINE="$(read_status)" python3 -c 'import os,re; m=re.search(r"stomps=([0-9]+)", os.environ["STATUS_LINE"]); print(int(m.group(1)) if m else 0)')"
+export CHAIN_BASE
+wait_status_strict "stomp-chain" "import os,re,sys; s=os.environ['STATUS_LINE']; m=re.search(r'stomps=([0-9]+)', s); base=int(os.environ.get('CHAIN_BASE','0')); sys.exit(0 if ('phase=playing' in s and m and int(m.group(1))>=base+3) else 1)" 120
+shot "$OUT_DIR/03b-stomp-chain.png"
+# Fail if 03b is near-identical to 03 (stuck hero / no chain).
+if near_identical "$OUT_DIR/03-mop-stomp.png" "$OUT_DIR/03b-stomp-chain.png"; then
+  echo "FAIL: 03b-stomp-chain near-identical to 03-mop-stomp (no fresh chain)" >&2
+  exit 1
+fi
+echo "OK stomp-chain differs from single stomp"
+
+# 02r — rooftop clip AFTER street stomps (forward-only must not climb past the MOP pack).
 write_flag "smoke_prefer_roof.txt"
 ROOF_WAIT_START="$(date +%s)"
 while true; do
@@ -408,24 +426,6 @@ shot "$OUT_DIR/02r-rooftop-route.png" || true
 # Hold a few seconds of climb/rooftop traversal for the continuous take / clip extract.
 sleep 3
 rm -f "$(data_container)/Documents/smoke_prefer_roof.txt" 2>/dev/null || true
-
-# 03 — real MOP stomp: require NEW stomps during this beat (not sticky combo).
-STOMP_BASE="$(STATUS_LINE="$(read_status)" python3 -c 'import os,re; m=re.search(r"stomps=([0-9]+)", os.environ["STATUS_LINE"]); print(int(m.group(1)) if m else 0)')"
-export STOMP_BASE
-wait_status_strict "stomp" "import os,re,sys; s=os.environ['STATUS_LINE']; m=re.search(r'stomps=([0-9]+)', s); base=int(os.environ.get('STOMP_BASE','0')); sys.exit(0 if (m and int(m.group(1))>=base+1 and 'phase=playing' in s) else 1)" 120
-shot "$OUT_DIR/03-mop-stomp.png"
-
-# 03b — three NEW stomps during this beat (not sticky combo high-water).
-CHAIN_BASE="$(STATUS_LINE="$(read_status)" python3 -c 'import os,re; m=re.search(r"stomps=([0-9]+)", os.environ["STATUS_LINE"]); print(int(m.group(1)) if m else 0)')"
-export CHAIN_BASE
-wait_status_strict "stomp-chain" "import os,re,sys; s=os.environ['STATUS_LINE']; m=re.search(r'stomps=([0-9]+)', s); base=int(os.environ.get('CHAIN_BASE','0')); sys.exit(0 if ('phase=playing' in s and m and int(m.group(1))>=base+3) else 1)" 120
-shot "$OUT_DIR/03b-stomp-chain.png"
-# Fail if 03b is near-identical to 03 (stuck hero / no chain).
-if near_identical "$OUT_DIR/03-mop-stomp.png" "$OUT_DIR/03b-stomp-chain.png"; then
-  echo "FAIL: 03b-stomp-chain near-identical to 03-mop-stomp (no fresh chain)" >&2
-  exit 1
-fi
-echo "OK stomp-chain differs from single stomp"
 
 # 04 — Mask Mode while still playing (requires live maskOn=1, not sticky mask=).
 # Only pin Mask while capturing (smoke_capture_mask.txt) — not during stomp-chain.
