@@ -74,7 +74,8 @@ jobs:
   build:
     name: Build and test (iPhone)
     runs-on: xcode-27
-    timeout-minutes: 60
+    # Smoke (~45m) + SE layout create/boot (~10m) needs headroom past the old 60m cap.
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:

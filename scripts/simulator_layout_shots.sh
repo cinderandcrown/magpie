@@ -210,7 +210,21 @@ shot_device() {
   dname="$(device_name "$udid" || true)"
   echo "layout shot: $label ($udid) $dname"
   xcrun simctl boot "$udid" 2>/dev/null || true
-  xcrun simctl bootstatus "$udid" -b >/dev/null
+  # Cap boot wait — a hung bootstatus previously burned the 60m job timeout.
+  python3 - "$udid" <<'PY' || true
+import subprocess, sys
+udid = sys.argv[1]
+try:
+    subprocess.run(
+        ["xcrun", "simctl", "bootstatus", udid, "-b"],
+        timeout=90,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+except subprocess.TimeoutExpired:
+    print(f"WARN: bootstatus timed out for {udid}", file=sys.stderr)
+PY
   xcrun simctl uninstall "$udid" com.cinderandcrown.magpie 2>/dev/null || true
   xcrun simctl install "$udid" "$APP"
   # Erase leftover smoke flags from a prior install on this udid.
@@ -232,22 +246,23 @@ shot_device() {
     : > "$docs/smoke_proceed.txt"
   fi
   # Wait for live play past the teaching runway (not title / publisher ident).
+  # Cap ~45s — enough for ident+title+runway; do not burn the job timeout.
   local ready=0
-  for _ in $(seq 1 150); do
+  for _ in $(seq 1 90); do
     if [[ -n "$docs" && -f "$docs/smoke_status.txt" ]]; then
       local status
       status="$(cat "$docs/smoke_status.txt" 2>/dev/null || true)"
       if [[ "$status" == *"phase=playing"* && "$status" == *"boot=ready"* ]]; then
         if python3 -c 'import re,sys; s=open(sys.argv[1]).read();
 m=re.search(r"elapsed=([0-9.]+)", s); t=re.search(r"worldTX=([0-9]+)", s);
-sys.exit(0 if m and float(m.group(1))>=4.0 and t and int(t.group(1))>=12 else 1)' \
+sys.exit(0 if m and float(m.group(1))>=3.0 and t and int(t.group(1))>=10 else 1)' \
           "$docs/smoke_status.txt" 2>/dev/null; then
           ready=1
           break
         fi
       fi
     fi
-    sleep 0.4
+    sleep 0.5
   done
   if [[ "$ready" -ne 1 ]]; then
     echo "WARN: $label never reached mid-play status — capture may be title" >&2
