@@ -489,6 +489,7 @@ write_flag "smoke_capture_mask.txt"
 MASK2_OK=0
 MASK2_FORCED=0
 MASK2_WAIT_START="$(date +%s)"
+MASK2_LAST_FORCE=0
 while true; do
   require_app "mask-2"
   status="$(read_status)"
@@ -499,12 +500,18 @@ while true; do
     break
   fi
   now="$(date +%s)"
-  if (( now - MASK2_WAIT_START >= 35 )) && [[ "$MASK2_FORCED" -eq 0 ]]; then
-    echo "WARN: mask-2 soft-timeout (status=$status)" >&2
-    arm_force mask "smoke_force_mask.txt"
-    MASK2_FORCED=1
+  # Arm (and re-arm) force_mask; give the app several seconds to apply before hard-fail.
+  if (( now - MASK2_WAIT_START >= 20 )); then
+    if [[ "$MASK2_FORCED" -eq 0 ]] || (( now - MASK2_LAST_FORCE >= 8 )); then
+      echo "WARN: mask-2 force_mask (status=$status)" >&2
+      arm_force mask "smoke_force_mask.txt"
+      MASK2_FORCED=1
+      MASK2_LAST_FORCE="$now"
+      sleep 1.2
+      continue
+    fi
   fi
-  if (( now - MASK2_WAIT_START >= 55 )); then
+  if (( now - MASK2_WAIT_START >= 90 )); then
     echo "FAIL: mask-2 timeout (status=$status) — no placeholder still" >&2
     shot "$OUT_DIR/fail-mask-2.png" || true
     exit 1

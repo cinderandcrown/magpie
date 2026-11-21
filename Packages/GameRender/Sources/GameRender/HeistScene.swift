@@ -3426,14 +3426,15 @@ public final class HeistScene: SKScene {
                         smokePreMidrunMaskCancelCount += 1
                     }
                     // Harness: force Mask Mode for 04 / 04b when the bot can't re-chain in time.
-                    if midrunOk, SmokeBrain.smokeFlagExists("smoke_force_mask.txt"),
-                       !sim.state.bandit.maskMode
-                    {
+                    // Re-apply every frame while the flag is present (mask-2 re-arm must stick).
+                    if midrunOk, SmokeBrain.smokeFlagExists("smoke_force_mask.txt") {
                         sim.state.bandit.maskMode = true
                         sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 6.0)
                         sim.state.bandit.combo = max(sim.state.bandit.combo, tuning.maskModeAtCombo)
+                        sim.state.bandit.maskCharges = max(sim.state.bandit.maskCharges, 1)
                         smoke.sawMask = true
                         smoke.sawStomp = true
+                        smokeSawMaskDropAfterFirst = true
                     }
                     // Harness: dump Bandit into canal water for the death beat if seekDeath stalls.
                     // Force phase=failed immediately — teleport alone can miss a sim tick before
