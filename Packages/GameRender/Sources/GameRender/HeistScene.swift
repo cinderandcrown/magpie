@@ -405,6 +405,17 @@ public final class HeistScene: SKScene {
         publisherIdentRoot?.removeFromParent()
         publisherIdentRoot = nil
         showingPublisherIdent = false
+        // Smoke can arm proceed during ident → beginPlay before this runs. Never re-show
+        // title art over a live run (that left TAP TO START stuck on SE layout stills).
+        if case .playing = sim.state.phase {
+            titleRoot.isHidden = true
+            if smokeEnabled {
+                smokeStatus.boot = "ready"
+                writeSmokeStatus()
+            }
+            updateHUDVisibility()
+            return
+        }
         presentIntroIfNeededAfterIdent()
         if showingIntro {
             // Intro covers title; still mark boot ready so smoke can proceed after comic skip paths.
@@ -2484,6 +2495,10 @@ public final class HeistScene: SKScene {
         clearPlayToasts()
         objectiveBanner?.removeFromParent()
         objectiveBanner = nil
+        if case .playing = sim.state.phase {
+            titleRoot.isHidden = true
+            return
+        }
         titleRoot.isHidden = false
         if let rain = titleRoot.childNode(withName: "//titleRain") as? SKEmitterNode {
             rain.isPaused = false
