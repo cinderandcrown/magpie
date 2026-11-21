@@ -198,4 +198,35 @@ final class SmokeWorldProgressTests: XCTestCase {
             "finishPush must walk back onto .exit after overshoot (minTX=\(minTX) exit=\(exitX) phase=\(sim.state.phase))"
         )
     }
+
+    func testFacingFollowsMoveIntent() throws {
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 1)
+        sim.startRun()
+        for _ in 0..<30 {
+            sim.step(InputFrame(moveX: 1))
+        }
+        XCTAssertGreaterThan(sim.state.bandit.velocity.x, 0)
+        XCTAssertEqual(sim.state.bandit.facing, 1, "running right must face +1")
+        for _ in 0..<30 {
+            sim.step(InputFrame(moveX: -1))
+        }
+        XCTAssertEqual(sim.state.bandit.facing, -1, "moving left must face -1")
+    }
+
+    func testNearExitWins() throws {
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 2)
+        sim.startRun()
+        let tile = sim.tuning.tileSize
+        let exit = map.findFirst(.exit)!
+        // Park beside the vault door (not exactly on the tile center).
+        sim.state.bandit.position = Vec2(Double(exit.0) * tile + tile * 0.2, Double(exit.1) * tile)
+        sim.state.bandit.onGround = true
+        sim.step(InputFrame(moveX: 1))
+        guard case .won = sim.state.phase else {
+            XCTFail("walking into vault must win, phase=\(sim.state.phase)")
+            return
+        }
+    }
 }

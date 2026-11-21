@@ -120,13 +120,18 @@ public struct SmokeBrain: Equatable, Sendable {
             return (input, start, retry)
 
         case .won:
-            // Bounce ANY vault crack until the death beat finished — keeps stomps/mask
-            // ahead of results even if the bot races past the MOP pack to EXIT.
+            // Before death: soft-bounce without a full sim.retry (that was the "fake win"
+            // hitch — sticky won= + 8s restart). Nudge is done by HeistScene not setting
+            // smokeStatus.won; here we only ask for a lightweight retry to leave .won.
             if !diedOnce {
                 retry = true
                 act = .play
                 maskShowcaseFrames = 0
                 seekDeathFrames = 0
+                // Prefer seekDeath / mop hunt over another vault crack.
+                if sawMask {
+                    act = .seekDeath
+                }
                 return (input, start, retry)
             }
             act = .done

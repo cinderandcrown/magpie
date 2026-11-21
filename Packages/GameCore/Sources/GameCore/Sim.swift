@@ -293,16 +293,14 @@ public struct Sim: Equatable, Sendable {
     private mutating func integrate(input: InputFrame, bandit: inout BanditState, dt: Double) {
         let feel = tuning.feel
         let move = max(-1, min(1, input.moveX))
-        // Facing always follows travel velocity (auto-runner never moonwalks).
-        // Hurt pose still faces the knockback impulse; otherwise prefer vx, then stick.
-        if bandit.animHold > 0, bandit.anim == .hurt {
-            if abs(bandit.velocity.x) > 4 {
-                bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
-            }
-        } else if abs(bandit.velocity.x) > 8 {
+        // Facing follows travel: stick intent first, then velocity. Never moonwalk.
+        // (Prior vx-only threshold left facing stale while moveX shoved the runner.)
+        if bandit.animHold > 0, bandit.anim == .hurt, abs(bandit.velocity.x) > 4 {
             bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
         } else if abs(move) > feel.stickDeadZone {
             bandit.facing = move >= 0 ? 1 : -1
+        } else if abs(bandit.velocity.x) > 2 {
+            bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
         }
 
         // Accel from time-to-speed: reach runPx in groundAccelTime; stop in groundStopTime.
@@ -788,22 +786,23 @@ public struct Sim: Equatable, Sendable {
             bandit.carriedShinies = 0
             state.events.append(SimEvent(kind: .bank, position: bandit.position))
         }
-        if t == .exit || (t == .stash && bandit.bankedShinies + bandit.carriedShinies >= 0 && nearExit(bandit)) {
-            // Win when reaching exit tile
-            if t == .exit {
-                let total = bandit.bankedShinies + bandit.carriedShinies
-                bandit.bankedShinies = total
-                bandit.carriedShinies = 0
-                state.phase = .won(seconds: state.elapsed, shinies: bandit.bankedShinies, combo: state.bestCombo)
-                state.events.append(SimEvent(kind: .win, position: bandit.position))
-            }
+        // Vault clear: on the EXIT tile OR close enough that a walk-into-door reads as a win.
+        if t == .exit || nearExit(bandit) {
+            let total = bandit.bankedShinies + bandit.carriedShinies
+            bandit.bankedShinies = total
+            bandit.carriedShinies = 0
+            state.phase = .won(seconds: state.elapsed, shinies: bandit.bankedShinies, combo: state.bestCombo)
+            state.events.append(SimEvent(kind: .win, position: bandit.position))
         }
     }
 
     private func nearExit(_ bandit: BanditState) -> Bool {
         guard let e = map.findFirst(.exit) else { return false }
         let p = map.worldCenter(ofX: e.0, y: e.1, tileSize: tuning.tileSize)
-        return p.distance(to: bandit.position) < tuning.tileSize * 1.2
+        // Horizontal reach + same deck — walking into the vault door must end the heist.
+        let dx = abs(bandit.position.x - p.x)
+        let dy = abs(bandit.position.y - p.y)
+        return dx < tuning.tileSize * 1.35 && dy < tuning.tileSize * 1.6
     }
 
     private mutating func updateMops(bandit: inout BanditState, dt: Double, stompFalling: Bool, jumpHeld: Bool) {
@@ -1029,6 +1028,12 @@ public struct Sim: Equatable, Sendable {
             fail(.fellInWater, at: bandit.position)
         } else if t == .spike && bandit.invuln <= 0 {
             fail(.spiked, at: bandit.position)
+        }
+        // Kill plane: fell off the world / through the floor past the map.
+        if bandit.position.y < -tile * 2 {
+            fail(.fellInWater, at: bandit.position)
+        } else if tx < -2 || tx > map.width + 2 {
+            fail(.fellInWater, at: bandit.position)
         }
     }
 
