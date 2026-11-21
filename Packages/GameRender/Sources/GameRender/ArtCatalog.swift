@@ -291,14 +291,16 @@ public enum ArtCatalog {
         return true
     }
 
-    /// Far-parallax perspective grid horizon (baked texture, additive, one node).
+    /// Far-parallax perspective grid horizon — dim/blurred so it never reads as walkable floor.
     public static func makePerspectiveGridHorizon(width: CGFloat, height: CGFloat) -> SKSpriteNode {
         let tex = perspectiveGridTexture()
         let n = SKSpriteNode(texture: tex, size: CGSize(width: width, height: height))
         n.name = "gridHorizon"
         n.blendMode = .add
-        n.alpha = 0.42
+        n.alpha = 0.12
         n.zPosition = -28
+        n.color = SKColor(red: 0.2, green: 0.15, blue: 0.35, alpha: 1)
+        n.colorBlendFactor = 0.55
         return n
     }
 
@@ -468,11 +470,12 @@ public enum ArtCatalog {
         return SKTileSet(tileGroups: groups)
     }
 
-    /// Quiet dark plate + cyan top lip (and optional side seams). No repeating crate grid.
+    /// Solid filled top + bright lit edge. Interior fills stay matte so BG never reads as floor.
     private static var cleanPlateCache: [Int: SKTexture] = [:]
 
     public static func cleanPlatformTexture(tileSize: CGSize, mask: Int) -> SKTexture {
-        let key = mask & 0x1F
+        // Bump cache key when look changes so CI/simulators don't keep stale plates.
+        let key = (mask & 0x1F) | 0x100
         if let cached = cleanPlateCache[key] { return cached }
         let format = UIGraphicsImageRendererFormat()
         format.opaque = false
@@ -481,26 +484,30 @@ public enum ArtCatalog {
             let cg = ctx.cgContext
             let w = tileSize.width
             let h = tileSize.height
-            // Deep charcoal fill — stays behind bandit/MOPs/loot.
-            cg.setFillColor(UIColor(red: 0.07, green: 0.06, blue: 0.12, alpha: 1).cgColor)
+            // Opaque slate fill — reads as real ground, not a neon grid plate.
+            cg.setFillColor(UIColor(red: 0.10, green: 0.09, blue: 0.16, alpha: 1).cgColor)
             cg.fill(CGRect(origin: .zero, size: tileSize))
-            cg.setFillColor(UIColor(red: 0.11, green: 0.10, blue: 0.18, alpha: 1).cgColor)
+            cg.setFillColor(UIColor(red: 0.14, green: 0.13, blue: 0.22, alpha: 1).cgColor)
             cg.fill(CGRect(x: 1, y: 1, width: w - 2, height: h - 2))
-            // Bright walkable lip when open above (no N neighbour).
+            // Always paint a bright walkable top edge on exposed tops.
             let openTop = (mask & 1) == 0
-            if openTop || mask == 15 || mask == 14 || mask == 13 || mask == 11 || mask == 7 {
-                cg.setFillColor(UIColor(red: 0.25, green: 0.98, blue: 1.0, alpha: 0.95).cgColor)
-                cg.fill(CGRect(x: 0, y: h - 4, width: w, height: 4))
-                cg.setFillColor(UIColor(red: 1.0, green: 0.28, blue: 0.72, alpha: 0.35).cgColor)
-                cg.fill(CGRect(x: 0, y: h - 5.5, width: w, height: 1.5))
+            if openTop || mask == 15 || mask == 14 || mask == 13 || mask == 11 || mask == 7 || mask == 0 {
+                // Soft under-glow
+                cg.setFillColor(UIColor(red: 1.0, green: 0.35, blue: 0.75, alpha: 0.45).cgColor)
+                cg.fill(CGRect(x: 0, y: h - 7, width: w, height: 3))
+                // Hot lit lip
+                cg.setFillColor(UIColor(red: 0.55, green: 1.0, blue: 0.95, alpha: 1).cgColor)
+                cg.fill(CGRect(x: 0, y: h - 5, width: w, height: 5))
+                cg.setFillColor(UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.85).cgColor)
+                cg.fill(CGRect(x: 0, y: h - 2, width: w, height: 2))
             }
             // Soft side seam when open east/west.
             if (mask & 2) == 0 {
-                cg.setFillColor(UIColor(red: 0.18, green: 0.16, blue: 0.28, alpha: 1).cgColor)
+                cg.setFillColor(UIColor(red: 0.22, green: 0.20, blue: 0.32, alpha: 1).cgColor)
                 cg.fill(CGRect(x: w - 2, y: 0, width: 2, height: h))
             }
             if (mask & 8) == 0 {
-                cg.setFillColor(UIColor(red: 0.18, green: 0.16, blue: 0.28, alpha: 1).cgColor)
+                cg.setFillColor(UIColor(red: 0.22, green: 0.20, blue: 0.32, alpha: 1).cgColor)
                 cg.fill(CGRect(x: 0, y: 0, width: 2, height: h))
             }
         }

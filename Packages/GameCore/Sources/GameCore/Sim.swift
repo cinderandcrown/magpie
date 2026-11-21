@@ -163,6 +163,9 @@ public struct Sim: Equatable, Sendable {
     public mutating func startRun() {
         guard case .title = state.phase else { return }
         state.phase = .playing
+        // Spawn safety: brief i-frames so the teaching stretch never bags on frame 1.
+        state.bandit.invuln = max(state.bandit.invuln, 1.5)
+        state.bandit.hearts = max(state.bandit.hearts, tuning.hearts)
     }
 
     public mutating func retry() {
@@ -172,6 +175,8 @@ public struct Sim: Equatable, Sendable {
         let seed = self.seed &+ 1
         self = Sim(map: map, tuning: tuning, seed: seed, variant: variant)
         state.phase = .playing
+        state.bandit.invuln = max(state.bandit.invuln, 1.5)
+        state.bandit.hearts = tuning.hearts
     }
 
     public mutating func step(_ input: InputFrame) {
@@ -189,10 +194,9 @@ public struct Sim: Equatable, Sendable {
         else if b.jumpBuffer > 0 { b.jumpBuffer = max(0, b.jumpBuffer - dt) }
 
         if b.invuln > 0 { b.invuln = max(0, b.invuln - dt) }
-        // Chain armor: active combo keeps light i-frames so a just-respawned MOP
-        // can't side-bag the run before the next hop (Nick feel pass).
-        if b.combo > 0, b.comboTimer > 0 {
-            b.invuln = max(b.invuln, b.onGround ? 0.2 : 0.15)
+        // Brief post-stomp grace only while still airborne — grounded side hits must hurt.
+        if b.combo > 0, b.comboTimer > 0, !b.onGround {
+            b.invuln = max(b.invuln, 0.12)
         }
         if b.landCooldown > 0 { b.landCooldown = max(0, b.landCooldown - dt) }
         if b.dropThrough > 0 { b.dropThrough = max(0, b.dropThrough - dt) }
@@ -289,16 +293,12 @@ public struct Sim: Equatable, Sendable {
     private mutating func integrate(input: InputFrame, bandit: inout BanditState, dt: Double) {
         let feel = tuning.feel
         let move = max(-1, min(1, input.moveX))
-        // Stick owns facing while held; otherwise face the direction of travel so knockback
-        // / coast never reads as moonwalking. Hurt pose locks facing to the knockback.
-        if bandit.animHold > 0, bandit.anim == .hurt {
-            if abs(bandit.velocity.x) > 4 {
-                bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
-            }
+        // Facing follows travel velocity first so auto-run never moonwalks when stick
+        // and vx briefly disagree. Stick wins only when nearly stopped.
+        if abs(bandit.velocity.x) > 2 {
+            bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
         } else if abs(move) > feel.stickDeadZone {
             bandit.facing = move >= 0 ? 1 : -1
-        } else if abs(bandit.velocity.x) > 10 {
-            bandit.facing = bandit.velocity.x >= 0 ? 1 : -1
         }
 
         // Accel from time-to-speed: reach runPx in groundAccelTime; stop in groundStopTime.
@@ -732,14 +732,18 @@ public struct Sim: Equatable, Sendable {
     }
 
     private mutating func collectShinies(bandit: inout BanditState) {
-        let r = tuning.tileSize * 0.6
+        // Auto-pickup reach (GRAB folded in) — generous so loot arcs read as rewards.
+        let r = tuning.tileSize * 1.15
         for i in state.shinies.indices where state.shinies[i].alive {
             if state.shinies[i].position.distance(to: bandit.position) <= r {
                 state.shinies[i].alive = false
                 let gain = bandit.maskMode ? 2 : 1
                 bandit.carriedShinies += gain
-                bandit.anim = .pickUp
-                bandit.animHold = 0.35
+                // Brief pose only — don't lock the auto-runner.
+                if bandit.animHold <= 0 {
+                    bandit.anim = .pickUp
+                    bandit.animHold = 0.12
+                }
                 state.events.append(SimEvent(kind: .shiny, position: state.shinies[i].position))
             }
         }
@@ -780,22 +784,23 @@ public struct Sim: Equatable, Sendable {
             bandit.carriedShinies = 0
             state.events.append(SimEvent(kind: .bank, position: bandit.position))
         }
-        if t == .exit || (t == .stash && bandit.bankedShinies + bandit.carriedShinies >= 0 && nearExit(bandit)) {
-            // Win when reaching exit tile
-            if t == .exit {
-                let total = bandit.bankedShinies + bandit.carriedShinies
-                bandit.bankedShinies = total
-                bandit.carriedShinies = 0
-                state.phase = .won(seconds: state.elapsed, shinies: bandit.bankedShinies, combo: state.bestCombo)
-                state.events.append(SimEvent(kind: .win, position: bandit.position))
-            }
+        // Vault clear: on the EXIT tile OR close enough that a walk-into-door reads as a win.
+        if t == .exit || nearExit(bandit) {
+            let total = bandit.bankedShinies + bandit.carriedShinies
+            bandit.bankedShinies = total
+            bandit.carriedShinies = 0
+            state.phase = .won(seconds: state.elapsed, shinies: bandit.bankedShinies, combo: state.bestCombo)
+            state.events.append(SimEvent(kind: .win, position: bandit.position))
         }
     }
 
     private func nearExit(_ bandit: BanditState) -> Bool {
         guard let e = map.findFirst(.exit) else { return false }
         let p = map.worldCenter(ofX: e.0, y: e.1, tileSize: tuning.tileSize)
-        return p.distance(to: bandit.position) < tuning.tileSize * 1.2
+        // Horizontal reach + same deck — walking into the vault door must end the heist.
+        let dx = abs(bandit.position.x - p.x)
+        let dy = abs(bandit.position.y - p.y)
+        return dx < tuning.tileSize * 1.35 && dy < tuning.tileSize * 1.6
     }
 
     private mutating func updateMops(bandit: inout BanditState, dt: Double, stompFalling: Bool, jumpHeld: Bool) {
@@ -856,19 +861,15 @@ public struct Sim: Equatable, Sendable {
                 bandit.invuln = max(bandit.invuln, max(1.0, feel.invulnSeconds))
                 bandit.combo = min(tuning.comboCap, bandit.combo + 1)
                 bandit.comboTimer = tuning.comboGroundGrace
-                // Combo auto-enters Mask Mode (classic beat) and tops up MASK button charges.
-                if bandit.combo >= tuning.maskModeAtCombo && !bandit.maskMode {
-                    bandit.maskMode = true
-                    bandit.maskTimer = tuning.maskDuration
-                    let cap = tuning.feel.maskMaxCharges
-                    bandit.maskCharges = min(cap, max(bandit.maskCharges, 1))
-                    state.events.append(SimEvent(kind: .maskOn, position: bandit.position))
-                } else if bandit.maskMode {
-                    bandit.maskTimer = max(bandit.maskTimer, tuning.maskDuration * 0.55)
+                // Fill Mask meter (charges). Player presses MASK when the button appears.
+                if bandit.combo >= tuning.maskModeAtCombo {
                     let cap = tuning.feel.maskMaxCharges
                     if bandit.maskCharges < cap {
                         bandit.maskCharges = min(cap, bandit.maskCharges + 1)
                     }
+                }
+                if bandit.maskMode {
+                    bandit.maskTimer = max(bandit.maskTimer, tuning.maskDuration * 0.55)
                 }
                 state.events.append(SimEvent(kind: .stomp, position: state.mops[i].position))
                 state.events.append(SimEvent(kind: .shake, position: state.mops[i].position))
@@ -928,30 +929,48 @@ public struct Sim: Equatable, Sendable {
 
         if didStomp { return }
 
-        // Never side-bag while descending / flopping / pouncing / land-grace / near-apex.
-        if stompFalling
-            || bandit.velocity.y < 0
-            || bandit.flopping
-            || bandit.pouncing
-            || bandit.dropThrough > 0
-            || bandit.landStompGrace > 0
-            || bandit.apexStompFrames > 0
-        {
+        // DASH / Mask break through MOPs — shake only (not a stomp) so objective/smoke counts stay honest.
+        if bandit.dashTimer > 0 || bandit.maskMode {
+            for i in state.mops.indices where state.mops[i].alive {
+                let dx = abs(bandit.position.x - state.mops[i].position.x)
+                let dy = abs(bandit.position.y - state.mops[i].position.y)
+                if dx <= stompHalfW * 0.85, dy <= mopHalfH * 1.5 {
+                    state.mops[i].alive = false
+                    state.mops[i].respawn = 4.0
+                    state.mops[i].anim = .death
+                    state.mops[i].animHold = 0.8
+                    bandit.combo = min(tuning.comboCap, bandit.combo + 1)
+                    bandit.comboTimer = tuning.comboGroundGrace
+                    state.events.append(SimEvent(kind: .shake, position: state.mops[i].position))
+                    state.events.append(SimEvent(kind: .dust, position: state.mops[i].position))
+                }
+            }
+            return
+        }
+
+        // Side hits hurt unless stomping / pouncing / i-frames.
+        // One heart per contact, then knockback + invuln — never multi-hit the same frame.
+        if bandit.flopping || bandit.pouncing || bandit.dropThrough > 0 {
+            return
+        }
+        if bandit.invuln > 0 || bandit.anim == .hurt {
             return
         }
 
         for i in state.mops.indices where state.mops[i].alive {
             let dx = abs(bandit.position.x - state.mops[i].position.x)
             let dy = abs(bandit.position.y - state.mops[i].position.y)
-            // Hurt box stays smaller than the MOP sprite; only when grounded / rising beside them.
-            if dx <= hurtHalfW, dy <= mopHalfH * 1.35, bandit.invuln <= 0 {
-                bandit.hearts -= 1
-                bandit.invuln = feel.invulnSeconds
+            // Hurt box stays smaller than the MOP sprite; grounded / rising beside them.
+            if dx <= hurtHalfW, dy <= mopHalfH * 1.35 {
+                bandit.hearts = max(0, bandit.hearts - 1)
+                bandit.invuln = max(feel.invulnSeconds, 1.0)
+                bandit.combo = 0
+                bandit.comboTimer = 0
                 var away = bandit.position.x >= state.mops[i].position.x ? 1.0 : -1.0
                 let tile = tuning.tileSize
-                let minSafe = tile * 5
-                let maxSafe = Double(map.width) * tile - tile * 5
-                var nx = bandit.position.x + away * tile * 1.2
+                let minSafe = tile * 2
+                let maxSafe = Double(map.width) * tile - tile * 2
+                var nx = bandit.position.x + away * tile * 1.35
                 if nx < minSafe {
                     away = 1
                     nx = minSafe
@@ -1007,6 +1026,12 @@ public struct Sim: Equatable, Sendable {
             fail(.fellInWater, at: bandit.position)
         } else if t == .spike && bandit.invuln <= 0 {
             fail(.spiked, at: bandit.position)
+        }
+        // Kill plane: fell off the world / through the floor past the map.
+        if bandit.position.y < -tile * 2 {
+            fail(.fellInWater, at: bandit.position)
+        } else if tx < -2 || tx > map.width + 2 {
+            fail(.fellInWater, at: bandit.position)
         }
     }
 

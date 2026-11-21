@@ -9,7 +9,9 @@ import UIKit
 /// Side-view neon docks heist wired to `Assets/Generated/` via AssetManifest.
 public final class HeistScene: SKScene {
     /// Zoom so playfield + skyline fill portrait (no empty black letterbox bands).
-    public static let worldZoom: CGFloat = 1.85
+    /// Camera zoom — lower so the auto-runner sees gaps/MOPs ahead (bandit ~15–18% width).
+    /// Pull back so the playfield fills more of the tall phone — less dead sky band.
+    public static let worldZoom: CGFloat = 0.88
     private var tileMapNode: SKTileMapNode?
 
     private var sim: Sim!
@@ -106,6 +108,9 @@ public final class HeistScene: SKScene {
     /// Camera side-switch hysteresis — ignore brief facing flips for lead direction.
     private var cameraFacingHoldUntil: TimeInterval = 0
     private var cameraWantFace: CGFloat = 1
+    /// Screen-space lift so the street deck clears the bottom control strip.
+    private var controlStripLift: CGFloat = 0
+    private var controlStripNode: SKShapeNode?
     private var maskMusicOn = false
     /// MOP ids that already barked `mop_bot_alert` this approach.
     private var mopAlerted: Set<Int> = []
@@ -171,10 +176,23 @@ public final class HeistScene: SKScene {
     private var pauseCountLabel: SKLabelNode?
     /// First-minute pacing: objective banner, early win, mid-run surprise.
     private var objectiveBanner: SKNode?
+    /// One toast at a time; tips auto-dismiss (~2s) and never stack over the HUD.
+    private var toastQueue: [(text: String, color: SKColor, hold: TimeInterval)] = []
+    private var toastShowing = false
+    private var activeToastNode: SKNode?
+    private var lastObjectiveTip: String = ""
     private var celebratedFirstStomp = false
     private var celebratedEarlyWin = false
     private var midSurpriseFired = false
     private var exitBeacon: SKNode?
+    /// Auto-runner: no stick. Tutorial steps 0=jump gap, 1=stomp, 2=mask, 3=vault.
+    private var tutorialStep = 0
+    private var tutorialStomps = 0
+    private var progressTrack: SKShapeNode?
+    private var progressFill: SKShapeNode?
+    private var progressBanditDot: SKShapeNode?
+    private var startWorldX: Double = 0
+    private var exitWorldX: Double = 1
     /// Run-clock of last stomp — drives the "don't stand around" nudge.
     private var lastStompElapsed: Double = -1
     private var nextLullNudgeAt: Double = 8
@@ -387,6 +405,17 @@ public final class HeistScene: SKScene {
         publisherIdentRoot?.removeFromParent()
         publisherIdentRoot = nil
         showingPublisherIdent = false
+        // Smoke can arm proceed during ident → beginPlay before this runs. Never re-show
+        // title art over a live run (that left TAP TO START stuck on SE layout stills).
+        if case .playing = sim.state.phase {
+            titleRoot.isHidden = true
+            if smokeEnabled {
+                smokeStatus.boot = "ready"
+                writeSmokeStatus()
+            }
+            updateHUDVisibility()
+            return
+        }
         presentIntroIfNeededAfterIdent()
         if showingIntro {
             // Intro covers title; still mark boot ready so smoke can proceed after comic skip paths.
@@ -468,7 +497,7 @@ public final class HeistScene: SKScene {
         let gridW = min(max(mapW * 0.5, size.width / Self.worldZoom * 3), 1800)
         let grid = ArtCatalog.makePerspectiveGridHorizon(width: gridW, height: h * 0.55)
         grid.position = CGPoint(x: gridW * 0.28, y: midY)
-        grid.alpha = 0.18
+        grid.alpha = 0.08
         parallaxFar.addChild(grid)
         // Living far city: twinkling windows + a slow skyline transit.
         let windows = ArtCatalog.livingWindowLights(width: min(mapW * 0.6, 1400), height: h * 0.35)
@@ -482,21 +511,22 @@ public final class HeistScene: SKScene {
         // Keep strips high enough that the midrun storefront-band (12–48% screen) sees them.
         let signs = ArtCatalog.neonSignageStrip(width: mapW * 0.7, height: 96)
         signs.position = CGPoint(x: mapW * 0.18, y: midY + 118)
-        signs.alpha = 0.55
+        signs.alpha = 0.28
         parallaxMid.addChild(signs)
         let signsLow = ArtCatalog.neonSignageStrip(width: mapW * 0.45, height: 56)
         signsLow.position = CGPoint(x: mapW * 0.4, y: midY + 52)
-        signsLow.alpha = 0.4
+        signsLow.alpha = 0.18
         parallaxMid.addChild(signsLow)
         // Sweeping searchlight + street steam so the mid band feels alive.
         let light = ArtCatalog.neonSearchlight(height: h * 0.5)
         light.position = CGPoint(x: mapW * 0.3, y: midY + 40)
         parallaxMid.addChild(light)
-        if let near = ArtLibrary.districtLayer(district, layer: .near, height: h * 0.9, maxPixel: maxPx) {
-            tileLayer(near, into: parallaxNear, y: midY - 40, z: -10, neonBoost: false)
+        // Keep near plates behind / below the walkable deck so floor bands don't stack on the street.
+        if let near = ArtLibrary.districtLayer(district, layer: .near, height: h * 0.75, maxPixel: maxPx) {
+            tileLayer(near, into: parallaxNear, y: midY - 90, z: -10, neonBoost: false)
         }
         let steam = ArtCatalog.streetSteamEmitter(width: size.width / Self.worldZoom)
-        steam.position = CGPoint(x: 0, y: -viewH * 0.12)
+        steam.position = CGPoint(x: 0, y: -viewH * 0.18)
         parallaxNear.addChild(steam)
 
         let rain = ArtCatalog.rainEmitter(sceneSize: CGSize(width: size.width / Self.worldZoom, height: h))
@@ -743,13 +773,31 @@ public final class HeistScene: SKScene {
                     }
                 case .water:
                     let body = SKShapeNode(rectOf: CGSize(width: tile * 1.02, height: tile * 0.85), cornerRadius: 2)
-                    body.fillColor = SKColor(red: 0.05, green: 0.12, blue: 0.28, alpha: 0.92)
+                    body.fillColor = SKColor(red: 0.04, green: 0.06, blue: 0.14, alpha: 0.96)
                     body.strokeColor = .clear
                     body.position = CGPoint(x: pos.x, y: pos.y - tile * 0.05)
                     body.zPosition = 1
                     world.addChild(body)
-                    let surface = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.85), size: CGSize(width: tile * 1.02, height: 3))
-                    surface.position = CGPoint(x: pos.x, y: pos.y + tile * 0.35)
+                    // Hazard-tape lip so pits never look like background floor.
+                    let tape = SKSpriteNode(color: SKColor(red: 1.0, green: 0.78, blue: 0.12, alpha: 1), size: CGSize(width: tile * 1.02, height: 5))
+                    tape.position = CGPoint(x: pos.x, y: pos.y + tile * 0.42)
+                    tape.zPosition = 1.3
+                    world.addChild(tape)
+                    let tapeStripe = SKSpriteNode(color: SKColor(red: 0.08, green: 0.06, blue: 0.05, alpha: 1), size: CGSize(width: tile * 0.28, height: 5))
+                    tapeStripe.position = tape.position
+                    tapeStripe.zPosition = 1.31
+                    world.addChild(tapeStripe)
+                    let drip = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.55), size: CGSize(width: 3, height: tile * 0.55))
+                    drip.position = CGPoint(x: pos.x, y: pos.y - tile * 0.15)
+                    drip.zPosition = 1.15
+                    drip.alpha = 0.7
+                    world.addChild(drip)
+                    drip.run(SKAction.repeatForever(SKAction.sequence([
+                        SKAction.fadeAlpha(to: 0.25, duration: 0.45),
+                        SKAction.fadeAlpha(to: 0.75, duration: 0.45),
+                    ])))
+                    let surface = SKSpriteNode(color: ArtCatalog.neonCyan.withAlphaComponent(0.55), size: CGSize(width: tile * 1.02, height: 2))
+                    surface.position = CGPoint(x: pos.x, y: pos.y + tile * 0.32)
                     surface.zPosition = 1.2
                     world.addChild(surface)
                 case .spike:
@@ -778,8 +826,8 @@ public final class HeistScene: SKScene {
                     door.name = kind == .exit ? "exitDoor" : "stashDoor"
                     world.addChild(door)
                     let t = SKLabelNode(fontNamed: "AvenirNext-Bold")
-                    t.text = kind == .exit ? "EXIT" : "STASH"
-                    t.fontSize = kind == .exit ? 11 : 9
+                    t.text = kind == .exit ? "VAULT" : "STASH"
+                    t.fontSize = kind == .exit ? 12 : 9
                     t.fontColor = ArtCatalog.neonLime
                     t.verticalAlignmentMode = .center
                     door.addChild(t)
@@ -810,10 +858,11 @@ public final class HeistScene: SKScene {
     // MARK: - UI
 
     private func setupControls() {
-        // Invisible zone plates first (under art) — left third move, right third jump/pounce.
+        // Auto-runner: no left stick. Right-thumb JUMP / POUNCE / DASH + MASK (when ready).
         moveHitZone = SKNode()
         moveHitZone.name = "moveHitZone"
         moveHitZone.zPosition = 190
+        moveHitZone.isHidden = true
         playHUD.addChild(moveHitZone)
         jumpHitZone = SKNode()
         jumpHitZone.name = "jumpHitZone"
@@ -824,30 +873,21 @@ public final class HeistScene: SKScene {
         pounceHitZone.zPosition = 190
         playHUD.addChild(pounceHitZone)
 
-        // Neon stick: dark plate + crisp cyan ring. Dock hint visible; active stick follows finger.
+        // Stick nodes kept for layout guards / smoke mirrors but fully hidden.
         let stickR = CGFloat(max(58, tuning.feel.stickMaxRadius * 0.95))
         stickBase = SKShapeNode(circleOfRadius: stickR)
-        stickBase.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.12, alpha: 0.82)
-        stickBase.strokeColor = ArtCatalog.neonCyan
-        stickBase.lineWidth = 3
-        stickBase.glowWidth = 2
+        stickBase.fillColor = .clear
+        stickBase.strokeColor = .clear
         stickBase.zPosition = 200
-        stickBase.alpha = 0.55
+        stickBase.isHidden = true
+        stickBase.alpha = 0
         playHUD.addChild(stickBase)
-        let stickInner = SKShapeNode(circleOfRadius: stickR * 0.72)
-        stickInner.fillColor = .clear
-        stickInner.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.4)
-        stickInner.lineWidth = 1.5
-        stickInner.zPosition = 0.5
-        stickBase.addChild(stickInner)
-
         stickKnob = SKShapeNode(circleOfRadius: stickR * 0.42)
-        stickKnob.fillColor = ArtCatalog.neonCyan.withAlphaComponent(0.7)
-        stickKnob.strokeColor = .white
-        stickKnob.lineWidth = 2
-        stickKnob.glowWidth = 1.5
+        stickKnob.fillColor = .clear
+        stickKnob.strokeColor = .clear
         stickKnob.zPosition = 201
-        stickKnob.alpha = 0.55
+        stickKnob.isHidden = true
+        stickKnob.alpha = 0
         playHUD.addChild(stickKnob)
 
         jumpBtn = makeFaceButton(title: "JUMP", color: ArtCatalog.neonLime, large: true, iconName: "jump")
@@ -856,22 +896,50 @@ public final class HeistScene: SKScene {
         pounceBtn = makeFaceButton(title: "POUNCE", color: ArtCatalog.neonPink, large: true, iconName: "pounce")
         pounceBtn.name = "pounceBtn"
         playHUD.addChild(pounceBtn)
-        // Secondary arc: DASH / MASK / GRAB (thumb cluster, left of JUMP/POUNCE).
         dashBtn = makeFaceButton(title: "DASH", color: ArtCatalog.neonCyan, large: false, iconName: "dash")
         dashBtn.name = "dashBtn"
         attachCooldownRing(to: dashBtn, name: "dashRing", color: ArtCatalog.neonCyan)
         playHUD.addChild(dashBtn)
+        // Same size as DASH — sits in the 2×2 grid without overlapping JUMP/POUNCE.
         maskBtn = makeFaceButton(title: "MASK", color: ArtCatalog.neonCyan, large: false, iconName: "mask")
         maskBtn.name = "maskBtn"
         attachChargeBadge(to: maskBtn, name: "maskCharges")
+        maskBtn.isHidden = true
         playHUD.addChild(maskBtn)
+        // GRAB folded into auto-pickup — keep a hidden stub so optional UI code stays safe.
         grabBtn = makeFaceButton(title: "GRAB", color: ArtCatalog.neonOrange, large: false, iconName: "grab")
         grabBtn.name = "grabBtn"
+        grabBtn.isHidden = true
+        grabBtn.alpha = 0
         playHUD.addChild(grabBtn)
 
         dashHitZone = SKNode(); dashHitZone.name = "dashHitZone"; dashHitZone.zPosition = 190; playHUD.addChild(dashHitZone)
         maskHitZone = SKNode(); maskHitZone.name = "maskHitZone"; maskHitZone.zPosition = 190; playHUD.addChild(maskHitZone)
-        grabHitZone = SKNode(); grabHitZone.name = "grabHitZone"; grabHitZone.zPosition = 190; playHUD.addChild(grabHitZone)
+        grabHitZone = SKNode(); grabHitZone.name = "grabHitZone"; grabHitZone.zPosition = 190; grabHitZone.isHidden = true; playHUD.addChild(grabHitZone)
+
+        // Thin progress track: bandit → vault.
+        let track = SKShapeNode(rectOf: CGSize(width: 220, height: 6), cornerRadius: 3)
+        track.name = "progressTrack"
+        track.fillColor = SKColor(white: 0.12, alpha: 0.85)
+        track.strokeColor = SKColor(white: 1, alpha: 0.2)
+        track.lineWidth = 1
+        track.zPosition = 205
+        playHUD.addChild(track)
+        progressTrack = track
+        let fill = SKShapeNode(rectOf: CGSize(width: 4, height: 6), cornerRadius: 3)
+        fill.name = "progressFill"
+        fill.fillColor = ArtCatalog.neonLime
+        fill.strokeColor = .clear
+        fill.zPosition = 206
+        playHUD.addChild(fill)
+        progressFill = fill
+        let dot = SKShapeNode(circleOfRadius: 5)
+        dot.fillColor = ArtCatalog.neonPink
+        dot.strokeColor = .white
+        dot.lineWidth = 1
+        dot.zPosition = 207
+        playHUD.addChild(dot)
+        progressBanditDot = dot
     }
 
     private func attachCooldownRing(to btn: SKShapeNode, name: String, color: SKColor) {
@@ -1018,30 +1086,57 @@ public final class HeistScene: SKScene {
                 dashBtn.alpha = 1
             }
         }
-        // MASK charges + grey when empty / already on.
+        // MASK appears only when the meter is full (charges > 0) or already active.
+        let maskReady = b.maskCharges > 0 || b.maskMode
+        maskBtn.isHidden = !maskReady
+        maskHitZone.isHidden = !maskReady
         if let badge = maskBtn.childNode(withName: "maskCharges") as? SKLabelNode {
-            badge.text = "×\(b.maskCharges)"
-            badge.isHidden = false
+            let charges = max(0, b.maskCharges)
+            badge.text = charges > 0 ? "×\(charges)" : ""
+            badge.isHidden = !maskReady || charges <= 0
         }
         if b.maskMode {
-            maskBtn.alpha = 0.7
+            maskBtn.alpha = 0.85
             maskBtn.strokeColor = ArtCatalog.neonLime
-        } else if b.maskCharges <= 0 {
-            maskBtn.alpha = 0.35
-            maskBtn.strokeColor = ArtCatalog.neonCyan.withAlphaComponent(0.45)
-        } else {
+            maskBtn.glowWidth = 6
+        } else if maskReady {
             maskBtn.alpha = 1
             maskBtn.strokeColor = ArtCatalog.neonCyan
-        }
-        // GRAB: lit near loot/doors/vents; dim otherwise (never covers play when unused).
-        if b.interactTarget == .none {
-            grabBtn.alpha = 0.28
-            grabBtn.isHidden = false
+            maskBtn.glowWidth = 5
+            if maskBtn.action(forKey: "maskPulse") == nil {
+                maskBtn.run(SKAction.repeatForever(SKAction.sequence([
+                    SKAction.group([
+                        SKAction.fadeAlpha(to: 0.75, duration: 0.35),
+                        SKAction.scale(to: 1.06, duration: 0.35),
+                    ]),
+                    SKAction.group([
+                        SKAction.fadeAlpha(to: 1.0, duration: 0.35),
+                        SKAction.scale(to: 1.0, duration: 0.35),
+                    ]),
+                ])), withKey: "maskPulse")
+            }
         } else {
-            grabBtn.alpha = 1
-            grabBtn.isHidden = false
-            grabBtn.strokeColor = ArtCatalog.neonOrange
+            maskBtn.removeAction(forKey: "maskPulse")
+            maskBtn.setScale(1)
         }
+        grabBtn.isHidden = true
+        grabBtn.alpha = 0
+        grabHitZone.isHidden = true
+    }
+
+    private func updateProgressBar(barWidth: CGFloat, barY: CGFloat) {
+        guard let fill = progressFill, let dot = progressBanditDot else { return }
+        let span = max(1.0, exitWorldX - startWorldX)
+        let progressX = sim.state.bandit.position.x
+        let t = max(0.0, min(1.0, (progressX - startWorldX) / span))
+        let w = max(CGFloat(4), barWidth * CGFloat(t))
+        fill.path = CGPath(
+            roundedRect: CGRect(x: -barWidth * 0.5, y: -3, width: w, height: 6),
+            cornerWidth: 3, cornerHeight: 3, transform: nil
+        )
+        fill.position = CGPoint(x: 0, y: barY)
+        fill.fillColor = ArtCatalog.neonLime
+        dot.position = CGPoint(x: -barWidth * 0.5 + w, y: barY)
     }
 
     /// Face-button visual size (matches `makeFaceButton(large:)`).
@@ -2042,35 +2137,66 @@ public final class HeistScene: SKScene {
         skyFill.colorBlendFactor = 1
 
         let rightSafe = max(insets.right, 0)
-        // Dock / rest position stays inside safe area (same look in smoke + ship).
-        if stickTouch == nil {
-            stickBase.position = CGPoint(x: -hw + 88 + leftSafe, y: -hh + 110 + bottomSafe * 0.4)
-            stickKnob.position = stickBase.position
-            stickBase.alpha = 0.38
-            stickKnob.alpha = 0.38
-        }
-        // Right-thumb arc: JUMP/POUNCE on the outer column, DASH/MASK/GRAB on the inner arc.
-        // Keeps stick (left) clear and stays above the home indicator.
-        let edge = CGFloat(max(100, tuning.feel.faceButtonMinPt * 0.92))
+        stickBase.isHidden = true
+        stickKnob.isHidden = true
+        // Controls live in a dedicated bottom strip — clear of the playfield floor.
+        let edge = CGFloat(max(88, tuning.feel.faceButtonMinPt * 0.78))
         let outerX = hw - edge * 0.52 - rightSafe
-        let innerX = outerX - edge * 0.95
-        let baseY = -hh + 78 + bottomSafe * 0.35
-        jumpBtn.position = CGPoint(x: outerX, y: baseY + 118)
-        pounceBtn.position = CGPoint(x: outerX, y: baseY + 18)
-        maskBtn.position = CGPoint(x: innerX, y: baseY + 148)
-        dashBtn.position = CGPoint(x: innerX, y: baseY + 78)
-        grabBtn.position = CGPoint(x: innerX, y: baseY + 8)
+        let innerX = outerX - edge * 0.92
+        let controlStripH = edge * 1.55 + bottomSafe
+        controlStripLift = controlStripH * 0.42
+        let baseY = -hh + bottomSafe + edge * 0.42
+        if controlStripNode == nil {
+            let strip = SKShapeNode()
+            strip.name = "controlStrip"
+            strip.fillColor = SKColor(white: 0.04, alpha: 0.72)
+            strip.strokeColor = SKColor(white: 1, alpha: 0.08)
+            strip.lineWidth = 1
+            strip.zPosition = 150
+            playHUD.addChild(strip)
+            controlStripNode = strip
+        }
+        controlStripNode?.path = CGPath(
+            rect: CGRect(x: -hw, y: -hh, width: size.width, height: controlStripH),
+            transform: nil
+        )
+        controlStripNode?.isHidden = playHUD.isHidden
+        // 2×2 thumb grid — MASK never stacks on DASH.
+        // [MASK] [JUMP]
+        // [DASH] [POUNCE]
+        let colR = outerX
+        let colL = innerX - edge * 0.15
+        let rowTop = baseY + edge * 0.95
+        let rowBot = baseY
+        jumpBtn.position = CGPoint(x: colR, y: rowTop)
+        pounceBtn.position = CGPoint(x: colR, y: rowBot)
+        dashBtn.position = CGPoint(x: colL, y: rowBot)
+        maskBtn.position = CGPoint(x: colL, y: rowTop)
+        grabBtn.isHidden = true
         layoutControlHitZones()
         refreshActionButtonChrome()
-        let hudTop = hh - topSafe - 28
-        let hudX = -hw + 22 + leftSafe
-        // Compact two-row pill — loot/hearts on top, combo/timer below.
-        hudPill.position = CGPoint(x: hudX + 78, y: hudTop - 10)
+
+        // Top HUD bands (top→bottom): progress | stats+pause | objective chip — no overlap.
+        let hudTop = hh - topSafe - 10
+        let hudX = -hw + 18 + leftSafe
+        let barW: CGFloat = min(size.width * 0.42, CGFloat(200))
+        let barY = hudTop
+        progressTrack?.position = CGPoint(x: 0, y: barY)
+        progressTrack?.path = CGPath(
+            roundedRect: CGRect(x: -barW * 0.5, y: -3, width: barW, height: 6),
+            cornerWidth: 3,
+            cornerHeight: 3,
+            transform: nil
+        )
+        updateProgressBar(barWidth: barW, barY: barY)
+
+        let statsY = hudTop - 22
+        hudPill.position = CGPoint(x: hudX + 70, y: statsY - 4)
         hudPill.isHidden = playHUD.isHidden
-        hudCarried.position = CGPoint(x: hudX, y: hudTop + 6)
-        hudHearts.position = CGPoint(x: hudX + 72, y: hudTop + 6)
-        hudCombo.position = CGPoint(x: hudX, y: hudTop - 14)
-        hudTime.position = CGPoint(x: hudX + 110, y: hudTop - 14)
+        hudCarried.position = CGPoint(x: hudX, y: statsY + 6)
+        hudHearts.position = CGPoint(x: hudX + 68, y: statsY + 6)
+        hudCombo.position = CGPoint(x: hudX, y: statsY - 12)
+        hudTime.position = CGPoint(x: hudX + 96, y: statsY - 12)
         for label in [hudCarried, hudHearts, hudCombo, hudTime] {
             if let outline = label.childNode(withName: "hudOutline") as? SKLabelNode {
                 outline.text = label.text
@@ -2080,9 +2206,13 @@ public final class HeistScene: SKScene {
             }
         }
         if let pauseBtn {
-            pauseBtn.position = CGPoint(x: hw - 52 - rightSafe, y: hudTop - 4)
+            pauseBtn.position = CGPoint(x: hw - 44 - rightSafe, y: statsY)
             let pl = pauseBtn.childNode(withName: "btnLabel") as? SKLabelNode
-            pl?.fontSize = 11
+            pl?.fontSize = 10
+        }
+        // Objective chip well below stats + PAUSE (iPhone SE / 16 Pro safe).
+        if let chip = objectiveBanner {
+            chip.position = CGPoint(x: 0, y: statsY - 52)
         }
         #if DEBUG
         fpsLabel.position = CGPoint(x: -hw + 16, y: -hh + 16 + bottomSafe * 0.25)
@@ -2361,6 +2491,14 @@ public final class HeistScene: SKScene {
     }
 
     private func showTitleScreen() {
+        // Never leave play toasts / objective chip on the title art.
+        clearPlayToasts()
+        objectiveBanner?.removeFromParent()
+        objectiveBanner = nil
+        if case .playing = sim.state.phase {
+            titleRoot.isHidden = true
+            return
+        }
         titleRoot.isHidden = false
         if let rain = titleRoot.childNode(withName: "//titleRain") as? SKEmitterNode {
             rain.isPaused = false
@@ -2386,6 +2524,8 @@ public final class HeistScene: SKScene {
         mopAlerted.removeAll()
         celebratedFirstStomp = false
         celebratedEarlyWin = false
+        tutorialStep = 0
+        tutorialStomps = 0
         if !isDailyRun {
             tookDamageThisRun = false
             sawMaskThisRun = false
@@ -2397,6 +2537,12 @@ public final class HeistScene: SKScene {
         lastStompElapsed = -1
         nextLullNudgeAt = 8
         runDustCooldown = 0
+        startWorldX = sim.state.bandit.position.x
+        if let ex = sim.map.findFirst(.exit) {
+            exitWorldX = sim.map.worldCenter(ofX: ex.0, y: ex.1, tileSize: tuning.tileSize).x
+        } else {
+            exitWorldX = startWorldX + Double(sim.map.width) * tuning.tileSize * 0.8
+        }
         if !smokeEnabled { hapticMed.impactOccurred() }
         sim.startRun()
         // Keep the freeze sample — allow one ≤250ms title→play transition frame (preload should
@@ -2415,6 +2561,14 @@ public final class HeistScene: SKScene {
         writeSmokeStatus()
     }
 
+    private static let mopChatterLines = [
+        "mop_pest_detected.m4a",
+        "mop_sanitizing.m4a",
+        "mop_do_not_resist.m4a",
+        "mop_sweep_protocol.m4a",
+        "mop_please_hold_still.m4a",
+    ]
+
     private func doRetry() {
         failOutcomeHold = 0
         resumeCountdown = 0
@@ -2423,6 +2577,13 @@ public final class HeistScene: SKScene {
         JuiceSound.shared.playUITap()
         JuiceSound.shared.startLevelMusic()
         mopAlerted.removeAll()
+        tutorialStep = 0
+        tutorialStomps = 0
+        celebratedFirstStomp = false
+        lastObjectiveTip = ""
+        clearPlayToasts()
+        objectiveBanner?.removeFromParent()
+        objectiveBanner = nil
         sim.retry()
         hideOutcome()
         snapCameraToHero()
@@ -2430,8 +2591,46 @@ public final class HeistScene: SKScene {
         // to EXIT and must not wipe (or re-sample) the live-play band.
         if !smoke.diedOnce {
             resetHeroFramingSamples()
+        } else if smokeEnabled {
+            // Mark the post-death clean start→vault run for the evidence clip cut.
+            let wall = smokeWallStart > 0 ? CACurrentMediaTime() - smokeWallStart : 0
+            let line = String(format: "clean_run_t0=%.3f\n", wall)
+            try? line.write(to: SmokeStatus.docsURL.appendingPathComponent("smoke_clean_run.txt"),
+                            atomically: true, encoding: .utf8)
         }
+        refreshObjectiveChip(forceBanner: true)
         updateHUDVisibility()
+    }
+
+    /// Premature vault crack during smoke: leave .won without rebuilding the sim.
+    /// Nudge only a couple tiles left — a 20-tile teleport looked like "stuck at vault forever".
+    private func softBounceOffVaultSmoke() {
+        failOutcomeHold = 0
+        hideOutcome()
+        clearPlayToasts()
+        let tile = tuning.tileSize
+        let exitX = sim.map.findFirst(.exit)?.0 ?? (sim.map.width - 2)
+        let parkX = Double(max(8, exitX - 3)) * tile
+        let streetY = sim.map.findFirst(.start).map { Double($0.1) * tile } ?? sim.state.bandit.position.y
+        if sim.state.bandit.position.x > parkX {
+            sim.state.bandit.position.x = parkX
+        }
+        sim.state.bandit.position.y = streetY
+        sim.state.bandit.velocity = Vec2(-tuning.feel.runSpeed * tile * 0.35, 0)
+        sim.state.bandit.facing = -1
+        sim.state.bandit.invuln = max(sim.state.bandit.invuln, 0.35)
+        sim.state.phase = .playing
+        skipFreezeSample = true
+        transitionBudgetMs = max(transitionBudgetMs, 1500)
+        snapCameraToHero()
+    }
+
+    private func clearPlayToasts() {
+        toastQueue.removeAll()
+        toastShowing = false
+        activeToastNode?.removeAllActions()
+        activeToastNode?.removeFromParent()
+        activeToastNode = nil
     }
 
     /// Instantly park the camera on the hero so the first frames aren't focus=(0,0) → negative heroX.
@@ -2456,14 +2655,16 @@ public final class HeistScene: SKScene {
         let viewH = size.height / Self.worldZoom
         // 0.20×viewW → hero ~30% when facing right (20–45% framing band).
         let lead = cameraFacing * 0.20 * viewW
+        // Lift just enough for the control strip — keep skyline parallax in frame.
+        let liftWorld = controlStripLift / Self.worldZoom
         var target = CGPoint(
             x: CGFloat(b.position.x) + lead,
-            y: CGFloat(b.position.y) + 56
+            y: CGFloat(b.position.y) + 28 + liftWorld * 0.2
         )
         let minX = viewW * 0.18
         let maxX = max(minX, mapW - viewW * 0.18)
-        let minY = viewH * 0.38
-        let maxY = max(minY, mapH - viewH * 0.25)
+        let minY = viewH * 0.28 + liftWorld * 0.15
+        let maxY = max(minY, mapH - viewH * 0.18)
         target.x = min(max(target.x, minX), maxX)
         target.y = min(max(target.y, minY), maxY)
         return target
@@ -3154,35 +3355,56 @@ public final class HeistScene: SKScene {
         sanitizeTrackedTouches()
 
         while accumulator >= tuning.dt && steps < maxSteps {
+            // Auto-runner: always push right unless smoke director overrides.
             var input = InputFrame(
-                moveX: moveX,
-                moveY: moveY,
+                moveX: 1,
+                moveY: 0,
                 jumpPressed: jumpPressed,
                 jumpHeld: jumpHeld,
                 pouncePressed: pouncePressed,
                 dashPressed: dashPressed,
                 maskPressed: maskPressed,
-                grabPressed: grabPressed
+                grabPressed: false
             )
             jumpPressed = false
             pouncePressed = false
             dashPressed = false
             maskPressed = false
             grabPressed = false
+            moveX = 1
+            moveY = 0
 
             if smokeEnabled {
                 let cue = smoke.next(sim: sim)
                 if cue.start { beginPlay() }
-                if cue.retry { doRetry() }
-                input = cue.input
-                // Mirror smoke taps onto the face cluster so the clip shows every button.
-                flashSmokeFaceButtons(from: input)
-                if stickBase != nil {
-                    stickKnob.position = CGPoint(
-                        x: stickBase.position.x + CGFloat(input.moveX) * 40,
-                        y: stickBase.position.y
-                    )
+                if cue.retry {
+                    if !smoke.diedOnce {
+                        // Soft bounce off the vault — keep the same run (no fake 8s restart win).
+                        softBounceOffVaultSmoke()
+                    } else {
+                        skipFreezeSample = true
+                        transitionBudgetMs = max(transitionBudgetMs, 2500)
+                        doRetry()
+                    }
                 }
+                input = cue.input
+                let midrunOk = SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
+                // Pre-midrun: honor soft-hold / short reverse so the MOP pack stays ahead.
+                // Post-midrun: allow left for mop hunt + vault retreat until death beat.
+                // seekDeath may ease left into a canal lip.
+                let allowReverse = !midrunOk
+                    || smoke.act == .seekDeath
+                    || smoke.act == .play
+                    || smoke.act == .showcaseMask
+                    || smoke.act == .finishPush // walk back onto .exit if overshot
+                if abs(input.moveX) < 0.1, (midrunOk && smoke.act != .finishPush) || smoke.act == .seekDeath {
+                    input.moveX = 1
+                } else if abs(input.moveX) < 0.1, !midrunOk {
+                    // Soft-hold on the teaching runway — do not shove past the MOP pack.
+                } else if input.moveX < 0, !allowReverse {
+                    input.moveX = 1
+                }
+                flashSmokeFaceButtons(from: input)
             }
 
             if case .playing = sim.state.phase {
@@ -3223,16 +3445,19 @@ public final class HeistScene: SKScene {
                         smokePreMidrunMaskCancelCount += 1
                     }
                     // Harness: force Mask Mode for 04 / 04b when the bot can't re-chain in time.
-                    if midrunOk, SmokeBrain.smokeFlagExists("smoke_force_mask.txt"),
-                       !sim.state.bandit.maskMode
-                    {
+                    // Re-apply every frame while the flag is present (mask-2 re-arm must stick).
+                    if midrunOk, SmokeBrain.smokeFlagExists("smoke_force_mask.txt") {
                         sim.state.bandit.maskMode = true
                         sim.state.bandit.maskTimer = max(sim.state.bandit.maskTimer, 6.0)
                         sim.state.bandit.combo = max(sim.state.bandit.combo, tuning.maskModeAtCombo)
+                        sim.state.bandit.maskCharges = max(sim.state.bandit.maskCharges, 1)
                         smoke.sawMask = true
                         smoke.sawStomp = true
+                        smokeSawMaskDropAfterFirst = true
                     }
                     // Harness: dump Bandit into canal water for the death beat if seekDeath stalls.
+                    // Force phase=failed immediately — teleport alone can miss a sim tick before
+                    // the harness hard-timeout (seen when soft-arm and hard-fail shared a loop).
                     if SmokeBrain.smokeFlagExists("smoke_force_fail.txt"),
                        case .playing = sim.state.phase
                     {
@@ -3247,7 +3472,14 @@ public final class HeistScene: SKScene {
                         sim.state.bandit.invuln = 0
                         sim.state.bandit.maskMode = false
                         sim.state.bandit.maskTimer = 0
+                        sim.state.bandit.hearts = 0
+                        sim.state.phase = .failed(.fellInWater)
                         smoke.act = .seekDeath
+                        smoke.diedOnce = true
+                        smokeStatus.died = true
+                        // Harness dump can hitch a frame — don't fail the freeze gate on it.
+                        skipFreezeSample = true
+                        transitionBudgetMs = max(transitionBudgetMs, 2000)
                     }
                     // Pin Mask open only while the harness is actively capturing 04 / 04b
                     // (smoke_capture_mask.txt). Do NOT pin from midrun→stomp-chain — that
@@ -3380,16 +3612,22 @@ public final class HeistScene: SKScene {
                 // Midrun hold: ignore accidental pre-hunt stomps in the smoke counter/wait gate.
                 let midrunOk = !smokeEnabled || SmokeBrain.smokeFlagExists("smoke_midrun_ok.txt")
                 if midrunOk { smokeStatus.stomps += 1 }
+                tutorialStomps += 1
+                if tutorialStep < 1 { tutorialStep = 1 }
+                if tutorialStomps >= 3, tutorialStep < 2 { tutorialStep = 2 }
+                refreshObjectiveChip()
                 JuiceSound.shared.playStomp()
+                JuiceSound.shared.playMopChatter(Self.mopChatterLines)
                 if !smokeEnabled { hapticHeavy.impactOccurred() }
-                // Hit-stop: ~70 ms base, ~80 ms at combo ≥3 (stays in the 40–80 ms punch band).
-                let stop = sim.state.bandit.combo >= 3
+                // Hit-stop ~60 ms; combo bumps the punch.
+                let combo = sim.state.bandit.combo
+                let stop = combo >= 3
                     ? max(tuning.feel.stompHitstop, 0.08)
                     : tuning.feel.stompHitstop
                 hitStop = max(hitStop, stop)
                 shake(1.85)
                 squash(1.72, 0.34)
-                impactFlash(intensity: sim.state.bandit.combo >= 3 ? 0.6 : 0.42)
+                impactFlash(intensity: combo >= 3 ? 0.6 : 0.42)
                 zoomPunch(1.05)
                 let stompPos = cg(e.position)
                 JuiceFX.play(
@@ -3402,11 +3640,20 @@ public final class HeistScene: SKScene {
                 )
                 neonBurst(at: e.position, color: ArtCatalog.neonPink, count: 10)
                 neonBurst(at: e.position, color: ArtCatalog.neonCyan, count: 6)
+                // Coin burst on every stomp.
+                neonBurst(at: e.position, color: ArtCatalog.neonLime, count: 8)
                 dust(at: e.position, count: 12, color: ArtCatalog.neonPink)
                 impactRing(at: e.position, color: ArtCatalog.neonPink)
                 squashMop(at: e.position)
                 hitSpark(at: e.position, color: ArtCatalog.neonPink)
-                scorePop(at: e.position, text: "+\(max(1, sim.state.bandit.combo))", color: ArtCatalog.neonLime)
+                scorePop(at: e.position, text: "+\(max(1, combo))", color: ArtCatalog.neonLime)
+                if combo >= 2 {
+                    scorePop(
+                        at: Vec2(e.position.x, e.position.y + tuning.tileSize * 0.9),
+                        text: "x\(combo)",
+                        color: ArtCatalog.neonCyan
+                    )
+                }
                 lastStompElapsed = sim.state.elapsed
                 nextLullNudgeAt = sim.state.elapsed + 9
                 if !celebratedFirstStomp {
@@ -3467,6 +3714,12 @@ public final class HeistScene: SKScene {
                 damageFlash()
                 shake(0.35)
             case .win:
+                // Smoke: premature vault before the death beat must not sticky-set won=
+                // or flash VAULT CRACKED mid-run. Real clear happens after diedOnce.
+                if smokeEnabled, !smoke.diedOnce {
+                    writeSmokeStatus()
+                    break
+                }
                 smokeStatus.won = true
                 playSFX(.sfxWin)
                 JuiceSound.shared.setMaskModeMusic(false)
@@ -3503,21 +3756,8 @@ public final class HeistScene: SKScene {
             case .crewFreed(let crewID):
                 progressStore.recordCrewFreed(crewID)
                 let member = story.crew(id: crewID)
-                let toast = StoryChrome.makeCrewToast(
-                    name: member?.name ?? "Crew",
-                    line: member?.line ?? "Back on the heist."
-                )
-                toast.position = CGPoint(x: 0, y: size.height * 0.22)
-                toast.zPosition = 400
-                overlay.addChild(toast)
-                toast.setScale(0.7)
-                toast.alpha = 0
-                toast.run(SKAction.sequence([
-                    SKAction.group([SKAction.fadeIn(withDuration: 0.15), SKAction.scale(to: 1, duration: 0.2)]),
-                    SKAction.wait(forDuration: 1.6),
-                    SKAction.fadeOut(withDuration: 0.25),
-                    SKAction.removeFromParent(),
-                ]))
+                let name = member?.name ?? "Crew"
+                showPlayToast("FREED \(name.uppercased())!", color: ArtCatalog.neonLime, hold: 2.0)
                 JuiceSound.shared.playUITap()
                 neonBurst(at: e.position, color: ArtCatalog.neonLime, count: 16)
                 for (id, node) in crewNodes {
@@ -3539,6 +3779,9 @@ public final class HeistScene: SKScene {
     }
 
     private func showOutcome() {
+        clearPlayToasts()
+        objectiveBanner?.removeFromParent()
+        objectiveBanner = nil
         outcomeRoot.isHidden = false
         layoutUI()
         guard let card = outcomeRoot.childNode(withName: "outcomeCard"),
@@ -3565,7 +3808,13 @@ public final class HeistScene: SKScene {
             combo = c
             finalShiniesForCount = shinyTotal
             title.fontColor = ArtCatalog.neonLime
-            title.text = "HEIST CLEAR"
+            title.text = "VAULT CRACKED"
+            tutorialStep = 3
+            // Do not refreshObjectiveChip here — it would re-show "To the vault" over the card.
+            // Big loot burst on vault clear.
+            neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonLime, count: 18)
+            neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: 12)
+            shinySparkle(at: sim.state.bandit.position)
             shinyCount.text = "0"
             meta.text = String(format: "⏱ %.0fs    ✦ combo x%d", seconds, combo)
             if let pa = card.childNode(withName: "outcomePA") as? SKLabelNode {
@@ -3622,15 +3871,19 @@ public final class HeistScene: SKScene {
                 combo: combo
             )
             clearResult = earned
-            lastAwardedMedals = earned.medals.count
-            smokeStatus.medals = earned.medals.count
+            // Fun-pass stars: 1 finish, 2 all loot, 3 no hits.
+            var stars = 1
+            if got >= totalShinies { stars += 1 }
+            if !tookDamageThisRun { stars += 1 }
+            lastAwardedMedals = stars
+            smokeStatus.medals = stars
             smokeStatus.combo = max(smokeStatus.combo, combo)
             reportCampaignAchievements(
                 levelID: levelID,
-                medals: earned.medals.count,
+                medals: stars,
                 noDamage: !tookDamageThisRun
             )
-            return earned.medals.count
+            return stars
         }()
 
         if isWin {
@@ -3853,7 +4106,13 @@ public final class HeistScene: SKScene {
         let b = sim.state.bandit
         // Physics uses body center; foot-anchored sprites need the feet on the deck.
         bandit.position = CGPoint(x: CGFloat(b.position.x), y: CGFloat(b.position.y) - bodyCenterToFeet)
-        bandit.setFacing(b.facing)
+        // Sprite facing follows travel velocity first (sheets face west — flip for east).
+        // Prefer vx over stick so auto-run never moonwalks when moveX and vx briefly disagree.
+        let faceDir: Double = {
+            if abs(b.velocity.x) > 2 { return b.velocity.x >= 0 ? 1 : -1 }
+            return b.facing
+        }()
+        bandit.setFacing(faceDir)
         let moveSpeed = CGFloat(hypot(b.velocity.x, 0) / max(tuning.tileSize, 1))
         let runSpeed = CGFloat(tuning.runSpeed)
         bandit.show(
@@ -3959,6 +4218,14 @@ public final class HeistScene: SKScene {
         smokeStatus.shinies = shinyTotal
         hudCarried.text = "✦ \(shinyTotal)"
         hudHearts.text = String(repeating: "♥", count: max(0, b.hearts))
+        let barW: CGFloat = min(size.width * 0.55, CGFloat(240))
+        let barY = size.height * 0.5 - max(safeInsets().top, CGFloat(59)) - CGFloat(6)
+        updateProgressBar(barWidth: barW, barY: barY)
+        if tutorialStep == 0, !b.onGround, b.velocity.y != 0 {
+            tutorialStep = 1
+            refreshObjectiveChip()
+        }
+        if tutorialStep >= 2, b.maskMode { tutorialStep = 3; refreshObjectiveChip() }
         if b.maskMode {
             hudCombo.text = "MASK ×\(max(0, b.maskCharges)) · x\(max(1, b.combo))"
             hudCombo.isHidden = false
@@ -3980,12 +4247,11 @@ public final class HeistScene: SKScene {
             hudCombo.text = ""
             hudCombo.isHidden = true
         }
+        // Always show the heist clock (sim elapsed) — wall-clock smoke harness time is not level time.
         if smokeEnabled, smokeWallStart > 0 {
             smokeWallElapsed = CACurrentMediaTime() - smokeWallStart
-            hudTime.text = String(format: "⏱ %.0fs", smokeWallElapsed)
-        } else {
-            hudTime.text = String(format: "⏱ %.0fs", sim.state.elapsed)
         }
+        hudTime.text = String(format: "⏱ %.0fs", sim.state.elapsed)
         for label in [hudCarried, hudHearts, hudCombo, hudTime] {
             (label.childNode(withName: "hudOutline") as? SKLabelNode)?.text = label.text
             (label.childNode(withName: "hudGlow") as? SKLabelNode)?.text = label.text
@@ -4073,9 +4339,10 @@ public final class HeistScene: SKScene {
             }
         }
         // Slow parallax — keep plates covering the view (tiled in buildParallax).
-        parallaxFar.position = CGPoint(x: cameraFocus.x * 0.88, y: cameraFocus.y * 0.96)
-        parallaxMid.position = CGPoint(x: cameraFocus.x * 0.72, y: cameraFocus.y * 0.92)
-        parallaxNear.position = CGPoint(x: cameraFocus.x * 0.55, y: cameraFocus.y * 0.88)
+        // Stronger lag so the skyline scrolls instead of reading as a static top plate.
+        parallaxFar.position = CGPoint(x: cameraFocus.x * 0.45, y: cameraFocus.y * 0.7)
+        parallaxMid.position = CGPoint(x: cameraFocus.x * 0.28, y: cameraFocus.y * 0.55)
+        parallaxNear.position = CGPoint(x: cameraFocus.x * 0.12, y: cameraFocus.y * 0.4)
 
         // Mask Mode: keep vignette visible while active; fade out on exit.
         // Do NOT ramp parent alpha toward 1 over an opaque wash — that cyan-bleaches CI shots.
@@ -4144,76 +4411,121 @@ public final class HeistScene: SKScene {
         }
     }
 
-    /// Clear first-minute goal: stomp into Mask, then bank at EXIT.
+    /// Persistent objective chip — ticks with a pop as stomps / tutorial advance.
     private func showObjectiveBanner() {
-        objectiveBanner?.removeFromParent()
-        let root = SKNode()
-        root.name = "objectiveBanner"
-        root.zPosition = 280
-        let bg = SKShapeNode(rectOf: CGSize(width: min(size.width * 0.88, 340), height: 52), cornerRadius: 10)
-        bg.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.1, alpha: 0.88)
-        bg.strokeColor = ArtCatalog.neonCyan
-        bg.lineWidth = 1.5
-        bg.glowWidth = 1
-        root.addChild(bg)
-        let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        title.text = "JUMP · POUNCE · DASH · MASK · GRAB"
-        title.fontSize = 16
-        title.fontColor = ArtCatalog.neonLime
-        title.verticalAlignmentMode = .center
-        title.position = CGPoint(x: 0, y: 8)
-        root.addChild(title)
-        let sub = SKLabelNode(fontNamed: "AvenirNext-DemiBold")
-        sub.text = "Then race the neon EXIT"
-        sub.fontSize = 11
-        sub.fontColor = SKColor(white: 0.9, alpha: 1)
-        sub.verticalAlignmentMode = .center
-        sub.position = CGPoint(x: 0, y: -10)
-        root.addChild(sub)
-        let topSafe = max(safeInsets().top, 59) + 48
-        root.position = CGPoint(x: 0, y: size.height * 0.5 - topSafe)
-        root.alpha = 0
-        root.setScale(0.85)
-        overlay.addChild(root)
-        objectiveBanner = root
-        root.run(SKAction.sequence([
-            SKAction.group([
-                SKAction.fadeIn(withDuration: 0.18),
-                SKAction.scale(to: 1.0, duration: 0.22),
-            ]),
-            SKAction.wait(forDuration: 3.2),
-            SKAction.group([
-                SKAction.fadeOut(withDuration: 0.35),
-                SKAction.moveBy(x: 0, y: 16, duration: 0.35),
-            ]),
-            SKAction.removeFromParent(),
-        ]))
+        refreshObjectiveChip(forceBanner: true)
+    }
+
+    private func refreshObjectiveChip(forceBanner: Bool = false) {
+        let stompsNeeded = 3
+        // Progress is only real air-stomps (tutorialStomps) — never invent 3/3.
+        let done = max(0, min(tutorialStomps, stompsNeeded))
+        // Chip stays a short progress label — tips fire once as toasts (no forever stack).
+        let text: String
+        // Chip is short progress only — tips fire once as auto-dismiss toasts (~2s).
+        switch tutorialStep {
+        case 0, 1:
+            text = "Stomp MOPs \(done)/\(stompsNeeded)"
+        case 2:
+            if sim.state.bandit.maskCharges > 0 || sim.state.bandit.maskMode {
+                text = "To the vault"
+                if lastObjectiveTip != "mask" {
+                    lastObjectiveTip = "mask"
+                    showPlayToast("TAP MASK — smash mode!", color: ArtCatalog.neonCyan, hold: 2.0)
+                }
+            } else {
+                text = "Stomp MOPs \(done)/\(stompsNeeded)"
+            }
+        default:
+            text = "To the vault"
+            if lastObjectiveTip != "vault" {
+                lastObjectiveTip = "vault"
+                showPlayToast("Crack the VAULT", color: ArtCatalog.neonLime, hold: 2.0)
+            }
+        }
+        if objectiveBanner == nil || forceBanner {
+            objectiveBanner?.removeFromParent()
+            let root = SKNode()
+            root.name = "objectiveBanner"
+            root.zPosition = 280
+            let bg = SKShapeNode(rectOf: CGSize(width: min(size.width * 0.55, CGFloat(220)), height: CGFloat(28)), cornerRadius: 8)
+            bg.name = "objBg"
+            bg.fillColor = SKColor(red: 0.04, green: 0.03, blue: 0.1, alpha: 0.85)
+            bg.strokeColor = ArtCatalog.neonCyan
+            bg.lineWidth = 1.2
+            root.addChild(bg)
+            let title = SKLabelNode(fontNamed: "AvenirNext-Heavy")
+            title.name = "objText"
+            title.fontSize = 12
+            title.fontColor = ArtCatalog.neonLime
+            title.verticalAlignmentMode = .center
+            root.addChild(title)
+            let topSafe = max(safeInsets().top, 59) + 78
+            root.position = CGPoint(x: 0, y: size.height * 0.5 - topSafe)
+            overlay.addChild(root)
+            objectiveBanner = root
+            layoutUI()
+        }
+        if let title = objectiveBanner?.childNode(withName: "objText") as? SKLabelNode {
+            if title.text != text {
+                title.text = text
+                objectiveBanner?.run(SKAction.sequence([
+                    SKAction.scale(to: 1.12, duration: 0.08),
+                    SKAction.scale(to: 1.0, duration: 0.1),
+                ]))
+            }
+        }
     }
 
     private func showPlayToast(_ text: String, color: SKColor, hold: TimeInterval) {
-        // Top band — never cover the raccoon or +N stomp popups mid-screen.
+        let capped = min(max(hold, 1.2), 2.2)
+        toastQueue.append((text, color, capped))
+        pumpToastQueue()
+    }
+
+    private func pumpToastQueue() {
+        guard !toastShowing else { return }
+        guard !toastQueue.isEmpty else { return }
+        let next = toastQueue.removeFirst()
+        toastShowing = true
+        activeToastNode?.removeAllActions()
+        activeToastNode?.removeFromParent()
+        // Sit under the stats row / objective chip — never cover hearts or the timer.
         let insets = safeInsets()
-        let topSafe = max(insets.top, 59) + 36
+        let topSafe = max(insets.top, 59) + 108
+        let root = SKNode()
+        root.name = "playToast"
+        root.zPosition = 275
+        root.alpha = 0
+        root.setScale(0.85)
+        root.position = CGPoint(x: 0, y: size.height * 0.5 - topSafe)
+        let bg = SKShapeNode(rectOf: CGSize(width: min(size.width * 0.78, 300), height: 30), cornerRadius: 8)
+        bg.fillColor = SKColor(red: 0.03, green: 0.02, blue: 0.08, alpha: 0.88)
+        bg.strokeColor = next.color.withAlphaComponent(0.85)
+        bg.lineWidth = 1.2
+        root.addChild(bg)
         let toast = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        toast.text = text
-        toast.fontSize = 15
-        toast.fontColor = color
+        toast.text = next.text
+        toast.fontSize = 13
+        toast.fontColor = next.color
         toast.verticalAlignmentMode = .center
         toast.horizontalAlignmentMode = .center
-        toast.zPosition = 290
-        toast.alpha = 0
-        toast.setScale(0.7)
-        toast.position = CGPoint(x: 0, y: size.height * 0.5 - topSafe)
-        overlay.addChild(toast)
-        toast.run(SKAction.sequence([
+        root.addChild(toast)
+        overlay.addChild(root)
+        activeToastNode = root
+        root.run(SKAction.sequence([
             SKAction.group([
                 SKAction.fadeIn(withDuration: 0.1),
-                SKAction.scale(to: 1.15, duration: 0.12),
+                SKAction.scale(to: 1.0, duration: 0.12),
             ]),
-            SKAction.scale(to: 1.0, duration: 0.08),
-            SKAction.wait(forDuration: hold),
-            SKAction.fadeOut(withDuration: 0.25),
+            SKAction.wait(forDuration: next.hold),
+            SKAction.fadeOut(withDuration: 0.2),
             SKAction.removeFromParent(),
+            SKAction.run { [weak self] in
+                self?.toastShowing = false
+                self?.activeToastNode = nil
+                self?.pumpToastQueue()
+            },
         ]))
     }
 
@@ -4224,7 +4536,7 @@ public final class HeistScene: SKScene {
         root.position = CGPoint(x: pos.x, y: pos.y + tile * 1.35)
         root.zPosition = 8
         let arrow = SKLabelNode(fontNamed: "AvenirNext-Heavy")
-        arrow.text = "▼ EXIT"
+        arrow.text = "▼ VAULT"
         arrow.fontSize = 12
         arrow.fontColor = ArtCatalog.neonLime
         arrow.verticalAlignmentMode = .center
@@ -4666,6 +4978,8 @@ public final class HeistScene: SKScene {
         smokeStatus.worldTY = wty
         smokeStatus.worldTXMax = max(smokeStatus.worldTXMax, wtx)
         smokeStatus.stallSec = smoke.progressStallSeconds
+        // Layout shots must wait for the title art to actually leave the screen.
+        smokeStatus.titleHidden = titleRoot.isHidden
         smokeStatus.write()
     }
 
