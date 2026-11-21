@@ -48,15 +48,36 @@ PY
 }
 
 latest_ios_runtime() {
+  # Prefer generic iOS runtimes (iOS-18-0). Skip device-specific ids like iOS-27-2-iPhone19-4
+  # which reject SE create with "Incompatible device".
   python3 -c '
-import json, subprocess, sys
+import json, re, subprocess, sys
 raw = subprocess.check_output(["xcrun", "simctl", "list", "runtimes", "-j"], text=True)
 r = json.loads(raw).get("runtimes", [])
-ios = [x for x in r if x.get("isAvailable") and "iOS" in x.get("name", "")]
+pat = re.compile(r"^com\.apple\.CoreSimulator\.SimRuntime\.iOS-\d+-\d+$")
+ios = [
+    x for x in r
+    if x.get("isAvailable")
+    and str(x.get("name", "")).startswith("iOS")
+    and pat.match(x.get("identifier", ""))
+]
 ios.sort(key=lambda x: x.get("version", ""), reverse=True)
 if not ios:
+    # Fallback: any available iOS runtime whose identifier does not mention iPhone.
+    ios = [
+        x for x in r
+        if x.get("isAvailable")
+        and "iOS" in str(x.get("name", ""))
+        and "iPhone" not in x.get("identifier", "")
+    ]
+    ios.sort(key=lambda x: x.get("version", ""), reverse=True)
+if not ios:
+    print("available runtimes:", file=sys.stderr)
+    for x in r:
+        print(f"  {x.get('identifier')} avail={x.get('isAvailable')} name={x.get('name')}", file=sys.stderr)
     sys.exit(1)
 print(ios[0]["identifier"])
+print(ios[0].get("name", ""), file=sys.stderr)
 '
 }
 
@@ -98,25 +119,47 @@ ensure_se() {
     echo "$udid"
     return 0
   fi
-  local runtime dtype
-  runtime="$(latest_ios_runtime)" || {
-    echo "ERROR: no iOS runtime for SE create" >&2
-    return 1
-  }
+  local dtype
   dtype="$(find_se_devicetype)" || {
     echo "ERROR: no iPhone SE device type installed" >&2
     xcrun simctl list devicetypes 2>&1 | grep -i se >&2 || true
     return 1
   }
-  echo "Creating SE from $dtype on $runtime" >&2
-  local created
-  if ! created="$(xcrun simctl create "iPhone SE (layout)" "$dtype" "$runtime" 2>/tmp/se-create.err)"; then
-    echo "ERROR: simctl create SE failed:" >&2
-    cat /tmp/se-create.err >&2 || true
+  # Try each compatible generic iOS runtime until create succeeds.
+  local runtimes created
+  runtimes="$(python3 -c '
+import json, re, subprocess
+raw = subprocess.check_output(["xcrun", "simctl", "list", "runtimes", "-j"], text=True)
+r = json.loads(raw).get("runtimes", [])
+pat = re.compile(r"^com\.apple\.CoreSimulator\.SimRuntime\.iOS-\d+-\d+$")
+ios = [
+    x for x in r
+    if x.get("isAvailable")
+    and str(x.get("name", "")).startswith("iOS")
+    and pat.match(x.get("identifier", ""))
+]
+ios.sort(key=lambda x: x.get("version", ""), reverse=True)
+for x in ios:
+    print(x["identifier"])
+')"
+  if [[ -z "$runtimes" ]]; then
+    echo "ERROR: no generic iOS runtime for SE create" >&2
+    xcrun simctl list runtimes 2>&1 | head -40 >&2 || true
     return 1
   fi
-  echo "Created SE udid=$created" >&2
-  echo "$created"
+  while IFS= read -r runtime; do
+    [[ -n "$runtime" ]] || continue
+    echo "Creating SE from $dtype on $runtime" >&2
+    if created="$(xcrun simctl create "iPhone SE (layout)" "$dtype" "$runtime" 2>/tmp/se-create.err)"; then
+      echo "Created SE udid=$created" >&2
+      echo "$created"
+      return 0
+    fi
+    echo "WARN: create failed on $runtime:" >&2
+    cat /tmp/se-create.err >&2 || true
+  done <<< "$runtimes"
+  echo "ERROR: simctl create SE failed on all generic iOS runtimes" >&2
+  return 1
 }
 
 device_name() {
