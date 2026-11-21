@@ -3318,7 +3318,8 @@ public final class HeistScene: SKScene {
                     || smoke.act == .seekDeath
                     || smoke.act == .play
                     || smoke.act == .showcaseMask
-                if abs(input.moveX) < 0.1, midrunOk || smoke.act == .finishPush || smoke.act == .seekDeath {
+                    || smoke.act == .finishPush // walk back onto .exit if overshot
+                if abs(input.moveX) < 0.1, (midrunOk && smoke.act != .finishPush) || smoke.act == .seekDeath {
                     input.moveX = 1
                 } else if abs(input.moveX) < 0.1, !midrunOk {
                     // Soft-hold on the teaching runway — do not shove past the MOP pack.

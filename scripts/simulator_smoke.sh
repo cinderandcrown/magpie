@@ -560,8 +560,8 @@ shot "$OUT_DIR/05-death-retry.png"
 write_flag "smoke_death_ok.txt"
 rm -f "$(data_container)/Documents/smoke_force_fail.txt" 2>/dev/null || true
 
-# 06 — RESULTS (win after retry)
-wait_status_strict "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if ("won=1" in s or "phase=won" in s) else 1)' 120
+# 06 — RESULTS (real vault clear after death retry — sticky won=1 alone is not enough)
+wait_status_strict "results" 'import os,sys; s=os.environ["STATUS_LINE"]; sys.exit(0 if "phase=won" in s else 1)' 120
 shot "$OUT_DIR/06-results.png"
 
 # 07 — District map (retention)

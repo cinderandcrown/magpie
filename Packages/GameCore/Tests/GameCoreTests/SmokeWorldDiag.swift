@@ -160,4 +160,42 @@ final class SmokeWorldProgressTests: XCTestCase {
         }
         XCTAssertGreaterThanOrEqual(stomps, base + 4, "need +4 stomps after midrun, got \(stomps) (base \(base))")
     }
+
+    func testFinishPushWinsAfterDeath() throws {
+        SmokeBrain.clearSmokeFlags()
+        defer { SmokeBrain.clearSmokeFlags() }
+        for f in ["smoke_proceed.txt", "smoke_midrun_ok.txt", "smoke_mask_ok.txt",
+                  "smoke_mask2_ok.txt", "smoke_foreground.txt", "smoke_death_ok.txt"] {
+            SmokeBrain.setSmokeFlag(f, present: true)
+        }
+        let map = try NeonDocksLevel.load()
+        var sim = Sim(map: map, tuning: .default, seed: 3)
+        var brain = SmokeBrain()
+        brain.diedOnce = true
+        brain.act = .finishPush
+        brain.sawMask = true
+        sim.startRun()
+        // Park past the vault to prove overshoot recovery, then finishPush must win.
+        let tile = sim.tuning.tileSize
+        let exitX = map.findFirst(.exit)!.0
+        let startY = map.findFirst(.start)!.1
+        sim.state.bandit.position = map.worldStandOnDeckBelow(ofX: exitX + 2, markerY: startY, tileSize: tile)
+        sim.state.bandit.position.y += 14
+        sim.state.bandit.onGround = true
+        var won = false
+        var minTX = 999
+        for _ in 0..<Int(25 * sim.tuning.simHz) {
+            let cue = brain.next(sim: sim)
+            XCTAssertEqual(brain.act, .finishPush)
+            if case .playing = sim.state.phase {
+                sim.step(cue.input)
+                minTX = min(minTX, Int(floor(sim.state.bandit.position.x / tile)))
+            }
+            if case .won = sim.state.phase { won = true; break }
+        }
+        XCTAssertTrue(
+            won,
+            "finishPush must walk back onto .exit after overshoot (minTX=\(minTX) exit=\(exitX) phase=\(sim.state.phase))"
+        )
+    }
 }

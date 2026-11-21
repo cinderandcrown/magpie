@@ -422,7 +422,28 @@ public struct SmokeBrain: Equatable, Sendable {
         var jumpPressed = false
         var jumpHeld = false
         var pouncePressed = false
+        let exitX = exitTile?.0 ?? (sim.map.width - 2)
+
+        // Overshot the vault tile while airborne — walk back onto E (win needs feet on .exit).
+        if tx > exitX {
+            return InputFrame(
+                moveX: -1.0,
+                jumpPressed: false,
+                jumpHeld: false,
+                pouncePressed: false
+            )
+        }
+        // Final approach: no hop — jumping the end canal used to clear past E without winning.
+        if tx >= exitX - 3 {
+            return InputFrame(
+                moveX: 1.0,
+                jumpPressed: false,
+                jumpHeld: false,
+                pouncePressed: false
+            )
+        }
         _ = dx
+        _ = targetY
 
         let gapNear = gapAhead(sim: sim, tx: tx, ty: ty) || gapWithin(sim: sim, tx: tx, ty: ty, reach: 5)
         let hazard = hazardAhead(sim: sim, tx: tx, ty: ty, reach: 6)
