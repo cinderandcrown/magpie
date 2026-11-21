@@ -3790,7 +3790,7 @@ public final class HeistScene: SKScene {
             title.fontColor = ArtCatalog.neonLime
             title.text = "VAULT CRACKED"
             tutorialStep = 3
-            refreshObjectiveChip()
+            // Do not refreshObjectiveChip here — it would re-show "To the vault" over the card.
             // Big loot burst on vault clear.
             neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonLime, count: 18)
             neonBurst(at: sim.state.bandit.position, color: ArtCatalog.neonCyan, count: 12)

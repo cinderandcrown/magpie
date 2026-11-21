@@ -1022,7 +1022,7 @@ if [[ -f "$CLEAN_MARK" ]]; then
 fi
 if [[ -f "$OUT_DIR/smoke-gameplay.mp4" ]]; then
   python3 - "$OUT_DIR/smoke-gameplay.mp4" "$OUT_DIR" "$CLEAN_MARK" <<'PY' || true
-import re, subprocess, sys
+import re, subprocess, sys, tempfile
 from pathlib import Path
 video, out_dir, mark = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
 t0 = None
@@ -1030,32 +1030,54 @@ if mark.is_file():
     m = re.search(r"clean_run_t0=([0-9.]+)", mark.read_text())
     if m:
         t0 = float(m.group(1))
-# Recorder starts ~at title; wallElapsed starts at beginPlay — pad a little early.
-ss = max(0.0, (t0 - 1.5) if t0 is not None else 18.0)
-# Enough runway for start→vault (~8–20s) plus VAULT CRACKED card.
-dur = 22.0 if t0 is not None else 30.0
+# Recorder starts on title; wallElapsed starts at beginPlay.
+# Stitch: title/tap (~0–6s) + post-death clean vault push (t0 → VAULT CRACKED).
+title_dur = 6.0
+run_ss = max(0.0, (t0 - 0.5) if t0 is not None else 18.0)
+run_dur = 16.0 if t0 is not None else 24.0  # stop on results card, before district map
+ffmpeg = "ffmpeg"
 clean = out_dir / "smoke-clean-run.mp4"
 feel = out_dir / "smoke-30s.mp4"
-for dest, start, length in ((clean, ss, dur), (feel, ss, min(dur, 30.0))):
-    cmd = [
-        "ffmpeg", "-y", "-ss", f"{start:.2f}", "-t", f"{length:.2f}",
-        "-i", str(video), "-c:v", "libx264", "-an", "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart", str(dest),
-    ]
-    subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-print(f"clean-run cut ss={ss:.1f}s dur={dur:.1f}s t0={t0}")
+with tempfile.TemporaryDirectory() as td:
+    td = Path(td)
+    title = td / "title.mp4"
+    run = td / "run.mp4"
+    subprocess.run(
+        [ffmpeg, "-y", "-ss", "0", "-t", f"{title_dur:.2f}", "-i", str(video),
+         "-c:v", "libx264", "-an", "-pix_fmt", "yuv420p", str(title)],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        [ffmpeg, "-y", "-ss", f"{run_ss:.2f}", "-t", f"{run_dur:.2f}", "-i", str(video),
+         "-c:v", "libx264", "-an", "-pix_fmt", "yuv420p", str(run)],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    lst = td / "list.txt"
+    lst.write_text(f"file '{title}'\nfile '{run}'\n")
+    if title.is_file() and run.is_file() and title.stat().st_size > 1000 and run.stat().st_size > 1000:
+        subprocess.run(
+            [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+             "-c:v", "libx264", "-an", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+             str(clean)],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    if not clean.is_file() or clean.stat().st_size < 1000:
+        # Fallback: just the vault push window.
+        subprocess.run(
+            [ffmpeg, "-y", "-ss", f"{run_ss:.2f}", "-t", f"{run_dur:.2f}", "-i", str(video),
+             "-c:v", "libx264", "-an", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+             str(clean)],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    if clean.is_file() and clean.stat().st_size > 1000:
+        import shutil
+        shutil.copyfile(clean, feel)
+print(f"clean-run stitch title={title_dur:.0f}s + run_ss={run_ss:.1f}s dur={run_dur:.1f}s t0={t0}")
 PY
-  # Absolute fallback if python cut failed.
   if [[ ! -s "$OUT_DIR/smoke-30s.mp4" ]]; then
     ffmpeg -y -ss 18 -t 30 -i "$OUT_DIR/smoke-gameplay.mp4" \
       -c:v libx264 -an -pix_fmt yuv420p -movflags +faststart "$OUT_DIR/smoke-30s.mp4" 2>/dev/null \
-      || ffmpeg -y -ss 12 -t 30 -i "$OUT_DIR/smoke-gameplay.mp4" \
-        -c:v libx264 -an -pix_fmt yuv420p -movflags +faststart "$OUT_DIR/smoke-30s.mp4" 2>/dev/null \
       || true
-  fi
-  if [[ -s "$OUT_DIR/smoke-clean-run.mp4" ]]; then
-    # Prefer clean vault clear as the review feel-loop when available.
-    cp -f "$OUT_DIR/smoke-clean-run.mp4" "$OUT_DIR/smoke-30s.mp4"
   fi
 fi
 cp -f "$OUT_DIR/00-publisher-ident.png" "$OUT_DIR/00-ident.png"
